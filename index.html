@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="uz">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UzbGuessr — Qayerdasiz?</title>
+    <meta
+      name="description"
+      content="UzbGuessr — O‘zbekiston ko‘chalari bo‘yicha geografiya o‘yini (Yandex panoramalari)."
+    />
+    <link rel="icon" href="img/mark.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Unbounded:wght@500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/style.css?v=6" />
+  </head>
+  <body class="menu-body">
+    <div class="flag-band" aria-hidden="true"></div>
+    <header class="topbar">
+      <a class="brand" href="index.html">
+        <img src="img/mark.svg" alt="" width="34" height="34" />
+        <span>Uzb<b>Guessr</b></span>
+      </a>
+      <div class="topbar-right">
+        <div class="lang-switch">
+          <button data-lang="uz">O‘z</button>
+          <button data-lang="en">En</button>
+          <button data-lang="ru">Ru</button>
+        </div>
+        <button class="icon-btn" id="theme-btn" title="Theme" aria-label="Theme">
+          <svg class="icon-sun" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="4.5" />
+            <path d="M12 2v2.5M12 19.5V22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M2 12h2.5M19.5 12H22M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" />
+          </svg>
+          <svg class="icon-moon" viewBox="0 0 24 24">
+            <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="menu">
+      <section class="hero">
+        <div class="hero-copy">
+          <div class="kicker" data-i18n="tagline"></div>
+          <h1 data-i18n="heroTitle"></h1>
+          <p data-i18n="heroText"></p>
+          <div class="facts">
+            <div><b id="fact-points">0</b><span data-i18n="factPoints"></span></div>
+            <div><b id="fact-cities">0</b><span data-i18n="factCities"></span></div>
+            <div><b id="fact-regions">0</b><span data-i18n="factRegions"></span></div>
+          </div>
+        </div>
+        <div class="hero-map girih">
+          <svg id="uz-map" role="img" aria-label="O‘zbekiston xaritasi"></svg>
+        </div>
+      </section>
+
+      <section class="setup card">
+        <h2 class="card-title" data-i18n="setup"></h2>
+
+        <div class="field">
+          <div class="field-label" data-i18n="area"></div>
+          <div class="areas" id="area-choice">
+            <button class="area" data-value="tashkent_streets">
+              <span class="area-name" data-i18n="area_tashkent_streets"></span>
+              <span class="area-desc" data-i18n="areaHint_tashkent_streets"></span>
+              <span class="area-badges">
+                <span class="area-count" data-count="tashkent_streets"></span>
+                <span class="area-progress" id="streets-progress"></span>
+              </span>
+            </button>
+            <button class="area" data-value="tashkent">
+              <span class="area-name" data-i18n="area_tashkent"></span>
+              <span class="area-desc" data-i18n="areaHint_tashkent"></span>
+              <span class="area-count" data-count="tashkent"></span>
+            </button>
+            <button class="area" data-value="historic">
+              <span class="area-name" data-i18n="area_historic"></span>
+              <span class="area-desc" data-i18n="areaHint_historic"></span>
+              <span class="area-count" data-count="historic"></span>
+            </button>
+            <button class="area" data-value="uzbekistan">
+              <span class="area-name" data-i18n="area_uzbekistan"></span>
+              <span class="area-desc" data-i18n="areaHint_uzbekistan"></span>
+              <span class="area-count" data-count="uzbekistan"></span>
+            </button>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-label" data-i18n="difficulty"></div>
+          <div class="segmented" id="difficulty-choice">
+            <button data-value="easy" data-i18n="diff_easy"></button>
+            <button data-value="normal" data-i18n="diff_normal"></button>
+            <button data-value="hard" data-i18n="diff_hard"></button>
+          </div>
+          <p class="field-note" id="difficulty-note"></p>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <div class="field-label" data-i18n="rounds"></div>
+            <div class="segmented" id="rounds-choice">
+              <button data-value="3">3</button>
+              <button data-value="5">5</button>
+              <button data-value="7">7</button>
+              <button data-value="10">10</button>
+            </div>
+          </div>
+          <div class="field">
+            <div class="field-label" data-i18n="time"></div>
+            <div class="segmented" id="time-choice">
+              <button data-value="0">∞</button>
+              <button data-value="60">1:00</button>
+              <button data-value="120">2:00</button>
+              <button data-value="180">3:00</button>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-play" id="btn-play">
+          <span data-i18n="play"></span>
+          <svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+        </button>
+
+        <div class="friends" id="friends">
+          <div class="friends-head">
+            <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><circle cx="17" cy="9" r="2.8" /><path d="M16 14.2a5.5 5.5 0 0 1 6 5.8" /></svg>
+            <b data-i18n="friends"></b>
+          </div>
+          <p class="field-note" id="friends-note" data-i18n="friendsText"></p>
+          <div class="friends-row">
+            <button class="btn btn-sky" id="btn-create">
+              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+              <span data-i18n="createRoom"></span>
+            </button>
+            <form class="join-form" id="join-form">
+              <input
+                id="join-code"
+                maxlength="5"
+                autocomplete="off"
+                autocapitalize="characters"
+                spellcheck="false"
+                data-i18n-placeholder="roomCode"
+              />
+              <button class="btn btn-ghost" type="submit" data-i18n="join"></button>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <section class="side">
+        <div class="card profile">
+          <label class="field-label" for="nick-input" data-i18n="player"></label>
+          <input
+            id="nick-input"
+            type="text"
+            maxlength="24"
+            data-i18n-placeholder="nickname"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div class="stats">
+            <div><b id="stat-games">0</b><span data-i18n="games"></span></div>
+            <div><b id="stat-best">0</b><span data-i18n="best"></span></div>
+            <div><b id="stat-avg">0</b><span data-i18n="avgRound"></span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2 class="card-title" data-i18n="history"></h2>
+          <ol class="history" id="history"></ol>
+        </div>
+      </section>
+
+      <section class="howto">
+        <h2 class="card-title" data-i18n="howTo"></h2>
+        <ol>
+          <li><span>1</span><p data-i18n="howTo1"></p></li>
+          <li><span>2</span><p data-i18n="howTo2"></p></li>
+          <li><span>3</span><p data-i18n="howTo3"></p></li>
+        </ol>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <span data-i18n="credits"></span>
+      <span data-i18n="keys"></span>
+    </footer>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="js/i18n.js?v=6"></script>
+    <script src="js/border.js?v=6"></script>
+    <script src="js/locations.js?v=6"></script>
+    <script src="js/tashkent.js?v=6"></script>
+    <script src="js/data.js?v=6"></script>
+    <script src="js/api.js?v=6"></script>
+    <script src="js/common.js?v=6"></script>
+    <script src="js/menu.js?v=6"></script>
+  </body>
+</html>

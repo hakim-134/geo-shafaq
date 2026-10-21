@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="uz">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <title>UzbGuessr — O‘yin</title>
+    <link rel="icon" href="img/mark.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Unbounded:wght@500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="css/style.css?v=6" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  </head>
+  <body class="game-body">
+    <div id="player"></div>
+    <div class="danger-vignette" id="danger-vignette"></div>
+
+    <div class="hud">
+      <div class="hud-group">
+        <a class="hud-logo" href="index.html" data-i18n-title="menu">
+          <img src="img/mark.svg" alt="UzbGuessr" width="30" height="30" />
+        </a>
+        <div class="chip">
+          <span class="chip-label" data-i18n="round"></span>
+          <span class="chip-value" id="hud-round">1 / 5</span>
+          <span class="round-dots" id="hud-dots"></span>
+        </div>
+        <div class="chip">
+          <span class="chip-label" data-i18n="score"></span>
+          <span class="chip-value" id="hud-score">0</span>
+        </div>
+        <div class="chip timer" id="hud-timer-chip" hidden>
+          <span class="chip-label" data-i18n="time"></span>
+          <span class="chip-value" id="hud-timer">0:00</span>
+        </div>
+      </div>
+      <div class="hud-group">
+        <button class="hud-btn" id="btn-hint" data-i18n-title="hint" hidden>
+          <svg viewBox="0 0 24 24"><path d="M9 18h6M10 21.5h4M12 2.5a6.5 6.5 0 0 0-3.8 11.8V16.5h7.6v-2.2A6.5 6.5 0 0 0 12 2.5z" /></svg>
+          <span class="label" data-i18n="hint"></span>
+          <span class="tag" id="hint-tag"></span>
+        </button>
+        <button class="hud-btn" id="btn-start" data-i18n-title="backToStart">
+          <svg viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3L3.5 8.3" /><path d="M3.5 3.5v4.8h4.8" /></svg>
+          <span class="label" data-i18n="backToStart"></span>
+        </button>
+        <a class="hud-btn" href="index.html" data-i18n-title="menu">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+          <span class="label" data-i18n="menu"></span>
+        </a>
+      </div>
+    </div>
+
+    <div class="hint-banner" id="hint-banner"></div>
+    <div class="room-strip" id="room-strip" hidden></div>
+
+    <div id="minimap-container">
+      <div class="map-toolbar">
+        <button class="active" data-layer="map" data-i18n="map"></button>
+        <button data-layer="satellite" data-i18n="satellite"></button>
+        <button class="size-btn" id="map-size" aria-label="Pin map">
+          <svg viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" /></svg>
+        </button>
+      </div>
+      <div id="minimap"></div>
+      <button class="btn btn-guess" id="guess-btn" disabled data-i18n="placePin"></button>
+    </div>
+    <button class="btn map-fab" id="map-fab" data-i18n="map"></button>
+
+    <div class="loader girih" id="loader">
+      <img class="loader-mark" src="img/mark.svg" alt="" width="64" height="64" />
+      <div class="loader-text" id="loader-text"></div>
+      <div class="loader-actions" id="loader-actions" hidden>
+        <button class="btn btn-primary" id="loader-retry" data-i18n="retry"></button>
+        <a class="btn btn-ghost" id="loader-key" href="https://developer.tech.yandex.ru/services" target="_blank" rel="noopener" data-i18n="getKey" hidden></a>
+        <a class="btn btn-ghost" href="index.html" data-i18n="menu"></a>
+      </div>
+    </div>
+
+    <!-- live room: name prompt and lobby -->
+    <div class="lobby girih" id="lobby" hidden>
+      <div class="lobby-card">
+        <div class="lobby-top">
+          <img src="img/mark.svg" alt="" width="40" height="40" />
+          <div>
+            <div class="field-label" data-i18n="roomCode"></div>
+            <div class="lobby-code" id="lobby-code">· · · · ·</div>
+          </div>
+          <button class="btn btn-sky lobby-share" id="lobby-share" hidden>
+            <svg viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></svg>
+            <span data-i18n="copyLink"></span>
+          </button>
+        </div>
+
+        <form class="lobby-name" id="lobby-name" hidden>
+          <label class="field-label" for="lobby-name-input" data-i18n="enterName"></label>
+          <div class="lobby-name-row">
+            <input id="lobby-name-input" maxlength="24" autocomplete="off" spellcheck="false" />
+            <button class="btn btn-primary" type="submit" data-i18n="joinRoom"></button>
+          </div>
+        </form>
+
+        <div class="lobby-body" id="lobby-body" hidden>
+          <div class="lobby-settings-row">
+            <div class="lobby-settings" id="lobby-settings"></div>
+            <button class="icon-btn lobby-edit" id="lobby-edit" hidden data-i18n-title="editSettings" aria-expanded="false">
+              <svg viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4zM13.5 6.5l4 4" /></svg>
+            </button>
+          </div>
+          <div class="lobby-editor" id="lobby-editor" hidden>
+            <div>
+              <div class="field-label" data-i18n="area"></div>
+              <div class="segmented wrap" data-setting="area">
+                <button data-value="tashkent_streets" data-i18n="area_tashkent_streets"></button>
+                <button data-value="tashkent" data-i18n="area_tashkent"></button>
+                <button data-value="historic" data-i18n="area_historic"></button>
+                <button data-value="uzbekistan" data-i18n="area_uzbekistan"></button>
+              </div>
+            </div>
+            <div>
+              <div class="field-label" data-i18n="difficulty"></div>
+              <div class="segmented" data-setting="diff">
+                <button data-value="easy" data-i18n="diff_easy"></button>
+                <button data-value="normal" data-i18n="diff_normal"></button>
+                <button data-value="hard" data-i18n="diff_hard"></button>
+              </div>
+              <p class="field-note" id="lobby-diff-note"></p>
+            </div>
+            <div class="field-row">
+              <div>
+                <div class="field-label" data-i18n="rounds"></div>
+                <div class="segmented" data-setting="rounds">
+                  <button data-value="3">3</button>
+                  <button data-value="5">5</button>
+                  <button data-value="7">7</button>
+                  <button data-value="10">10</button>
+                </div>
+              </div>
+              <div>
+                <div class="field-label" data-i18n="time"></div>
+                <div class="segmented" data-setting="time">
+                  <button data-value="0">∞</button>
+                  <button data-value="60">1:00</button>
+                  <button data-value="120">2:00</button>
+                  <button data-value="180">3:00</button>
+                </div>
+              </div>
+            </div>
+            <button class="btn btn-ghost" id="lobby-edit-done" data-i18n="done"></button>
+          </div>
+          <div class="field-label"><span data-i18n="players"></span> <span id="lobby-count"></span></div>
+          <ul class="lobby-players" id="lobby-players"></ul>
+          <p class="field-note" data-i18n="firstGuessRule"></p>
+        </div>
+
+        <div class="lobby-actions">
+          <button class="btn btn-primary" id="lobby-start" hidden data-i18n="start"></button>
+          <div class="lobby-wait" id="lobby-wait" hidden data-i18n="waitHost"></div>
+          <button class="btn btn-ghost" id="lobby-leave" data-i18n="leave"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- round result / final summary -->
+    <div class="overlay" id="overlay">
+      <div class="overlay-side">
+        <div class="ov-head">
+          <div class="ov-sub" id="ov-sub"></div>
+          <div class="ov-title" id="ov-title"></div>
+        </div>
+        <div class="score-card">
+          <div class="score-top">
+            <span class="score-label" id="ov-score-label"></span>
+            <span class="score-max" id="ov-score-max"></span>
+          </div>
+          <div class="score-value" id="ov-score">0</div>
+          <div class="score-bar"><div id="ov-bar"></div></div>
+          <div class="score-meta">
+            <span data-i18n="distance"></span>
+            <b id="ov-distance">—</b>
+          </div>
+        </div>
+        <div class="place-card" id="ov-place"></div>
+        <table class="rounds-table" id="ov-table"></table>
+        <div class="legend">
+          <span class="l-actual" data-i18n="actual"></span>
+          <span class="l-guess" data-i18n="yourGuess"></span>
+        </div>
+        <div class="overlay-actions" id="ov-actions"></div>
+      </div>
+      <div class="overlay-map"><div id="result-map"></div></div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="config.js?v=6"></script>
+    <script src="js/i18n.js?v=6"></script>
+    <script src="js/border.js?v=6"></script>
+    <script src="js/locations.js?v=6"></script>
+    <script src="js/tashkent.js?v=6"></script>
+    <script src="js/data.js?v=6"></script>
+    <script src="js/api.js?v=6"></script>
+    <script src="js/common.js?v=6"></script>
+    <script src="js/game.js?v=6"></script>
+    <script src="js/room.js?v=6"></script>
+  </body>
+</html>
