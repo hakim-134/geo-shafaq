@@ -1,0 +1,12 @@
+{
+	"name": "Shafaq Geo",
+	"short_name": "Shafaq Geo",
+	"description": "O‘zbekiston ko‘chalari bo‘yicha geografiya o‘yini",
+	"lang": "uz",
+	"start_url": "/",
+	"display": "standalone",
+	"orientation": "any",
+	"background_color": "#0c1424",
+	"theme_color": "#13233f",
+	"icons": [{ "src": "/mark.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

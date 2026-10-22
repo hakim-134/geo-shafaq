@@ -1,0 +1,290 @@
+/* Shafaq Geo — the colours of the flag (sky, white, green, a thin red) with gold and lapis,
+   on warm paper by day and deep night blue at night. Shared parts only; each screen keeps
+   its own styles next to its markup. */
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
+:root {
+	--sky: #0099b5;
+	--sky-ink: #007890;
+	--green: #1eb53a;
+	--green-ink: #15912d;
+	--red: #ce1126;
+	--gold: #c99a2e;
+	--lapis: #13233f;
+	--lapis-2: #1c3157;
+
+	--bg: #f4efe4;
+	--surface: #fffdf8;
+	--surface-2: #ebe3d3;
+	--text: #13233f;
+	--muted: #6c6a63;
+	--border: rgba(19, 35, 63, 0.13);
+	--shadow: 0 10px 30px rgba(19, 35, 63, 0.14);
+	--hud: rgba(12, 20, 36, 0.8);
+
+	--display: 'Unbounded', 'Arial Black', sans-serif;
+	--body: 'Onest', system-ui, sans-serif;
+	--radius: 16px;
+
+	/* 8-point star lattice (girih), used as a mask so it follows the theme colour */
+	--girih: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 60'%3E%3Cg fill='none' stroke='black' stroke-width='1.1'%3E%3Cpath d='M19 19h22v22H19zM30 14.4 45.6 30 30 45.6 14.4 30z'/%3E%3Cpath d='M30 0v14.4M30 45.6V60M0 30h14.4M45.6 30H60M0 0l19 19M60 0 41 19M0 60l19-19M60 60 41 41'/%3E%3C/g%3E%3C/svg%3E");
+	color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+	--sky: #2bb7d3;
+	--sky-ink: #63cfe4;
+	--green: #36c853;
+	--green-ink: #2aa845;
+	--red: #f04157;
+	--gold: #e0b44e;
+	--lapis: #1a2c4e;
+	--lapis-2: #233a63;
+
+	--bg: #0c1424;
+	--surface: #131e33;
+	--surface-2: #1a2742;
+	--text: #edf1f8;
+	--muted: #94a1b8;
+	--border: rgba(237, 241, 248, 0.12);
+	--shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+	color-scheme: dark;
+}
+
+html,
+body {
+	min-height: 100%;
+}
+
+body {
+	background: var(--bg);
+	color: var(--text);
+	font-family: var(--body);
+	font-size: 15px;
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+	-webkit-tap-highlight-color: transparent;
+	transition:
+		background 0.25s,
+		color 0.25s;
+}
+
+button,
+input {
+	font: inherit;
+	color: inherit;
+}
+button {
+	cursor: pointer;
+}
+a {
+	color: inherit;
+}
+[hidden] {
+	display: none !important;
+}
+:focus-visible {
+	outline: 2.5px solid var(--sky);
+	outline-offset: 2px;
+}
+
+.girih {
+	position: relative;
+	isolation: isolate;
+}
+.girih::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	z-index: -1;
+	background: currentColor;
+	opacity: 0.06;
+	-webkit-mask: var(--girih) 0 0 / 60px 60px repeat;
+	mask: var(--girih) 0 0 / 60px 60px repeat;
+	pointer-events: none;
+}
+
+/* ---------- buttons ---------- */
+.btn {
+	height: 52px;
+	padding: 0 24px;
+	border: none;
+	border-radius: 14px;
+	font-family: var(--display);
+	font-weight: 700;
+	font-size: 15px;
+	letter-spacing: 0.02em;
+	text-decoration: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	transition:
+		background 0.15s,
+		transform 0.1s,
+		opacity 0.15s,
+		border-color 0.15s;
+}
+.btn:active:not(:disabled) {
+	transform: translateY(1px);
+}
+.btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+.btn svg,
+.icon {
+	width: 20px;
+	height: 20px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2.2;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	flex: none;
+}
+.btn-primary {
+	background: var(--green);
+	color: #fff;
+}
+.btn-primary:hover:not(:disabled) {
+	background: var(--green-ink);
+}
+.btn-sky {
+	background: var(--sky);
+	color: #fff;
+}
+.btn-sky:hover:not(:disabled) {
+	background: var(--sky-ink);
+}
+.btn-ghost {
+	background: transparent;
+	border: 1.5px solid var(--border);
+}
+.btn-ghost:hover {
+	border-color: var(--text);
+}
+
+.icon-btn {
+	width: 40px;
+	height: 40px;
+	border: none;
+	border-radius: 12px;
+	background: var(--surface-2);
+	display: grid;
+	place-items: center;
+	color: var(--text);
+}
+
+/* ---------- cards and fields ---------- */
+.card {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 22px;
+}
+.card-title {
+	font-family: var(--display);
+	font-weight: 700;
+	font-size: 17px;
+	letter-spacing: -0.01em;
+	margin-bottom: 16px;
+}
+.field-label {
+	display: block;
+	font-size: 12px;
+	font-weight: 600;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--muted);
+	margin-bottom: 10px;
+}
+.field-note {
+	margin-top: 10px;
+	font-size: 13.5px;
+	color: var(--muted);
+	min-height: 1.5em;
+}
+
+.segmented {
+	display: flex;
+	padding: 4px;
+	gap: 4px;
+	border-radius: 14px;
+	background: var(--surface-2);
+}
+.segmented button {
+	flex: 1;
+	min-height: 40px;
+	border: none;
+	border-radius: 10px;
+	background: transparent;
+	font-weight: 600;
+	font-size: 14.5px;
+	color: var(--muted);
+	transition:
+		background 0.15s,
+		color 0.15s;
+}
+.segmented button:hover {
+	color: var(--text);
+}
+.segmented button[aria-pressed='true'] {
+	background: var(--sky);
+	color: #fff;
+}
+
+/* the flag, as a thin band on top of every page */
+.flag-band {
+	height: 13px;
+	background: linear-gradient(
+		to bottom,
+		var(--sky) 0 4px,
+		var(--red) 4px 5px,
+		#fff 5px 8px,
+		var(--red) 8px 9px,
+		var(--green) 9px 13px
+	);
+}
+
+/* ---------- toast ---------- */
+.toast {
+	position: fixed;
+	left: 50%;
+	bottom: 28px;
+	transform: translate(-50%, 16px);
+	background: var(--lapis);
+	color: #fff;
+	padding: 11px 18px;
+	border-radius: 12px;
+	font-size: 14px;
+	font-weight: 500;
+	opacity: 0;
+	pointer-events: none;
+	transition:
+		opacity 0.2s,
+		transform 0.2s;
+	z-index: 5000;
+	max-width: calc(100vw - 32px);
+	text-align: center;
+}
+.toast.show {
+	opacity: 1;
+	transform: translate(-50%, 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+}

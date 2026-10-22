@@ -1,3 +1,11 @@
-/config.js
+# the Yandex key: never committed, wherever the file is
+config.js
+.env.local
+.env.*.local
+node_modules/
+/.svelte-kit/
+/build/
+# the basemap (hundreds of MB): built with `npm run tiles`, served from the CDN
+/static/tiles/*.pmtiles
 __pycache__/
 .cache-osm/

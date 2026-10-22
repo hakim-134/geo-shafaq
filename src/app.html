@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="uz">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+		<meta name="text-scale" content="scale" />
+		<meta
+			name="description"
+			content="Shafaq Geo — O‘zbekiston ko‘chalari bo‘yicha geografiya o‘yini."
+		/>
+		<meta name="theme-color" content="#13233f" />
+		<link rel="icon" href="%sveltekit.assets%/mark.svg" type="image/svg+xml" />
+		<link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link
+			href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Unbounded:wght@500;700;800&display=swap"
+			rel="stylesheet"
+		/>
+		<title>Shafaq Geo</title>
+		<script>
+			// theme and language before the first paint: no flash of the wrong colours
+			try {
+				var t = localStorage.getItem('sg_theme');
+				if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+				document.documentElement.dataset.theme = t;
+				var l = localStorage.getItem('sg_lang');
+				if (l) document.documentElement.lang = l;
+			} catch (e) {}
+		</script>
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>
