@@ -10,8 +10,6 @@ export async function createViewer(
 	switch (provider) {
 		case 'yandex':
 			return (await import('./yandex')).createYandex(el, opts);
-		case 'mapillary':
-			return (await import('./mapillary')).createMapillary(el, opts);
 		case 'demo':
 		case 'own':
 			return (await import('./sphere')).createSphere(el, opts);

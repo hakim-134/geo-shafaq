@@ -1,5 +1,5 @@
-// One interface for every panorama provider. The game never talks to Yandex, Mapillary or
-// Photo Sphere Viewer directly; it asks for a viewer for the round's provider.
+// One interface for every panorama provider. The game never talks to Yandex or Photo Sphere
+// Viewer directly; it asks for a viewer for the round's provider.
 import type { LatLon, PanoView } from '#lib/api/client.js';
 
 export type Movement = 'move' | 'nomove' | 'nmpz';

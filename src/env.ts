@@ -13,12 +13,6 @@ export const variables = defineEnvVars({
 		description:
 			'Yandex Maps JS API key (developer.tech.yandex.ru); allowed referrers: localhost, geo.shafaq.uz'
 	},
-	PUBLIC_MAPILLARY_TOKEN: {
-		public: true,
-		static: true,
-		schema: optional,
-		description: 'Mapillary client token (MLY|…)'
-	},
 	PUBLIC_API_URL: {
 		public: true,
 		static: true,

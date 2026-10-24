@@ -36,7 +36,6 @@
 	"dependencies": {
 		"@photo-sphere-viewer/core": "^5.15.1",
 		"@protomaps/basemaps": "^5.7.2",
-		"mapillary-js": "^4.1.2",
 		"maplibre-gl": "^6.15.0",
 		"openapi-fetch": "^0.17.0",
 		"pmtiles": "^4.5.0"

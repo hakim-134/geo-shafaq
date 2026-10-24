@@ -25,7 +25,6 @@ const uz = {
 	provider: 'Panoramalar',
 	provider_any: 'Har xil',
 	provider_yandex: 'Yandex',
-	provider_mapillary: 'Mapillary',
 	provider_demo: 'Sinov',
 	play: 'O‘ynash',
 	player: 'O‘yinchi',

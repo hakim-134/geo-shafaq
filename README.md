@@ -38,7 +38,7 @@ free Yandex key's ~100 views a day; pick "Yandex" on the menu to see real ones.
 | `src/routes/+page.svelte` | the menu: maps, difficulty, rounds, time, panorama source, profile, history |
 | `src/routes/game/[id]/+page.svelte` | a game: panorama, guess map, timer, hints, results, final summary |
 | `src/lib/api/` | the typed API client (openapi-fetch); never edit `schema.d.ts` by hand |
-| `src/lib/pano/` | one `PanoViewer` interface; `yandex.ts`, `mapillary.ts`, `sphere.ts` (our own and demo panoramas, Photo Sphere Viewer). Each loads its SDK only when a round needs it |
+| `src/lib/pano/` | one `PanoViewer` interface; `yandex.ts`, `sphere.ts` (our own and demo panoramas, Photo Sphere Viewer). Each loads its SDK only when a round needs it |
 | `src/lib/map/` | MapLibre guess map and result map on the self-hosted basemap |
 | `src/lib/game/` | score card, "you were here" card, share card |
 | `src/lib/i18n/strings.ts` | Uzbek (first), English, Russian |

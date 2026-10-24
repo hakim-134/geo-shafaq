@@ -1,6 +1,6 @@
 // Where things are. The domains are temporary (the owner hasn't decided); this is the only
 // file in the game that names them. The API's own list is WEB_ORIGINS in api-geo-shafaq.
-import { PUBLIC_API_URL, PUBLIC_MAPILLARY_TOKEN, PUBLIC_YANDEX_KEY } from '$app/env/public';
+import { PUBLIC_API_URL, PUBLIC_YANDEX_KEY } from '$app/env/public';
 
 const WEB_HOST = 'geo.shafaq.uz';
 const API_URL = 'https://api.geo.shafaq.uz';
@@ -13,7 +13,6 @@ export function apiUrl(): string {
 }
 
 export const yandexKey = (): string => PUBLIC_YANDEX_KEY ?? '';
-export const mapillaryToken = (): string => PUBLIC_MAPILLARY_TOKEN ?? '';
 
 /** The basemap of Uzbekistan (Protomaps PMTiles), next to the game or on the CDN. */
 export const tilesUrl = (): string => `${location.origin}/tiles/uzbekistan.pmtiles`;
