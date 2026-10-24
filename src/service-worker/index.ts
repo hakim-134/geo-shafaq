@@ -35,7 +35,10 @@ sw.addEventListener('fetch', (event) => {
 	event.respondWith(
 		(async () => {
 			const cache = await caches.open(CACHE);
-			if (SHELL.includes(url.pathname)) {
+			// Built files come from the cache (each build names them anew). The page itself comes
+			// from the network first, so a new version shows on the next load, not after every
+			// tab is closed.
+			if (url.pathname !== '/' && SHELL.includes(url.pathname)) {
 				const hit = await cache.match(url.pathname);
 				if (hit) return hit;
 			}

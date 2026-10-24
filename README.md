@@ -21,6 +21,10 @@ The API must run next to it (`make up setup run` in `api-geo-shafaq`), on port 8
 host. Locally it serves the drawn `demo` panoramas first, so development never spends the
 free Yandex key's ~100 views a day; pick "Yandex" on the menu to see real ones.
 
+Or the built game in Docker: `npm run lcl` builds it and serves `build/` with nginx on
+`http://localhost:8130` (`docker-compose.lcl.yml`), next to the API's `make lcl`. A phone on the
+same network opens the laptop's address on port 8130.
+
 | Command | What |
 |---|---|
 | `npm run dev` | dev server |

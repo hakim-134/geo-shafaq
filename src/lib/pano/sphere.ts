@@ -4,9 +4,12 @@ import { Viewer } from '@photo-sphere-viewer/core';
 import '@photo-sphere-viewer/core/index.css';
 import { PanoError, type PanoViewer, type ViewerOptions } from './types';
 import type { PanoView } from '#lib/api/client.js';
+import { apiUrl } from '#lib/config.js';
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
 const deg = (r: number) => ((((r * 180) / Math.PI) % 360) + 360) % 360;
+// The API may link an image relative to itself (local runs, so a phone on the LAN works too).
+const imageSrc = (url: string) => new URL(url, apiUrl() + '/').href;
 
 export async function createSphere(el: HTMLElement, opts: ViewerOptions): Promise<PanoViewer> {
 	let viewer: Viewer | null = null;
@@ -20,7 +23,7 @@ export async function createSphere(el: HTMLElement, opts: ViewerOptions): Promis
 				if (!viewer) {
 					viewer = new Viewer({
 						container: el,
-						panorama: view.imageUrl,
+						panorama: imageSrc(view.imageUrl),
 						defaultYaw: startYaw,
 						defaultPitch: 0,
 						navbar: ['zoom'],
@@ -37,7 +40,7 @@ export async function createSphere(el: HTMLElement, opts: ViewerOptions): Promis
 						});
 					});
 				} else {
-					await viewer.setPanorama(view.imageUrl, {
+					await viewer.setPanorama(imageSrc(view.imageUrl), {
 						position: { yaw: startYaw, pitch: 0 },
 						transition: false,
 						showLoader: false

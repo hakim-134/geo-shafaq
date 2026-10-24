@@ -15,7 +15,8 @@
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run",
 		"gen": "npx -y openapi-typescript@7 ../api-geo-shafaq/api/openapi.yaml -o src/lib/api/schema.d.ts",
-		"tiles": "scripts/tiles.sh"
+		"tiles": "scripts/tiles.sh",
+		"lcl": "npm run build && docker compose -f docker-compose.lcl.yml up -d"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-static": "^4.0.0",
