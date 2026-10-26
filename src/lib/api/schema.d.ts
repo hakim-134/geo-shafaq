@@ -92,6 +92,202 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What the game needs to know before it draws the sign-in buttons and the avatar picker. */
+        get: operations["getConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/telegram/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Starts "sign in with Telegram" through the bot.
+         * @description The game opens `url` (the bot, with `start=login_<code>`); the player presses Start in
+         *     Telegram; the game then calls `/v1/auth/telegram/check` with the code until it is done.
+         *     The code is good for 10 minutes and only for the session that asked for it.
+         */
+        post: operations["startTelegramLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/telegram/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Collects a Telegram sign-in once the player pressed Start in the bot. */
+        post: operations["checkTelegramLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/telegram/webapp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Signs in inside Telegram (the game opened as a Mini App), with Telegram's signed initData. */
+        post: operations["telegramWebAppLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/google": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Signs in with Google (the ID token from Google's sign-in button). */
+        post: operations["googleLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Says yes to a merge offer; the other account moves into this one. */
+        post: operations["mergeAccounts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Signs out this device, or every device. The next visit starts as a new guest. */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getMyProfile"];
+        put?: never;
+        /**
+         * Changes the player's name or avatar.
+         * @description Names are 2–24 characters (letters, digits, spaces, `_ - .`) and pass the name filter
+         *     (uz/ru/en); `bad_name` otherwise. The avatar is one of `AppConfig.avatars`.
+         */
+        post: operations["updateProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/identities/unlink": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Removes a way to sign in. The last one stays (`last_identity`). */
+        post: operations["unlinkIdentity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/users/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A player's public profile. */
+        get: operations["getProfile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/users/{userId}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reports a player to the admins (a rude name, cheating, other). */
+        post: operations["reportUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/maps": {
         parameters: {
             query?: never;
@@ -298,7 +494,9 @@ export interface components {
         Error: {
             /**
              * @description no_session | not_found | bad_input | wrong_phase | round_running | game_over |
-             *     no_panorama | daily_cap | too_far | rate_limited | internal.
+             *     no_panorama | daily_cap | too_far | rate_limited | banned | bad_name |
+             *     last_identity | bad_login | not_configured | internal.
+             *     banned: the player is banned and cannot start games.
              *     daily_cap: the game's panorama providers reached today's budget (`DAILY_CAPS`);
              *     new games start again after midnight, Moscow time.
              */
@@ -334,7 +532,9 @@ export interface components {
              * @example 🐼
              */
             avatar: string;
+            /** @description No way to sign in yet; everything is kept on the server all the same. */
             guest: boolean;
+            banned?: boolean;
         };
         Stats: {
             games: number;
@@ -344,6 +544,106 @@ export interface components {
         Me: {
             user: components["schemas"]["User"];
             stats: components["schemas"]["Stats"];
+            identities: components["schemas"]["Identity"][];
+        };
+        /** @description A way to sign in. */
+        Identity: {
+            /** @description Opaque; for unlinking. */
+            id: string;
+            /** @enum {string} */
+            provider: "telegram" | "google";
+            /** @description The name the provider shows. */
+            name: string;
+            /** @description @username (Telegram) or the e-mail address (Google). */
+            username: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AppConfig: {
+            /** @description The bot's username; absent = no Telegram sign-in on this server. */
+            telegramBot?: string;
+            /** @description For Google's sign-in button; absent = no Google sign-in on this server. */
+            googleClientId?: string;
+            /** @description The emojis a player may pick. */
+            avatars: string[];
+        };
+        TelegramStart: {
+            code: string;
+            /** @description https://t.me/<bot>?start=login_<code> */
+            url: string;
+            /** @description Seconds. */
+            expiresIn: number;
+        };
+        /**
+         * @description signed_in: this device is now that account (a guest's games moved into it).
+         *     linked: the identity was added to the current player.
+         *     already: it was already this player's.
+         *     merge: it belongs to another account; `merge` asks the player to join the two.
+         *     pending: (Telegram bot) the player has not pressed Start yet.
+         */
+        AuthResult: {
+            /** @enum {string} */
+            status: "signed_in" | "linked" | "already" | "merge" | "pending";
+            me?: components["schemas"]["Me"];
+            merge?: components["schemas"]["MergeOffer"];
+        };
+        MergeOffer: {
+            /** @description For `/v1/auth/merge`; good for 10 minutes. */
+            token: string;
+            other: components["schemas"]["Profile"];
+        };
+        PublicUser: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            avatar: string;
+            guest: boolean;
+            banned?: boolean;
+            /** Format: date-time */
+            joinedAt: string;
+        };
+        ProfileStats: {
+            games: number;
+            rounds: number;
+            best: number;
+            avgRound: number;
+            /** @description Rounds scored 4 900 or more. */
+            perfect: number;
+            /**
+             * Format: double
+             * @description All guesses' distances added up.
+             */
+            km: number;
+        };
+        StreetProgress: {
+            /** @description Streets been on. */
+            seen: number;
+            /** @description Streets guessed within 500 m at least once. */
+            learned: number;
+            /** @description Streets in the game. */
+            total: number;
+        };
+        MapBest: {
+            map: components["schemas"]["MapRef"];
+            games: number;
+            /** @description Total of the best game (best per round). */
+            best: number;
+            /** @description Rounds of that game. */
+            rounds: number;
+            /** Format: uuid */
+            gameId: string;
+        };
+        Profile: {
+            user: components["schemas"]["PublicUser"];
+            stats: components["schemas"]["ProfileStats"];
+            streets: components["schemas"]["StreetProgress"];
+            maps: components["schemas"]["MapBest"][];
+            /** @description The last finished games, newest first. */
+            recent: components["schemas"]["GameListItem"][];
+        };
+        ProfileUpdate: {
+            name?: string;
+            avatar?: string;
         };
         /**
          * @description move = walk freely; nomove = look around only; nmpz = no move, no pan, no zoom.
@@ -427,6 +727,7 @@ export interface components {
         Game: {
             /** Format: uuid */
             id: string;
+            player: components["schemas"]["PublicUser"];
             map: components["schemas"]["MapSummary"];
             rules: components["schemas"]["Rules"];
             status: components["schemas"]["GameStatus"];
@@ -570,6 +871,7 @@ export interface components {
     parameters: {
         Slug: string;
         GameId: string;
+        UserId: string;
         RoundN: number;
     };
     requestBodies: never;
@@ -691,6 +993,317 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+        };
+    };
+    getConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppConfig"];
+                };
+            };
+        };
+    };
+    startTelegramLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The code and the bot link */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramStart"];
+                };
+            };
+            401: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    checkTelegramLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                };
+            };
+        };
+        responses: {
+            /** @description `pending` until the player pressed Start; then the sign-in's outcome */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResult"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    telegramWebAppLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    initData: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The sign-in's outcome */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResult"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+        };
+    };
+    googleLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Google's ID token (a JWT). */
+                    credential: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The sign-in's outcome */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResult"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    mergeAccounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The player, now with everything of both */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    everywhere?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Signed out */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getMyProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The player's own profile */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profile"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    updateProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description The player */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+        };
+    };
+    unlinkIdentity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description `Identity.id` */
+                    id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The player */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            401: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    getProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The profile */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profile"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    reportUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                userId: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    reason: "name" | "cheating" | "other";
+                };
+            };
+        };
+        responses: {
+            /** @description Reported */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            429: components["responses"]["Error"];
         };
     };
     listMaps: {

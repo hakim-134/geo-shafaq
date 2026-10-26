@@ -14,6 +14,13 @@ export type LatLon = Schemas['LatLon'];
 export type Text = Schemas['Text'];
 export type Me = Schemas['Me'];
 export type PanoView = Schemas['PanoView'];
+export type GameListItem = Schemas['GameListItem'];
+export type Profile = Schemas['Profile'];
+export type PublicUser = Schemas['PublicUser'];
+export type AppConfig = Schemas['AppConfig'];
+export type AuthResult = Schemas['AuthResult'];
+export type MergeOffer = Schemas['MergeOffer'];
+export type Identity = Schemas['Identity'];
 
 let client: ReturnType<typeof createClient<paths>> | null = null;
 
@@ -48,4 +55,18 @@ export async function call<T>(
 		throw new ApiError(code, res.response.status);
 	}
 	return res.data;
+}
+
+/** Like call, for answers without a body (204). */
+export async function send(p: Promise<{ error?: unknown; response: Response }>): Promise<void> {
+	let res;
+	try {
+		res = await p;
+	} catch {
+		throw new ApiError('network', 0);
+	}
+	if (res.error !== undefined || !res.response.ok) {
+		const code = (res.error as { code?: string } | undefined)?.code ?? 'internal';
+		throw new ApiError(code, res.response.status);
+	}
 }

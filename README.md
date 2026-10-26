@@ -39,8 +39,10 @@ same network opens the laptop's address on port 8130.
 
 | Where                               | What                                                                                                                                                                             |
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/routes/+page.svelte`           | the menu: maps, difficulty, rounds, time, panorama source, profile, history                                                                                                      |
-| `src/routes/game/[id]/+page.svelte` | a game: panorama, guess map, timer, hints, results, final summary                                                                                                                |
+| `src/routes/+page.svelte`           | the home: maps as road signs, the game's settings, Play, recent games                                                                                                            |
+| `src/routes/game/[id]/+page.svelte` | a game: panorama, guess map, timer, hints, results, final summary (also someone else's finished game, by its link)                                                               |
+| `src/routes/me`, `u/[id]`, `games`  | the player's profile (name, avatar, ways to sign in), another player's page (with Report), all games                                                                             |
+| `src/lib/account.svelte.ts`         | signing in: Telegram (bot link, QR code, Mini App), Google, merging, signing out                                                                                                 |
 | `src/lib/api/`                      | the typed API client (openapi-fetch); never edit `schema.d.ts` by hand                                                                                                           |
 | `src/lib/pano/`                     | one `PanoViewer` interface; `yandex.ts`, `sphere.ts` (our own and demo panoramas, Photo Sphere Viewer). Each loads its SDK only when a round needs it                            |
 | `src/lib/map/`                      | the guess map (map / satellite / hybrid toolbar, as in v0; satellite only on hard rules) and the result map: Yandex's map, the same JS API as the panoramas (`src/lib/ymaps.ts`) |

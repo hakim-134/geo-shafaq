@@ -19,6 +19,13 @@
 	--gold: #c99a2e;
 	--lapis: #13233f;
 	--lapis-2: #1c3157;
+	/* road signs, as on Uzbek streets: blue street plates, white town signs, brown for
+	   sights, green for the highways. Each official map is one of them. */
+	--sign-blue: #1d4f9a;
+	--sign-white: #fbfaf6;
+	--sign-brown: #7b4a2b;
+	--sign-green: #17784a;
+	--telegram: #2aabee;
 
 	--bg: #f4efe4;
 	--surface: #fffdf8;
@@ -47,6 +54,10 @@
 	--gold: #e0b44e;
 	--lapis: #1a2c4e;
 	--lapis-2: #233a63;
+	--sign-blue: #2559a8;
+	--sign-white: #e9edf4;
+	--sign-brown: #86532f;
+	--sign-green: #1b8452;
 
 	--bg: #0c1424;
 	--surface: #131e33;
@@ -252,6 +263,61 @@ a {
 		var(--red) 8px 9px,
 		var(--green) 9px 13px
 	);
+}
+
+/* ---------- small shared parts ---------- */
+.avatar {
+	display: inline-grid;
+	place-items: center;
+	flex: none;
+	border-radius: 50%;
+	background: var(--surface-2);
+	font-family: var(--body);
+	line-height: 1;
+}
+.link-btn {
+	border: none;
+	background: none;
+	padding: 0;
+	color: var(--sky-ink);
+	font-weight: 600;
+	text-decoration: underline;
+	text-underline-offset: 3px;
+	text-decoration-thickness: 1.5px;
+}
+:root[data-theme='dark'] .link-btn {
+	color: var(--sky);
+}
+.btn-telegram {
+	background: var(--telegram);
+	color: #fff;
+	font-family: var(--body);
+	font-weight: 600;
+	font-size: 16px;
+	letter-spacing: 0;
+}
+.btn-telegram:hover {
+	background: #1e96d4;
+}
+.section-title {
+	font-family: var(--display);
+	font-weight: 700;
+	font-size: 16px;
+	letter-spacing: -0.01em;
+}
+.spinner {
+	width: 18px;
+	height: 18px;
+	border-radius: 50%;
+	border: 2.5px solid currentColor;
+	border-right-color: transparent;
+	animation: spin 0.8s linear infinite;
+	flex: none;
+}
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 /* ---------- toast ---------- */

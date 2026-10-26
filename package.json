@@ -36,6 +36,7 @@
 	},
 	"dependencies": {
 		"@photo-sphere-viewer/core": "^5.15.1",
-		"openapi-fetch": "^0.17.0"
+		"openapi-fetch": "^0.17.0",
+		"uqr": "^0.1.3"
 	}
 }

@@ -22,7 +22,7 @@
 	import PlaceCard from '#lib/game/PlaceCard.svelte';
 	import { i18n, t, tx, type Key } from '#lib/i18n/index.svelte.js';
 	import { ensureSession, refreshMe, session } from '#lib/session.svelte.js';
-	import { fmtClock, fmtDistance, fmtNum, verdictKey } from '#lib/format.js';
+	import { fmtClock, fmtDistance, fmtNum, nameHasAvatar, verdictKey } from '#lib/format.js';
 	import { showToast } from '#lib/toast.svelte.js';
 	import { beep, unlockAudio, vibrate } from '#lib/sfx.js';
 	import { yandexKey } from '#lib/config.js';
@@ -316,8 +316,15 @@
 		if (justFinished) refreshMe().catch(() => {});
 	}
 
+	// a game opened by its link from someone else: whose it is, and "play this map"
+	const mine = $derived(!game || game.player.id === session.me?.user.id);
+
 	const newBest = $derived(
-		phase === 'final' && game?.status === 'finished' && total > bestBefore && bestBefore >= 0
+		mine &&
+			phase === 'final' &&
+			game?.status === 'finished' &&
+			total > bestBefore &&
+			bestBefore >= 0
 	);
 
 	const finalPairs = $derived<Pair[]>(
@@ -339,7 +346,7 @@
 			);
 			goto(`/game/${g.id}`);
 		} catch (e) {
-			showToast(t(errorKey(e)));
+			showToast(t(e instanceof ApiError && e.code === 'banned' ? 'bannedText' : errorKey(e)), 3500);
 		}
 	}
 
@@ -599,8 +606,18 @@
 		<div class="overlay">
 			<div class="side">
 				<div>
-					<div class="sub">{tx(game.map.name)} · {session.me?.user.name ?? ''}</div>
-					<div class="title">{newBest ? t('newBest') : t('gameOver')}</div>
+					<div class="sub">{tx(game.map.name)}</div>
+					<div class="title">
+						{newBest
+							? t('newBest')
+							: mine
+								? t('gameOver')
+								: t('playerGame', { name: game.player.name })}
+					</div>
+					<a class="player" href={mine ? '/me' : `/u/${game.player.id}`}>
+						{#if !nameHasAvatar(game.player)}<span class="avatar">{game.player.avatar}</span>{/if}
+						<span>{game.player.name}</span>
+					</a>
 				</div>
 				<ScoreCard
 					label={t('total')}
@@ -627,7 +644,9 @@
 					<span class="l-actual">{t('actual')}</span><span class="l-guess">{t('yourGuess')}</span>
 				</div>
 				<div class="actions">
-					<button class="btn btn-primary" onclick={playAgain}>{t('playAgain')}</button>
+					<button class="btn btn-primary" onclick={playAgain}
+						>{mine ? t('playAgain') : t('playThisMap')}</button
+					>
 					<button class="btn btn-sky" onclick={share}>{t('share')}</button>
 					<a class="btn btn-ghost" href="/">{t('menu')}</a>
 				</div>
@@ -1008,6 +1027,27 @@
 		line-height: 1.1;
 		letter-spacing: -0.02em;
 	}
+	.player {
+		margin-top: 10px;
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 12px;
+		border-radius: 999px;
+		background: var(--bg);
+		text-decoration: none;
+		font-weight: 600;
+		font-size: 14px;
+	}
+	.player:has(.avatar) {
+		padding-left: 4px;
+	}
+	.player .avatar {
+		width: 28px;
+		height: 28px;
+		font-size: 16px;
+		background: var(--surface);
+	}
 	.legend {
 		display: flex;
 		gap: 16px;
@@ -1087,6 +1127,15 @@
 		}
 		.title {
 			font-size: 26px;
+		}
+		/* the next step stays under the thumb, however long the card above it */
+		.actions {
+			position: sticky;
+			bottom: 0;
+			margin: auto -16px -18px;
+			padding: 12px 16px max(14px, env(safe-area-inset-bottom));
+			background: var(--surface);
+			box-shadow: 0 -8px 16px -8px rgba(0, 0, 0, 0.15);
 		}
 	}
 	@media (max-width: 700px) {
