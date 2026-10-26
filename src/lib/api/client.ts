@@ -21,6 +21,9 @@ export type AppConfig = Schemas['AppConfig'];
 export type AuthResult = Schemas['AuthResult'];
 export type MergeOffer = Schemas['MergeOffer'];
 export type Identity = Schemas['Identity'];
+export type RoomState = Schemas['RoomState'];
+export type RoomPlayer = Schemas['RoomPlayer'];
+export type RoomResult = Schemas['RoomResult'];
 
 let client: ReturnType<typeof createClient<paths>> | null = null;
 

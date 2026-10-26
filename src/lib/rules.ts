@@ -90,6 +90,25 @@ export function rulesFor(c: Choice, providers: string[] = []): Rules {
 	};
 }
 
+/** Rules back as the menu's choices: a room's rules, for its host to change. */
+export function choiceFrom(r: Rules, map: string): Choice {
+	const preset: Preset = r.scoreScale >= 2 ? 'easy' : r.scoreScale >= 1 ? 'normal' : 'hard';
+	return {
+		map,
+		preset,
+		rounds: r.rounds,
+		timeSec: r.timeSec,
+		hints: {
+			count: r.hints.count,
+			per: r.hints.per,
+			kind: r.hints.kind ?? suggested[preset].hints.kind,
+			cost: r.hints.cost
+		},
+		movement: r.movement,
+		compass: r.compass
+	};
+}
+
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
 // ---------- the sliders ----------

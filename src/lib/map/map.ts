@@ -4,6 +4,7 @@
 import { loadYmaps } from '#lib/ymaps.js';
 import { api, call, type LatLon } from '#lib/api/client.js';
 import type { Lang } from '#lib/i18n/index.svelte.js';
+import { load, save } from '#lib/storage.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export type YMap = any;
@@ -23,6 +24,13 @@ export const bounds = (b: BBox): [Pt, Pt] => [
 export type Layer = 'map' | 'satellite' | 'hybrid';
 export const LAYERS: Layer[] = ['map', 'satellite', 'hybrid'];
 export const yandexType = (l: Layer) => `yandex#${l}`;
+
+/** The look the player chose on the guess map, remembered on this device. */
+export function savedLayer(): Layer {
+	const l = load('map_layer', 'map') as Layer;
+	return LAYERS.includes(l) ? l : 'map';
+}
+export const saveLayer = (l: Layer) => save('map_layer', l);
 
 export interface MapOptions {
 	container: HTMLElement;

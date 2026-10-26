@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy } from 'svelte';
+	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import {
@@ -12,22 +12,18 @@
 		type Round,
 		type RoundResult
 	} from '#lib/api/client.js';
-	import { createViewer, PanoError, type PanoViewer } from '#lib/pano/index.js';
-	import GuessMap from '#lib/map/GuessMap.svelte';
+	import { PanoError } from '#lib/pano/index.js';
+	import RoundView, { type Status } from '#lib/game/RoundView.svelte';
 	import ResultMap, { type Pair } from '#lib/map/ResultMap.svelte';
-	import { LAYERS, type BBox, type Layer } from '#lib/map/map.js';
-	import { load, save } from '#lib/storage.js';
-	import Compass from '#lib/components/Compass.svelte';
+	import { savedLayer, type BBox } from '#lib/map/map.js';
 	import MapSign from '#lib/maps/MapSign.svelte';
-	import { compass, nextCompassStyle } from '#lib/compass.svelte.js';
 	import { loadChoice, saveChoice } from '#lib/rules.js';
 	import ScoreCard from '#lib/game/ScoreCard.svelte';
 	import PlaceCard from '#lib/game/PlaceCard.svelte';
-	import { i18n, t, tx, type Key } from '#lib/i18n/index.svelte.js';
+	import { t, tx, type Key } from '#lib/i18n/index.svelte.js';
 	import { ensureSession, refreshMe, session } from '#lib/session.svelte.js';
-	import { fmtClock, fmtDistance, fmtNum, nameHasAvatar, verdictKey } from '#lib/format.js';
+	import { fmtDistance, fmtNum, nameHasAvatar, verdictKey } from '#lib/format.js';
 	import { showToast } from '#lib/toast.svelte.js';
-	import { beep, unlockAudio, vibrate } from '#lib/sfx.js';
 	import { yandexKey } from '#lib/config.js';
 	import { shareResult } from '#lib/game/share.js';
 
@@ -40,50 +36,34 @@
 	let guess = $state<LatLon | null>(null);
 	let hints = $state<Hint[]>([]);
 	let hintsLeft = $state(0);
-	let heading = $state(0);
 	let error = $state<{ key: Key; retry: (() => void) | null; getKey?: boolean }>({
 		key: 'loading',
 		retry: null
 	});
 	let bestBefore = 0;
 	let finalPick = $state<number | null>(null); // a round chosen in the final table
+	let rv = $state<ReturnType<typeof RoundView>>();
 
-	// timer
-	let deadlineAt = 0;
-	let left = $state<number | null>(null); // seconds, null = no limit
-	let ticker: ReturnType<typeof setInterval> | undefined;
-	let warned = new Set<number>();
-	let lastTick = 0;
-	const WARN_AT = [15, 10];
-
-	// layout
-	let mapOpen = $state(false); // phones: the map is a sheet you open
-	let mapPinned = $state(false); // computers: keep the map big
-	// the player's map look, remembered on this device; hard rules (no map labels) are satellite only
-	let chosenLayer = $state<Layer>(
-		LAYERS.includes(load('map_layer', 'map') as Layer) ? (load('map_layer', 'map') as Layer) : 'map'
-	);
-	const layer = $derived<Layer>(game && !game.rules.mapLabels ? 'satellite' : chosenLayer);
-	function chooseLayer(l: Layer) {
-		chosenLayer = l;
-		save('map_layer', l);
-	}
-	function togglePinned() {
-		mapPinned = !mapPinned;
-	}
-	let guessMap = $state<ReturnType<typeof GuessMap>>();
-
-	// one viewer per provider, each in its own element; only the round's one is visible
-	let panoRoot: HTMLDivElement;
-	const viewers = new Map<string, { viewer: PanoViewer; el: HTMLDivElement }>();
-	let activeProvider = $state('');
-
-	const rules = $derived(game?.rules);
 	const endless = $derived(game?.rules.rounds === 0);
 	const total = $derived(game?.total ?? 0);
 	const done = $derived(game?.rounds.filter((r) => r.result) ?? []);
 	const bbox = $derived((game?.map.bbox ?? [55.9, 37.1, 73.3, 45.7]) as BBox);
-	const hintCost = $derived(rules?.hints.cost ?? 0);
+	const status = $derived<Status>(
+		phase === 'playing'
+			? 'playing'
+			: phase === 'sending'
+				? 'sending'
+				: phase === 'result' || phase === 'final'
+					? 'off'
+					: 'opening'
+	);
+	const dots = $derived(
+		Array.from({ length: endless ? 0 : (game?.rules.rounds ?? 0) }, (_, i) => {
+			const r = game?.rounds[i]?.result;
+			if (r) return r.score >= 4000 ? 'hi' : r.score >= 2000 ? 'mid' : 'lo';
+			return round?.n === i + 1 ? 'now' : '';
+		})
+	);
 
 	// ---------- start ----------
 	let loadedId = '';
@@ -115,13 +95,12 @@
 	}
 
 	function reset() {
-		stopTimer();
+		rv?.stopTimer();
 		round = null;
 		result = null;
 		guess = null;
 		hints = [];
 		finalPick = null;
-		mapOpen = false;
 	}
 
 	async function nextRound() {
@@ -149,10 +128,9 @@
 		hintsLeft = rd.hintsLeft;
 		guess = null;
 		phase = 'opening';
-		guessMap?.fitArea();
+		await tick(); // the round's view is on the page
 		try {
-			const v = await viewerFor(rd.view.provider);
-			const { pos } = await v.open(rd.view);
+			const { pos } = await rv!.open(rd.view);
 			const shown = await call(
 				api().POST('/v1/games/{gameId}/rounds/{n}/shown', {
 					params: { path: { gameId: g.id, n: rd.n } },
@@ -161,7 +139,7 @@
 			);
 			round = shown;
 			upsertRound(shown);
-			startTimer(shown.remainingMs);
+			rv!.startTimer(shown.remainingMs);
 			phase = 'playing';
 		} catch (e) {
 			const notFound =
@@ -190,26 +168,6 @@
 		}
 	}
 
-	async function viewerFor(provider: string): Promise<PanoViewer> {
-		let v = viewers.get(provider);
-		if (!v) {
-			const el = document.createElement('div');
-			el.className = 'pano-layer';
-			panoRoot.appendChild(el);
-			const viewer = await createViewer(provider, el, {
-				lang: i18n.lang,
-				labels: rules?.panoLabels ?? false,
-				movement: rules?.movement ?? 'move',
-				onHeading: (d) => (heading = d)
-			});
-			v = { viewer, el };
-			viewers.set(provider, v);
-		}
-		for (const [p, x] of viewers) x.el.hidden = p !== provider;
-		activeProvider = provider;
-		return v.viewer;
-	}
-
 	function upsertRound(rd: Round) {
 		if (!game) return;
 		const i = game.rounds.findIndex((r) => r.n === rd.n);
@@ -225,8 +183,8 @@
 	async function submit() {
 		if (phase !== 'playing' || !game || !round) return;
 		phase = 'sending';
-		stopTimer();
-		mapOpen = false;
+		rv?.stopTimer();
+		rv?.closeMap();
 		try {
 			const res = await call(
 				api().POST('/v1/games/{gameId}/rounds/{n}/guess', {
@@ -244,8 +202,8 @@
 		}
 	}
 
-	async function useHint() {
-		if (phase !== 'playing' || !game || !round || hintsLeft <= 0) return;
+	async function useHint(): Promise<boolean> {
+		if (phase !== 'playing' || !game || !round || hintsLeft <= 0) return false;
 		try {
 			const h = await call(
 				api().POST('/v1/games/{gameId}/rounds/{n}/hint', {
@@ -254,63 +212,17 @@
 			);
 			hints = [...hints, h];
 			hintsLeft--;
-			if (window.innerWidth <= 700) openMap(true);
+			return true;
 		} catch (e) {
 			showToast(t(errorKey(e)));
+			return false;
 		}
 	}
-
-	function backToStart() {
-		if (phase === 'playing') viewers.get(activeProvider)?.viewer.reset();
-	}
-
-	// ---------- the clock ----------
-	function startTimer(remainingMs: number | undefined) {
-		stopTimer();
-		if (!rules?.timeSec || remainingMs === undefined) {
-			left = null;
-			return;
-		}
-		deadlineAt = Date.now() + remainingMs;
-		const startLeft = remainingMs / 1000;
-		warned = new Set(WARN_AT.filter((w) => startLeft <= w)); // a reload below a warning skips it
-		lastTick = 0;
-		tickTimer();
-		ticker = setInterval(tickTimer, 250);
-	}
-
-	function tickTimer() {
-		left = Math.max((deadlineAt - Date.now()) / 1000, 0);
-		const s = Math.ceil(left);
-		const due = WARN_AT.filter((w) => s <= w && !warned.has(w));
-		if (due.length) {
-			due.forEach((w) => warned.add(w));
-			showToast(`${t('secondsLeft', { n: s })}${guess ? '' : ` ${t('placePin')}`}`, 2500);
-			beep(s <= 10 ? 990 : 740, 0.18);
-			if (s <= 10) vibrate(150);
-		} else if (s <= 5 && s > 0 && s !== lastTick) {
-			beep(1200, 0.06);
-		}
-		lastTick = s;
-		if (left <= 0) {
-			stopTimer();
-			showToast(t('timeUp'));
-			submit(); // the pin placed so far counts
-		}
-	}
-
-	function stopTimer() {
-		clearInterval(ticker);
-		ticker = undefined;
-	}
-
-	const danger = $derived(left !== null && phase === 'playing' && left <= WARN_AT[0]);
-	const dangerLevel = $derived(left === null ? 0 : Math.min(Math.max(1 - left / WARN_AT[0], 0), 1));
 
 	// ---------- results ----------
 	async function showFinal(justFinished: boolean) {
 		if (!game) return;
-		stopTimer();
+		rv?.stopTimer();
 		try {
 			game = await call(api().GET('/v1/games/{gameId}', { params: { path: { gameId: game.id } } }));
 		} catch {
@@ -326,6 +238,7 @@
 	const newBest = $derived(
 		mine &&
 			!endless &&
+			!game?.room &&
 			phase === 'final' &&
 			game?.status === 'finished' &&
 			total > bestBefore &&
@@ -373,7 +286,7 @@
 	// an endless game ends when the player says so
 	async function finishGame() {
 		if (!game) return;
-		stopTimer();
+		rv?.stopTimer();
 		try {
 			game = await call(
 				api().POST('/v1/games/{gameId}/finish', { params: { path: { gameId: game.id } } })
@@ -383,11 +296,6 @@
 		} catch (e) {
 			showToast(t(errorKey(e)));
 		}
-	}
-
-	function cycleCompass() {
-		const s = nextCompassStyle();
-		showToast(t('compassTap', { name: t(`compass_${s}`) }), 1500);
 	}
 
 	function share() {
@@ -407,35 +315,16 @@
 	}
 
 	function fail(key: Key, retry: (() => void) | null, getKey = false) {
-		stopTimer();
+		rv?.stopTimer();
 		error = { key, retry, getKey };
 		phase = 'error';
 	}
 
-	// ---------- layout and keys ----------
-	function openMap(open = !mapOpen) {
-		mapOpen = open;
-	}
-
 	function onKey(e: KeyboardEvent) {
 		if ((e.target as HTMLElement).closest('input, textarea')) return;
-		if (phase === 'result' || phase === 'final') {
-			if (e.key === 'Enter') {
-				e.preventDefault();
-				if (phase === 'result') afterResult();
-			}
-			return;
-		}
-		if (phase !== 'playing') return;
-		const k = e.key.toLowerCase();
-		if (e.key === ' ' && guess) {
+		if (phase === 'result' && e.key === 'Enter') {
 			e.preventDefault();
-			submit();
-		} else if (k === 'h') useHint();
-		else if (k === 'r') backToStart();
-		else if (k === 'm') {
-			if (window.innerWidth <= 700) openMap();
-			else togglePinned();
+			afterResult();
 		}
 	}
 
@@ -443,162 +332,30 @@
 		if (result?.gameOver) showFinal(true);
 		else nextRound();
 	}
-
-	onDestroy(() => {
-		stopTimer();
-		for (const { viewer } of viewers.values()) viewer.destroy();
-	});
 </script>
 
-<svelte:window onkeydown={onKey} onpointerdown={unlockAudio} />
+<svelte:window onkeydown={onKey} />
 <svelte:head><title>{game ? tx(game.map.name) : ''} — Shafaq Geo</title></svelte:head>
 
 <div class="game">
-	<div class="pano" bind:this={panoRoot}></div>
-	{#if rules?.movement === 'nmpz' && phase === 'playing'}
-		<div class="freeze" aria-hidden="true"></div>
-	{/if}
-	<div
-		class="danger"
-		class:on={danger}
-		class:fast={danger && (left ?? 99) <= 10}
-		style:--danger={dangerLevel}
-	></div>
-
-	{#if game}
-		<div class="hud">
-			<div class="group">
-				<a class="logo" href="/" title={t('menu')}
-					><img src="/mark.svg" alt="Shafaq Geo" width="30" height="30" /></a
-				>
-				<div class="chip">
-					<span class="chip-label">{t('round')}</span>
-					<span class="chip-value"
-						>{round?.n ?? done.length}{#if !endless}&nbsp;/ {game.rules.rounds}{/if}</span
-					>
-					<span class="dots">
-						{#each { length: endless ? 0 : game.rules.rounds } as _, i (i)}
-							{@const r = game.rounds[i]?.result}
-							<i
-								class={r
-									? r.score >= 4000
-										? 'hi'
-										: r.score >= 2000
-											? 'mid'
-											: 'lo'
-									: round?.n === i + 1
-										? 'now'
-										: ''}
-							></i>
-						{/each}
-					</span>
-				</div>
-				<div class="chip">
-					<span class="chip-label">{t('score')}</span>
-					<span class="chip-value">{fmtNum(total)}</span>
-				</div>
-				{#if left !== null}
-					<div class="chip timer" class:warn={left <= 15 && left > 10} class:low={left <= 10}>
-						<span class="chip-label">{t('time')}</span>
-						<span class="chip-value">{fmtClock(left)}</span>
-					</div>
-				{/if}
-			</div>
-			<div class="group">
-				{#if game.rules.hints.count > 0}
-					<button
-						class="hud-btn"
-						onclick={useHint}
-						disabled={phase !== 'playing' || hintsLeft <= 0}
-						title={t('hint')}
-					>
-						<svg class="icon" viewBox="0 0 24 24"
-							><path
-								d="M9 18h6M10 21.5h4M12 2.5a6.5 6.5 0 0 0-3.8 11.8V16.5h7.6v-2.2A6.5 6.5 0 0 0 12 2.5z"
-							/></svg
-						>
-						<span class="label">{t('hint')}</span>
-						{#if hintsLeft > 1}<span class="left">{hintsLeft}</span>{/if}
-						<span class="tag" class:cost={hintCost > 0}
-							>{hintCost > 0 ? `−${Math.round(hintCost * 100)}%` : t('hintFree')}</span
-						>
-					</button>
-				{/if}
-				{#if rules?.movement !== 'nmpz'}
-					<button class="hud-btn" onclick={backToStart} title={t('backToStart')}>
-						<svg class="icon" viewBox="0 0 24 24"
-							><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3L3.5 8.3" /><path d="M3.5 3.5v4.8h4.8" /></svg
-						>
-						<span class="label">{t('backToStart')}</span>
-					</button>
-				{/if}
-				<a class="hud-btn" href="/" title={t('menu')}>
-					<svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
-					<span class="label">{t('menu')}</span>
-				</a>
-			</div>
-		</div>
-
-		{#if hints.length && phase === 'playing'}
-			{@const h = hints.at(-1)!}
-			<div class="hint-banner" class:low={game.rules.compass && compass.style === 'modern'}>
-				{h.kind === 'circle' ? t('hintCircle') : `${t(h.kind)}: ${tx(h.text)}`}
-			</div>
-		{/if}
-
-		{#if game.rules.compass && phase === 'playing'}
-			<button
-				class="compass-spot {compass.style}"
-				onclick={cycleCompass}
-				title={t(`compass_${compass.style}`)}
-				aria-label={t('compass')}
-			>
-				<Compass {heading} style={compass.style} />
-			</button>
-		{/if}
-
-		<div
-			class="minimap"
-			class:open={mapOpen}
-			class:pinned={mapPinned}
-			class:hidden={phase === 'final' || phase === 'result'}
-		>
-			<div class="map-toolbar">
-				{#if game.rules.mapLabels}
-					{#each LAYERS as l (l)}
-						<button aria-pressed={layer === l} onclick={() => chooseLayer(l)}>{t(l)}</button>
-					{/each}
-				{:else}
-					<span class="toolbar-note">{t('satellite')}</span>
-				{/if}
-				<button
-					class="size-btn"
-					aria-pressed={mapPinned}
-					aria-label={t('bigMap')}
-					title={t('bigMap')}
-					onclick={togglePinned}
-				>
-					<svg viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" /></svg>
-				</button>
-			</div>
-			<div class="map-box">
-				<GuessMap
-					bind:this={guessMap}
-					{bbox}
-					{layer}
-					{hints}
-					{guess}
-					active={phase === 'playing'}
-					onpick={pick}
-				/>
-			</div>
-			<button class="btn btn-guess" disabled={!guess || phase !== 'playing'} onclick={submit}>
-				{guess ? t('guess') : t('placePin')}
-			</button>
-		</div>
-		{#if phase === 'playing'}
-			<button class="btn map-fab" onclick={() => openMap()}>{mapOpen ? '✕' : t('map')}</button>
-		{/if}
+	{#if game && game.status === 'playing'}
+		<RoundView
+			bind:this={rv}
+			rules={game.rules}
+			{bbox}
+			n={round?.n ?? done.length}
+			rounds={endless ? 0 : game.rules.rounds}
+			{dots}
+			{total}
+			{hints}
+			{hintsLeft}
+			{status}
+			{guess}
+			onpick={pick}
+			onguess={submit}
+			onhint={useHint}
+			ontimeup={submit}
+		/>
 	{/if}
 
 	{#if phase === 'loading' || phase === 'opening' || phase === 'error'}
@@ -651,7 +408,7 @@
 			<div class="overlay-map">
 				<ResultMap
 					{bbox}
-					layer={chosenLayer}
+					layer={savedLayer()}
 					pairs={[{ actual: result.actual, guess: result.guess }]}
 				/>
 			</div>
@@ -699,6 +456,19 @@
 				<div class="legend">
 					<span class="l-actual">{t('actual')}</span><span class="l-guess">{t('yourGuess')}</span>
 				</div>
+				{#if game.room}
+					<div class="room-table">
+						<div class="sub">{t('roomPlayers')}</div>
+						{#each game.room.players as row, i (row.game)}
+							<a class="room-row" class:me={row.game === game.id} href={`/game/${row.game}`}>
+								<span class="place">{i + 1}</span>
+								<span class="avatar">{row.player.avatar}</span>
+								<span class="name">{row.player.name}</span>
+								<b>{fmtNum(row.total)}</b>
+							</a>
+						{/each}
+					</div>
+				{/if}
 				{#if wider}
 					<div class="wider">
 						<p>{t('goWider')}</p>
@@ -718,7 +488,7 @@
 				</div>
 			</div>
 			<div class="overlay-map">
-				<ResultMap {bbox} layer={chosenLayer} pairs={finalPairs} />
+				<ResultMap {bbox} layer={savedLayer()} pairs={finalPairs} />
 			</div>
 		</div>
 	{/if}
@@ -731,227 +501,6 @@
 		overflow: hidden;
 		background: #000;
 		color: #fff;
-	}
-	.pano,
-	.pano :global(.pano-layer) {
-		position: absolute;
-		inset: 0;
-	}
-	/* hide the Yandex address line and "open in Yandex Maps": they give the answer away */
-	.pano :global([class*='panorama-gotoymaps']),
-	.pano :global([class*='panorama-control__name']),
-	.pano :global([class*='panorama-control__close']),
-	.pano :global([class*='panorama-control__fullscreen']) {
-		display: none !important;
-	}
-	.freeze {
-		position: absolute;
-		inset: 0;
-		z-index: 10;
-	}
-
-	/* low time: red creeps in from the edges, like low health in a game */
-	.danger {
-		position: fixed;
-		inset: 0;
-		z-index: 999;
-		pointer-events: none;
-		opacity: 0;
-		transition: opacity 0.5s;
-	}
-	.danger::after {
-		content: '';
-		position: absolute;
-		inset: 0;
-		background: radial-gradient(
-			ellipse at center,
-			transparent 50%,
-			rgba(206, 17, 38, 0.35) 78%,
-			rgba(150, 0, 20, 0.75) 100%
-		);
-		box-shadow: inset 0 0 140px rgba(206, 17, 38, 0.55);
-		animation: heartbeat 1.1s ease-in-out infinite;
-	}
-	.danger.on {
-		opacity: calc(0.45 + 0.55 * var(--danger, 0));
-	}
-	.danger.fast::after {
-		animation-duration: 0.6s;
-	}
-	@keyframes heartbeat {
-		0%,
-		100% {
-			opacity: 0.55;
-		}
-		50% {
-			opacity: 1;
-		}
-	}
-
-	/* HUD */
-	.hud {
-		position: fixed;
-		top: max(14px, env(safe-area-inset-top));
-		left: 14px;
-		right: 14px;
-		display: flex;
-		justify-content: space-between;
-		align-items: flex-start;
-		gap: 10px;
-		pointer-events: none;
-		z-index: 1000;
-	}
-	.group {
-		display: flex;
-		gap: 8px;
-		align-items: stretch;
-		flex-wrap: wrap;
-		pointer-events: auto;
-	}
-	.logo,
-	.chip,
-	.hud-btn {
-		background: var(--hud);
-		color: #fff;
-		backdrop-filter: blur(8px);
-		-webkit-backdrop-filter: blur(8px);
-		border-radius: 14px;
-	}
-	.logo {
-		display: grid;
-		place-items: center;
-		width: 52px;
-	}
-	.chip {
-		padding: 7px 14px;
-		display: flex;
-		flex-direction: column;
-		justify-content: center;
-		min-width: 74px;
-	}
-	.chip-label {
-		font-size: 10.5px;
-		font-weight: 600;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-		opacity: 0.65;
-	}
-	.chip-value {
-		font-family: var(--display);
-		font-weight: 700;
-		font-size: 18px;
-		line-height: 1.25;
-		font-variant-numeric: tabular-nums;
-	}
-	.timer.warn .chip-value {
-		color: #ffc94d;
-	}
-	.timer.low .chip-value {
-		color: #ff7a8a;
-	}
-	.timer.warn {
-		animation: pulse 1s ease-in-out infinite;
-	}
-	.timer.low {
-		animation: pulse 0.5s ease-in-out infinite alternate;
-		box-shadow: 0 0 0 2px rgba(206, 17, 38, 0.6);
-	}
-	@keyframes pulse {
-		50% {
-			transform: scale(1.08);
-		}
-	}
-	.dots {
-		display: flex;
-		gap: 4px;
-		margin-top: 4px;
-	}
-	.dots i {
-		width: 7px;
-		height: 7px;
-		border-radius: 50%;
-		background: rgba(255, 255, 255, 0.22);
-	}
-	.dots i.now {
-		background: #fff;
-	}
-	.dots i.hi {
-		background: #36c853;
-	}
-	.dots i.mid {
-		background: #e0b44e;
-	}
-	.dots i.lo {
-		background: #f04157;
-	}
-	.hud-btn {
-		height: 48px;
-		border: none;
-		padding: 0 15px;
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 14px;
-		font-weight: 500;
-		text-decoration: none;
-		align-self: flex-start;
-	}
-	.hud-btn:hover:not(:disabled) {
-		background: rgba(12, 20, 36, 0.95);
-	}
-	.hud-btn:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-	.hud-btn .tag {
-		font-size: 11px;
-		font-weight: 600;
-		padding: 2px 7px;
-		border-radius: 7px;
-		background: #1eb53a;
-	}
-	.hud-btn .tag.cost {
-		background: #ce1126;
-	}
-	.hud-btn .left {
-		font-family: var(--display);
-		font-size: 13px;
-		opacity: 0.8;
-	}
-	.hint-banner {
-		position: fixed;
-		top: 84px;
-		left: 50%;
-		transform: translateX(-50%);
-		background: var(--sky);
-		color: #fff;
-		padding: 10px 18px;
-		border-radius: 12px;
-		font-weight: 600;
-		box-shadow: var(--shadow);
-		z-index: 1000;
-		white-space: nowrap;
-	}
-	/* under the HUD: the bottom corners belong to the viewers' own controls. The strip sits
-	   in the middle, where the eye already is; the hint goes under it. */
-	.compass-spot {
-		position: fixed;
-		left: 14px;
-		top: 92px;
-		z-index: 1000;
-		padding: 0;
-		border: none;
-		background: none;
-		border-radius: 50%;
-	}
-	.compass-spot.modern {
-		left: 50%;
-		top: 84px;
-		transform: translateX(-50%);
-		border-radius: 10px;
-	}
-	.hint-banner.low {
-		top: 128px;
 	}
 	/* go wider */
 	.wider {
@@ -985,92 +534,6 @@
 		width: 18px;
 		height: 18px;
 		fill: var(--green);
-	}
-
-	/* the guess map */
-	.minimap {
-		position: fixed;
-		right: 16px;
-		bottom: 16px;
-		z-index: 1000;
-		width: 340px;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		transition: width 0.25s;
-	}
-	.minimap.hidden {
-		visibility: hidden;
-	}
-	.minimap:not(.pinned) {
-		opacity: 0.88;
-	}
-	.minimap:hover,
-	.minimap.pinned {
-		opacity: 1;
-		width: min(580px, calc(100vw - 32px));
-	}
-	/* v0's toolbar: the map's look, and keep it big */
-	.map-toolbar {
-		display: flex;
-		gap: 6px;
-	}
-	.map-toolbar button,
-	.toolbar-note {
-		flex: 1;
-		height: 34px;
-		border: none;
-		border-radius: 10px;
-		background: var(--hud);
-		color: #fff;
-		font-size: 13px;
-		font-weight: 500;
-		display: grid;
-		place-items: center;
-	}
-	.map-toolbar button[aria-pressed='true'] {
-		background: var(--sky);
-	}
-	.map-toolbar .size-btn {
-		flex: 0 0 34px;
-	}
-	.size-btn svg {
-		width: 15px;
-		height: 15px;
-		fill: none;
-		stroke: currentColor;
-		stroke-width: 2.2;
-		stroke-linecap: round;
-	}
-	.map-box {
-		height: 250px;
-		border-radius: 14px;
-		overflow: hidden;
-		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-		transition: height 0.25s;
-		background: #dfe3e0;
-	}
-	.minimap:hover .map-box,
-	.minimap.pinned .map-box {
-		height: min(430px, calc(100vh - 230px));
-	}
-	.btn-guess {
-		width: 100%;
-		background: var(--green);
-		color: #fff;
-	}
-	.btn-guess:hover:not(:disabled) {
-		background: var(--green-ink);
-	}
-	.btn-guess:disabled {
-		background: var(--hud);
-		opacity: 1;
-		color: rgba(255, 255, 255, 0.75);
-		font-family: var(--body);
-		font-weight: 500;
-	}
-	.map-fab {
-		display: none;
 	}
 
 	/* loader */
@@ -1107,6 +570,47 @@
 		flex-wrap: wrap;
 		gap: 10px;
 		justify-content: center;
+	}
+
+	/* a room game: everyone's total */
+	.room-table {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.room-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 7px 8px;
+		border-radius: 10px;
+		text-decoration: none;
+		font-size: 14px;
+	}
+	.room-row:hover,
+	.room-row.me {
+		background: color-mix(in srgb, var(--sky) 10%, transparent);
+	}
+	.room-row .place {
+		width: 18px;
+		color: var(--muted);
+		font-weight: 600;
+	}
+	.room-row .avatar {
+		width: 28px;
+		height: 28px;
+		font-size: 16px;
+		background: var(--bg);
+	}
+	.room-row .name {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.room-row b {
+		font-family: var(--display);
 	}
 
 	/* results */
@@ -1254,85 +758,6 @@
 			padding: 12px 16px max(14px, env(safe-area-inset-bottom));
 			background: var(--surface);
 			box-shadow: 0 -8px 16px -8px rgba(0, 0, 0, 0.15);
-		}
-	}
-	@media (max-width: 700px) {
-		.hud {
-			top: max(10px, env(safe-area-inset-top));
-			left: 10px;
-			right: 10px;
-		}
-		.logo {
-			display: none;
-		}
-		.chip {
-			padding: 6px 10px;
-			min-width: 0;
-		}
-		.chip-value {
-			font-size: 16px;
-		}
-		.hud-btn {
-			height: 44px;
-			padding: 0 12px;
-		}
-		.hud-btn .label {
-			display: none;
-		}
-		.hint-banner {
-			top: 76px;
-			white-space: normal;
-			max-width: calc(100vw - 32px);
-		}
-		.compass-spot {
-			top: 140px;
-			left: 10px;
-		}
-		.compass-spot.modern {
-			left: 50%;
-			top: 72px;
-			transform: translateX(-50%) scale(0.82); /* clear of the map's close button */
-		}
-		.hint-banner.low {
-			top: 116px;
-		}
-		.minimap {
-			left: 10px;
-			right: 10px;
-			bottom: 10px;
-			width: auto;
-			opacity: 1;
-			visibility: hidden;
-		}
-		.minimap.open {
-			visibility: visible;
-		}
-		.minimap:hover,
-		.minimap.pinned {
-			width: auto;
-		}
-		.map-box,
-		.minimap:hover .map-box,
-		.minimap.pinned .map-box {
-			height: 55vh;
-		}
-		.map-toolbar .size-btn {
-			display: none;
-		}
-		.map-fab {
-			display: inline-flex;
-			position: fixed;
-			right: 14px;
-			bottom: max(14px, env(safe-area-inset-bottom));
-			z-index: 1001;
-			height: 56px;
-			background: var(--sky);
-			color: #fff;
-			box-shadow: var(--shadow);
-		}
-		.minimap.open ~ .map-fab {
-			bottom: auto;
-			top: 70px;
 		}
 	}
 </style>

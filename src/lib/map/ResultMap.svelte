@@ -22,6 +22,8 @@
 		actual: LatLon;
 		guess?: LatLon;
 		label?: string;
+		guessColor?: string; // a room's player
+		guessLabel?: string;
 	}
 
 	// layer: the look the player chose on the guess map
@@ -61,11 +63,19 @@
 		if (!m) return;
 		const objects: Promise<any>[] = [];
 		const points: LatLon[] = [];
+		const placed = new Set<string>(); // in a room, everyone's pairs share the real place
 		for (const p of list) {
-			objects.push(marker(COLORS.actual, p.actual, p.label));
-			points.push(p.actual);
+			const at = `${p.actual.lat},${p.actual.lon},${p.label ?? ''}`;
+			if (!placed.has(at)) {
+				placed.add(at);
+				objects.push(marker(COLORS.actual, p.actual, p.label));
+				points.push(p.actual);
+			}
 			if (p.guess) {
-				objects.push(guessLine(p.guess, p.actual), marker(COLORS.guess, p.guess));
+				objects.push(
+					guessLine(p.guess, p.actual),
+					marker(p.guessColor ?? COLORS.guess, p.guess, p.guessLabel)
+				);
 				points.push(p.guess);
 			}
 		}

@@ -42,6 +42,10 @@ same network opens the laptop's address on port 8130.
 | `src/routes/+page.svelte`               | the home: maps as road signs (and a picked place), the game's settings (sliders, hints, movement, compass), Play, recent games                                                   |
 | `src/routes/places/[slug]`              | the place picker: a place as its entry sign, its panoramas and the player's progress, the places inside it                                                                       |
 | `src/routes/game/[id]/+page.svelte`     | a game: panorama, guess map, timer, hints, results, final summary (also someone else's finished game, by its link)                                                               |
+| `src/routes/room/[code]/+page.svelte`   | a live room with friends: the lobby (the code as a number plate, link, Telegram, QR, players, the host's tools), the rounds, each round's result for everyone, the final table   |
+| `src/lib/game/RoundView.svelte`         | a round on screen, for solo games and rooms: panorama, HUD, clock and red glow, compass, hint banner, guess map                                                                  |
+| `src/lib/game/RulesForm.svelte`         | the settings form: the home's, and a room host's between games                                                                                                                   |
+| `src/lib/room.svelte.ts`                | a room on the page: its state over the WebSocket (reconnecting by itself), actions tried again while the server is away (a deploy)                                               |
 | `src/routes/me`, `u/[id]`, `games`      | the player's profile (name, avatar, ways to sign in), another player's page (with Report), all games                                                                             |
 | `src/lib/account.svelte.ts`             | signing in: Telegram (bot link, QR code, Mini App), Google, merging, signing out                                                                                                 |
 | `src/lib/api/`                          | the typed API client (openapi-fetch); never edit `schema.d.ts` by hand                                                                                                           |
@@ -55,7 +59,8 @@ same network opens the laptop's address on port 8130.
 | `src/env.ts`                            | the settings read from `.env.local`                                                                                                                                              |
 | `src/service-worker/`                   | the PWA shell cache                                                                                                                                                              |
 
-The game never scores anything: the server sends the result. Game state lives on the server,
+The game never scores anything: the server sends the result. In a room the server also keeps
+the clock for everyone and says when a round ends. Game state lives on the server,
 so a reload continues the round, clock included.
 
 ## Deploy

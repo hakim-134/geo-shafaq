@@ -1,5 +1,6 @@
 <script lang="ts">
-	// One finished game in a list: its map's sign, when, and the score with a bar.
+	// One finished game in a list: its map's sign, when (and how many played it, in a room),
+	// and the score with a bar.
 	import type { GameListItem } from '#lib/api/client.js';
 	import MapSign from '#lib/maps/MapSign.svelte';
 	import { t, tx } from '#lib/i18n/index.svelte.js';
@@ -12,7 +13,10 @@
 <a class="row" href={`/game/${game.id}`}>
 	<span class="what">
 		<MapSign slug={game.map.slug} name={tx(game.map.name)} size="small" />
-		<span class="when">{fmtDay(game.startedAt)} · {t('nRounds', { n: game.rounds })}</span>
+		<span class="when"
+			>{fmtDay(game.startedAt)} · {t('nRounds', { n: game.rounds })}{#if game.players}
+				· {t('withPlayers', { n: game.players })}{/if}</span
+		>
 	</span>
 	<span class="score">
 		<b>{fmtNum(game.total)}</b>

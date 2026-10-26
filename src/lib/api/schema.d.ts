@@ -532,6 +532,267 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/rooms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Opens a live room on a map; the caller is its host.
+         * @description Then every player's page opens `/v1/rooms/{code}/live` (a WebSocket), which joins the
+         *     room and brings its state after every change. The actions below answer with the
+         *     caller's state too.
+         */
+        post: operations["createRoom"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/rooms/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A room as the caller sees it (`joined` false before their page has joined it). */
+        get: operations["getRoom"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/rooms/{code}/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The room, live: a WebSocket that joins it and gets its state after every change.
+         * @description Needs the session cookie. Opening it joins the room (or comes back to it); closing it
+         *     keeps the seat, and a page reconnects with the same session. The server sends JSON
+         *     `RoomMessage`s: `state` after every change, `bye` before it closes the socket for
+         *     good (`kicked`, `left`, `closed`). The page sends nothing; an answer of the server
+         *     other than 101 is an `Error` (`no_room`, `room_full`, `kicked`, `no_session`).
+         *     A socket closed with code 1012 is a server restart: reconnect at once.
+         */
+        get: operations["roomLive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/rooms/{code}/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The host changes the map or the rules, between games (back to the lobby). */
+        post: operations["setRoomRules"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/rooms/{code}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The host starts a game, from the lobby or after one (a rematch). */
+        post: operations["startRoomGame"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/rooms/{code}/next": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The host goes on from a round's result, to the next round or the game's table.
+         * @description `finish` ends the game now (an endless one ends this way).
+         */
+        post: operations["nextRoomRound"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/rooms/{code}/kick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The host sends a player away; they cannot come back to this room. */
+        post: operations["kickRoomPlayer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/rooms/{code}/host": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The host hands the room to another player. */
+        post: operations["makeRoomHost"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/rooms/{code}/leave": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The caller leaves the room. During a game their scores stay in its table. */
+        post: operations["leaveRoom"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/rooms/{code}/rounds/{n}/shown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The caller's viewer opened the round's panorama. The first one starts the clock.
+         * @description As for solo games, `pos` is what a Yandex viewer opened; the first one is where the round is scored.
+         */
+        post: operations["roomRoundShown"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/rooms/{code}/rounds/{n}/fail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The caller's viewer could not open the panorama; before anyone has, everyone gets another.
+         * @description `swap` is the round's `swap` the page tried, so pages failing at once swap only once.
+         *     After someone opened it: `wrong_phase`, and this page guesses on the map alone.
+         */
+        post: operations["roomRoundFailed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/rooms/{code}/rounds/{n}/hint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Spends one of the caller's hints; it is the last of `round.hints`. */
+        post: operations["roomHint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/rooms/{code}/rounds/{n}/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The caller moved their pin without guessing yet; it counts if the round ends first. */
+        post: operations["roomPin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/rooms/{code}/rounds/{n}/guess": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The caller's answer (or none). Sent twice, or after the round ended, it changes nothing. */
+        post: operations["roomGuess"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/pano/demo/{ref}": {
         parameters: {
             query?: never;
@@ -557,7 +818,8 @@ export interface components {
             /**
              * @description no_session | not_found | bad_input | wrong_phase | round_running | game_over |
              *     no_panorama | daily_cap | too_far | rate_limited | banned | bad_name |
-             *     last_identity | bad_login | not_configured | internal.
+             *     last_identity | bad_login | not_configured | internal; for rooms no_room |
+             *     room_full | kicked | not_host | not_in_room | too_many_rooms.
              *     banned: the player is banned and cannot start games.
              *     daily_cap: the game's panorama providers reached today's budget (`DAILY_CAPS`);
              *     new games start again after midnight, Moscow time.
@@ -848,6 +1110,141 @@ export interface components {
             map: string;
             rules?: components["schemas"]["Rules"];
         };
+        CreateRoom: {
+            /** @description The map's slug. */
+            map: string;
+            rules?: components["schemas"]["Rules"];
+        };
+        RoomRules: {
+            map: string;
+            rules?: components["schemas"]["Rules"];
+        };
+        RoomNext: {
+            /** @description End the game now. */
+            finish?: boolean;
+        };
+        RoomTarget: {
+            /** Format: uuid */
+            player: string;
+        };
+        RoomRoundFailed: {
+            /** @enum {string} */
+            reason: "not_found" | "error";
+            /** @description The round's `swap` the viewer tried. */
+            swap: number;
+        };
+        /**
+         * @description lobby: waiting for the host to start; playing: a round is on; result: a round's
+         *     result, the host goes on; final: the game's table, the host starts again.
+         * @enum {string}
+         */
+        RoomPhase: "lobby" | "playing" | "result" | "final";
+        RoomState: {
+            /** @example K7MQ2 */
+            code: string;
+            /**
+             * Format: int64
+             * @description Goes up with every change; a page keeps the state with the highest.
+             */
+            ver: number;
+            phase: components["schemas"]["RoomPhase"];
+            /** Format: uuid */
+            you: string;
+            /** @description The caller is a player of this room. */
+            joined: boolean;
+            /** @description Not joined, and cannot join: kicked | room_full. */
+            blocked?: string;
+            /** Format: uuid */
+            host: string;
+            map: components["schemas"]["MapSummary"];
+            rules: components["schemas"]["Rules"];
+            /** @description Games started in this room. */
+            games: number;
+            /**
+             * Format: uuid
+             * @description The room's current (or last) game, as `Game.room.id`.
+             */
+            gameId?: string;
+            /**
+             * Format: uuid
+             * @description The caller's own game of it (`/v1/games/{id}`), once a round of it is saved.
+             */
+            yourGame?: string;
+            players: components["schemas"]["RoomPlayer"][];
+            round?: components["schemas"]["RoomRound"];
+            /** @description The finished rounds of the current game, oldest first. */
+            results: components["schemas"]["RoomResult"][];
+            /** @description The best possible total so far. */
+            max: number;
+            maxPlayers: number;
+        };
+        RoomPlayer: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            avatar: string;
+            guest: boolean;
+            /** @description Has the room open now. */
+            online: boolean;
+            /** @description Left during this game; kept in its table. */
+            left: boolean;
+            total: number;
+            /** @description Answered in the current round. */
+            guessed: boolean;
+        };
+        RoomRound: {
+            n: number;
+            /** @description Panoramas swapped so far because no viewer could open one. */
+            swap: number;
+            view: components["schemas"]["PanoView"];
+            /** @description Someone's viewer opened it; the clock runs. */
+            shown: boolean;
+            remainingMs?: number;
+            /** @description The caller's hints in this round. */
+            hints: components["schemas"]["Hint"][];
+            hintsLeft: number;
+            guessed: boolean;
+            pin?: components["schemas"]["LatLon"];
+            answered: number;
+            players: number;
+        };
+        RoomResult: {
+            n: number;
+            actual: components["schemas"]["LatLon"];
+            place: components["schemas"]["PlaceInfo"];
+            scores: components["schemas"]["RoomScore"][];
+        };
+        RoomScore: {
+            /** Format: uuid */
+            player: string;
+            guess?: components["schemas"]["LatLon"];
+            /** Format: double */
+            km?: number;
+            score: number;
+            hintsUsed: number;
+        };
+        /** @description What the room's WebSocket sends. */
+        RoomMessage: {
+            /** @enum {string} */
+            t: "state" | "bye";
+            state?: components["schemas"]["RoomState"];
+            /** @description bye: kicked | left | closed */
+            reason?: string;
+        };
+        /** @description Everyone's game of one room game, best first. */
+        RoomTable: {
+            /** Format: uuid */
+            id: string;
+            code: string;
+            players: components["schemas"]["RoomTableRow"][];
+        };
+        RoomTableRow: {
+            player: components["schemas"]["PublicUser"];
+            /** Format: uuid */
+            game: string;
+            total: number;
+            rounds: number;
+        };
         /** @enum {string} */
         GameStatus: "playing" | "finished" | "abandoned";
         Game: {
@@ -867,6 +1264,7 @@ export interface components {
             hintsLeft?: number;
             /** @description Every round so far; the last one may still be running. */
             rounds: components["schemas"]["Round"][];
+            room?: components["schemas"]["RoomTable"];
         };
         GamePage: {
             games: components["schemas"]["GameListItem"][];
@@ -884,6 +1282,8 @@ export interface components {
             total: number;
             max: number;
             rounds: number;
+            /** @description A room game: how many played it. */
+            players?: number;
         };
         MapRef: {
             slug: string;
@@ -996,12 +1396,22 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description The room as the caller sees it */
+        RoomState: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["RoomState"];
+            };
+        };
     };
     parameters: {
         Slug: string;
         GameId: string;
         UserId: string;
         RoundN: number;
+        RoomCode: string;
     };
     requestBodies: never;
     headers: never;
@@ -1762,6 +2172,326 @@ export interface operations {
                 };
             };
             400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    createRoom: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRoom"];
+            };
+        };
+        responses: {
+            /** @description The new room, in its lobby */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomState"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    getRoom: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["RoomCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The room */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomState"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    roomLive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["RoomCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switching to the WebSocket protocol */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    setRoomRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["RoomCode"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoomRules"];
+            };
+        };
+        responses: {
+            200: components["responses"]["RoomState"];
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    startRoomGame: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["RoomCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["RoomState"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    nextRoomRound: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["RoomCode"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoomNext"];
+            };
+        };
+        responses: {
+            200: components["responses"]["RoomState"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    kickRoomPlayer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["RoomCode"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoomTarget"];
+            };
+        };
+        responses: {
+            200: components["responses"]["RoomState"];
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    makeRoomHost: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["RoomCode"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoomTarget"];
+            };
+        };
+        responses: {
+            200: components["responses"]["RoomState"];
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    leaveRoom: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["RoomCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Left */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    roomRoundShown: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["RoomCode"];
+                n: components["parameters"]["RoundN"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoundShown"];
+            };
+        };
+        responses: {
+            200: components["responses"]["RoomState"];
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    roomRoundFailed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["RoomCode"];
+                n: components["parameters"]["RoundN"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoomRoundFailed"];
+            };
+        };
+        responses: {
+            200: components["responses"]["RoomState"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    roomHint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["RoomCode"];
+                n: components["parameters"]["RoundN"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["RoomState"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    roomPin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["RoomCode"];
+                n: components["parameters"]["RoundN"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuessRequest"];
+            };
+        };
+        responses: {
+            /** @description Kept */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    roomGuess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["RoomCode"];
+                n: components["parameters"]["RoundN"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuessRequest"];
+            };
+        };
+        responses: {
+            200: components["responses"]["RoomState"];
+            400: components["responses"]["Error"];
+            403: components["responses"]["Error"];
             404: components["responses"]["Error"];
             409: components["responses"]["Error"];
         };
