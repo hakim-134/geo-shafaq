@@ -288,3 +288,9 @@ a {
 		transition-duration: 0.01ms !important;
 	}
 }
+
+/* Yandex's map has no night scheme: in dark mode its tiles are turned dark; pins, lines and
+   satellite photos stay as they are */
+:root[data-theme='dark'] .scheme [class*='-ground-pane'] {
+	filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9);
+}

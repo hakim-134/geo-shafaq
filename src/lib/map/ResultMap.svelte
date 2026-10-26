@@ -1,21 +1,19 @@
 <script lang="ts">
-	// Where the place really was and where the player guessed, joined by a dashed line.
+	// Where the place really was and where the player guessed, joined by a dashed line (Yandex).
 	import { onMount } from 'svelte';
-	import type { Marker } from 'maplibre-gl';
 	import {
 		addBorder,
-		boundsOf,
+		bounds,
+		boxOf,
 		COLORS,
 		countryShape,
 		createMap,
+		guessLine,
 		marker,
-		setGeoJSON,
 		type BBox,
-		type MlMap
+		type YMap
 	} from './map.js';
-	import { mapStyle } from './style.js';
 	import type { LatLon } from '#lib/api/client.js';
-	import { theme } from '#lib/theme.svelte.js';
 	import { i18n } from '#lib/i18n/index.svelte.js';
 
 	export interface Pair {
@@ -27,102 +25,56 @@
 	let { pairs, bbox }: { pairs: Pair[]; bbox: BBox } = $props();
 
 	let el: HTMLDivElement;
-	let map: MlMap | null = null;
-	let markers: Marker[] = [];
-	let shape: GeoJSON.Geometry | null = null;
-	// isStyleLoaded() is still false inside 'style.load', so we keep our own flag
-	let styleReady = false;
-	let ready = $state(false);
+	let map = $state<YMap | null>(null);
+	/* eslint-disable @typescript-eslint/no-explicit-any */
+	let drawn: any[] = [];
 
 	onMount(() => {
-		map = createMap({ container: el, theme: theme.value, lang: i18n.lang, labels: true, bbox });
-		map.on('style.load', () => {
-			styleReady = true;
-			decorate();
-			ready = true;
-		});
-		countryShape().then(
-			(s) => {
-				shape = s;
-				decorate();
+		let gone = false;
+		createMap({ container: el, lang: i18n.lang, layer: 'map', bbox }).then(
+			(m) => {
+				if (gone) return m.destroy();
+				countryShape().then(
+					(s) => addBorder(m, s, false),
+					() => {}
+				);
+				map = m;
 			},
 			() => {}
 		);
-		return () => map?.remove();
+		return () => {
+			gone = true;
+			map?.destroy();
+		};
 	});
 
-	function decorate() {
-		if (!map || !styleReady) return;
-		if (shape) addBorder(map, shape, false);
-		if (!map.getSource('lines')) {
-			map.addSource('lines', {
-				type: 'geojson',
-				data: { type: 'FeatureCollection', features: [] }
-			});
-			map.addLayer({
-				id: 'lines',
-				type: 'line',
-				source: 'lines',
-				paint: {
-					'line-color': COLORS.line,
-					'line-width': 2.5,
-					'line-opacity': 0.85,
-					'line-dasharray': [2, 2]
-				}
-			});
-		}
-		draw();
-	}
-
-	function draw() {
-		if (!map) return;
-		for (const m of markers) m.remove();
-		markers = [];
-		const lines: GeoJSON.Feature[] = [];
+	$effect(() => {
+		const m = map;
+		const list = pairs;
+		if (!m) return;
+		const objects: Promise<any>[] = [];
 		const points: LatLon[] = [];
-		for (const p of pairs) {
-			markers.push(marker(COLORS.actual, p.actual, p.label).addTo(map));
+		for (const p of list) {
+			objects.push(marker(COLORS.actual, p.actual, p.label));
 			points.push(p.actual);
 			if (p.guess) {
-				markers.push(marker(COLORS.guess, p.guess).addTo(map));
+				objects.push(guessLine(p.guess, p.actual), marker(COLORS.guess, p.guess));
 				points.push(p.guess);
-				lines.push({
-					type: 'Feature',
-					properties: {},
-					geometry: {
-						type: 'LineString',
-						coordinates: [
-							[p.actual.lon, p.actual.lat],
-							[p.guess.lon, p.guess.lat]
-						]
-					}
-				});
 			}
 		}
-		setGeoJSON(map, 'lines', { type: 'FeatureCollection', features: lines });
-		map.resize();
-		if (points.length === 1) map.jumpTo({ center: [points[0].lon, points[0].lat], zoom: 14 });
+		Promise.all(objects).then((os) => {
+			for (const o of drawn) m.geoObjects.remove(o);
+			for (const o of os) m.geoObjects.add(o);
+			drawn = os;
+		});
+		m.container.fitToViewport();
+		if (points.length === 1) m.setCenter([points[0].lat, points[0].lon], 15);
 		else if (points.length)
-			map.fitBounds(boundsOf(points), { padding: 60, maxZoom: 16, duration: 0 });
-	}
-
-	$effect(() => {
-		void pairs;
-		if (ready) draw();
-	});
-
-	let styleKey = '';
-	$effect(() => {
-		const key = `${theme.value}/${i18n.lang}`;
-		if (map && styleKey && key !== styleKey) {
-			styleReady = false;
-			map.setStyle(mapStyle(theme.value, i18n.lang, true));
-		}
-		styleKey = key;
+			m.setBounds(bounds(boxOf(points)), { zoomMargin: 60, checkZoomRange: true });
 	});
 </script>
 
-<div class="result-map" bind:this={el}></div>
+<div class="result-map scheme" bind:this={el}></div>
 
 <style>
 	.result-map {

@@ -13,6 +13,3 @@ export function apiUrl(): string {
 }
 
 export const yandexKey = (): string => PUBLIC_YANDEX_KEY ?? '';
-
-/** The basemap of Uzbekistan (Protomaps PMTiles), next to the game or on the CDN. */
-export const tilesUrl = (): string => `${location.origin}/tiles/uzbekistan.pmtiles`;

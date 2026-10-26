@@ -5,7 +5,15 @@
 	import { i18n, t, tx } from '#lib/i18n/index.svelte.js';
 	import { ensureSession, session } from '#lib/session.svelte.js';
 	import { fmtClock, fmtNum } from '#lib/format.js';
-	import { loadChoice, saveChoice, rulesFor, ROUNDS, TIMES, type Preset } from '#lib/rules.js';
+	import {
+		loadChoice,
+		saveChoice,
+		rulesFor,
+		testProviders,
+		ROUNDS,
+		TIMES,
+		type Preset
+	} from '#lib/rules.js';
 	import { showToast } from '#lib/toast.svelte.js';
 
 	let maps = $state<MapSummary[]>([]);
@@ -18,8 +26,6 @@
 	const country = $derived(maps.find((m) => m.slug === 'uzbekistan'));
 	const totalPanoramas = $derived(country?.panoramas ?? 0);
 	const streets = $derived(maps.find((m) => m.streets)?.groups ?? 0);
-	// the provider choice only matters where more than one has panoramas
-	const providers = $derived(selected?.providers ?? []);
 
 	$effect(() => saveChoice($state.snapshot(choice)));
 
@@ -34,11 +40,6 @@
 			history = h.games;
 			offline = false;
 			if (!m.some((x) => x.slug === choice.map) && m.length) choice.map = m[0].slug;
-			if (
-				choice.provider &&
-				!m.find((x) => x.slug === choice.map)?.providers.includes(choice.provider)
-			)
-				choice.provider = '';
 		} catch {
 			offline = true;
 		}
@@ -50,7 +51,9 @@
 		starting = true;
 		try {
 			const game = await call(
-				api().POST('/v1/games', { body: { map: selected.slug, rules: rulesFor(choice) } })
+				api().POST('/v1/games', {
+					body: { map: selected.slug, rules: rulesFor(choice, testProviders()) }
+				})
 			);
 			goto(`/game/${game.id}`);
 		} catch (e) {
@@ -179,22 +182,6 @@
 				</div>
 			</div>
 		</div>
-
-		{#if providers.length > 1}
-			<div>
-				<div class="field-label">{t('provider')}</div>
-				<div class="segmented">
-					<button aria-pressed={choice.provider === ''} onclick={() => (choice.provider = '')}
-						>{t('provider_any')}</button
-					>
-					{#each providers as p (p)}
-						<button aria-pressed={choice.provider === p} onclick={() => (choice.provider = p)}
-							>{t(`provider_${p}` as 'provider_any')}</button
-						>
-					{/each}
-				</div>
-			</div>
-		{/if}
 
 		<button class="btn btn-play" onclick={play} disabled={!selected || starting}>
 			<span>{starting ? t('starting') : t('play')}</span>

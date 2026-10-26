@@ -15,7 +15,8 @@
 	import { createViewer, PanoError, type PanoViewer } from '#lib/pano/index.js';
 	import GuessMap from '#lib/map/GuessMap.svelte';
 	import ResultMap, { type Pair } from '#lib/map/ResultMap.svelte';
-	import type { BBox } from '#lib/map/map.js';
+	import { LAYERS, type BBox, type Layer } from '#lib/map/map.js';
+	import { load, save } from '#lib/storage.js';
 	import Compass from '#lib/components/Compass.svelte';
 	import ScoreCard from '#lib/game/ScoreCard.svelte';
 	import PlaceCard from '#lib/game/PlaceCard.svelte';
@@ -55,6 +56,19 @@
 	// layout
 	let mapOpen = $state(false); // phones: the map is a sheet you open
 	let mapPinned = $state(false); // computers: keep the map big
+	// the player's map look, remembered on this device; hard rules (no map labels) are satellite only
+	let chosenLayer = $state<Layer>(
+		LAYERS.includes(load('map_layer', 'map') as Layer) ? (load('map_layer', 'map') as Layer) : 'map'
+	);
+	const layer = $derived<Layer>(game && !game.rules.mapLabels ? 'satellite' : chosenLayer);
+	function chooseLayer(l: Layer) {
+		chosenLayer = l;
+		save('map_layer', l);
+	}
+	function togglePinned() {
+		mapPinned = !mapPinned;
+		setTimeout(() => guessMap?.resize(), 260);
+	}
 	let guessMap = $state<ReturnType<typeof GuessMap>>();
 
 	// one viewer per provider, each in its own element; only the round's one is visible
@@ -164,7 +178,10 @@
 				}
 			}
 			if (e instanceof PanoError && e.kind === 'key') {
-				return fail(yandexKey() ? 'keyFail' : 'noKey', () => location.reload(), true);
+				// no key at all happens only on a developer's machine; players see a plain retry
+				return yandexKey()
+					? fail('keyFail', () => location.reload())
+					: fail('noKey', () => location.reload(), true);
 			}
 			fail(notFound ? 'noPano' : errorKey(e), () => openRound(rd, swaps));
 		}
@@ -373,10 +390,7 @@
 		else if (k === 'r') backToStart();
 		else if (k === 'm') {
 			if (window.innerWidth <= 700) openMap();
-			else {
-				mapPinned = !mapPinned;
-				setTimeout(() => guessMap?.resize(), 260);
-			}
+			else togglePinned();
 		}
 	}
 
@@ -488,11 +502,29 @@
 			class:pinned={mapPinned}
 			class:hidden={phase === 'final' || phase === 'result'}
 		>
+			<div class="map-toolbar">
+				{#if game.rules.mapLabels}
+					{#each LAYERS as l (l)}
+						<button aria-pressed={layer === l} onclick={() => chooseLayer(l)}>{t(l)}</button>
+					{/each}
+				{:else}
+					<span class="toolbar-note">{t('satellite')}</span>
+				{/if}
+				<button
+					class="size-btn"
+					aria-pressed={mapPinned}
+					aria-label={t('bigMap')}
+					title={t('bigMap')}
+					onclick={togglePinned}
+				>
+					<svg viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" /></svg>
+				</button>
+			</div>
 			<div class="map-box">
 				<GuessMap
 					bind:this={guessMap}
 					{bbox}
-					labels={game.rules.mapLabels}
+					{layer}
 					{hints}
 					{guess}
 					active={phase === 'playing'}
@@ -839,6 +871,38 @@
 		opacity: 1;
 		width: min(580px, calc(100vw - 32px));
 	}
+	/* v0's toolbar: the map's look, and keep it big */
+	.map-toolbar {
+		display: flex;
+		gap: 6px;
+	}
+	.map-toolbar button,
+	.toolbar-note {
+		flex: 1;
+		height: 34px;
+		border: none;
+		border-radius: 10px;
+		background: var(--hud);
+		color: #fff;
+		font-size: 13px;
+		font-weight: 500;
+		display: grid;
+		place-items: center;
+	}
+	.map-toolbar button[aria-pressed='true'] {
+		background: var(--sky);
+	}
+	.map-toolbar .size-btn {
+		flex: 0 0 34px;
+	}
+	.size-btn svg {
+		width: 15px;
+		height: 15px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 2.2;
+		stroke-linecap: round;
+	}
 	.map-box {
 		height: 250px;
 		border-radius: 14px;
@@ -1074,6 +1138,9 @@
 		.minimap:hover .map-box,
 		.minimap.pinned .map-box {
 			height: 55vh;
+		}
+		.map-toolbar .size-btn {
+			display: none;
 		}
 		.map-fab {
 			display: inline-flex;

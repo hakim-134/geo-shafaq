@@ -281,7 +281,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The drawn test panorama of the `demo` provider (an SVG). */
+        /** The drawn test panorama of the `demo` provider (a JPEG). */
         get: operations["getDemoPanorama"];
         put?: never;
         post?: never;
@@ -367,7 +367,7 @@ export interface components {
             movement: components["schemas"]["Movement"];
             hints: components["schemas"]["HintRule"];
             compass: boolean;
-            /** @description Allowed panorama providers; empty = any provider that covers the place. */
+            /** @description Allowed panorama providers; empty = the players' providers (PROVIDERS) that cover the place. Test providers (TEST_PROVIDERS, e.g. demo) play only when named here. */
             providers: string[];
             /**
              * Format: double
@@ -385,7 +385,7 @@ export interface components {
             name: components["schemas"]["Text"];
             description: components["schemas"]["Text"];
             official: boolean;
-            /** @description Active panoramas in the map. */
+            /** @description Active panoramas in the map, on the players' providers. */
             panoramas: number;
             /** @description Streets (on a street map) or places the panoramas are grouped by. */
             groups: number;
@@ -401,7 +401,7 @@ export interface components {
              */
             sizeKm: number;
             rules: components["schemas"]["Rules"];
-            /** @description Providers with panoramas in this map. */
+            /** @description The players' providers with panoramas in this map. Test providers are never listed and never counted in `panoramas` or `groups`. */
             providers: string[];
             /** @description The place's outline as a small SVG (maps of one place only). */
             outline?: string;
@@ -951,13 +951,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description An equirectangular SVG image */
+            /** @description An equirectangular JPEG image */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "image/svg+xml": string;
+                    "image/jpeg": string;
                 };
             };
             404: components["responses"]["Error"];

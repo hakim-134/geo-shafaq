@@ -1,34 +1,13 @@
 // Yandex panoramas (JS API 2.1). The API finds the panorama nearest to the round's point;
 // we check it is close enough and report it, so the server scores against what was shown.
-import { yandexKey } from '#lib/config.js';
+import { loadYmaps } from '#lib/ymaps.js';
 import { distanceKm, PanoError, type PanoViewer, type ViewerOptions } from './types';
 import type { PanoView } from '#lib/api/client.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-declare const ymaps: any;
-
-const LANG = { uz: 'uz_UZ', en: 'en_US', ru: 'ru_RU' } as const;
-let loading: Promise<void> | null = null;
-
-function load(lang: ViewerOptions['lang']): Promise<void> {
-	const key = yandexKey();
-	if (!key) return Promise.reject(new PanoError('key'));
-	loading ??= new Promise<void>((resolve, reject) => {
-		const s = document.createElement('script');
-		s.src = `https://api-maps.yandex.ru/2.1/?lang=${LANG[lang]}&apikey=${encodeURIComponent(key)}`;
-		s.onload = () => ymaps.ready(resolve, () => reject(new PanoError('key')));
-		// Yandex answers 403 for a bad or used-up key, and the browser then blocks the script
-		s.onerror = () => {
-			loading = null;
-			reject(new PanoError(navigator.onLine === false ? 'network' : 'key'));
-		};
-		document.head.appendChild(s);
-	});
-	return loading;
-}
 
 export async function createYandex(el: HTMLElement, opts: ViewerOptions): Promise<PanoViewer> {
-	await load(opts.lang);
+	const ymaps = await loadYmaps(opts.lang);
 	if (!ymaps.panorama.isSupported()) throw new PanoError('unsupported');
 
 	let player: any = null;

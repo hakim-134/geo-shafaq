@@ -19,5 +19,11 @@ export const variables = defineEnvVars({
 		schema: optional,
 		description:
 			'Where the API is; empty = api.geo.shafaq.uz on the site, the same host on :8131 elsewhere'
+	},
+	PUBLIC_GLITCHTIP_DSN: {
+		public: true,
+		static: true,
+		schema: optional,
+		description: 'Error tracking (GlitchTip project DSN); empty = off, as in development'
 	}
 });
