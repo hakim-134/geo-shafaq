@@ -353,6 +353,7 @@
 		if (e instanceof ApiError) {
 			if (e.code === 'network') return 'err_network';
 			if (e.code === 'no_panorama') return 'err_no_panorama';
+			if (e.code === 'daily_cap') return 'err_daily_cap';
 			if (e.code === 'not_found') return 'err_not_found';
 		}
 		return 'err_other';

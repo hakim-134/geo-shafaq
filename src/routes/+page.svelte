@@ -63,9 +63,11 @@
 				t(
 					code === 'no_panorama'
 						? 'err_no_panorama'
-						: code === 'network'
-							? 'err_network'
-							: 'err_other'
+						: code === 'daily_cap'
+							? 'err_daily_cap'
+							: code === 'network'
+								? 'err_network'
+								: 'err_other'
 				)
 			);
 		}

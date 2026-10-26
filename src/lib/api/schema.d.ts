@@ -298,7 +298,9 @@ export interface components {
         Error: {
             /**
              * @description no_session | not_found | bad_input | wrong_phase | round_running | game_over |
-             *     no_panorama | too_far | rate_limited | internal
+             *     no_panorama | daily_cap | too_far | rate_limited | internal.
+             *     daily_cap: the game's panorama providers reached today's budget (`DAILY_CAPS`);
+             *     new games start again after midnight, Moscow time.
              */
             code: string;
             message?: string;
@@ -496,6 +498,13 @@ export interface components {
              * @description Where to look first, degrees from north.
              */
             heading?: number;
+            /**
+             * @description The map this round must be guessed on, because the provider's terms forbid its
+             *     panoramas next to another map (Yandex: only on Yandex's map; Google: only on
+             *     Google's). Absent: any map, the game's usual one.
+             * @example yandex
+             */
+            guessMap?: string;
         };
         RoundShown: {
             pos?: components["schemas"]["LatLon"];
@@ -775,6 +784,7 @@ export interface operations {
             400: components["responses"]["Error"];
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     getGame: {
