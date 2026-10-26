@@ -49,19 +49,33 @@ export async function createMap(o: MapOptions): Promise<YMap> {
 	);
 }
 
+/** A place's simplified border, fetched once per page. */
+const shapes = new Map<string, Promise<GeoJSON.Geometry>>();
+export function placeShape(slug: string): Promise<GeoJSON.Geometry> {
+	let s = shapes.get(slug);
+	if (!s) {
+		s = call(api().GET('/v1/places/{slug}/shape', { params: { path: { slug } } })).then(
+			(r) => r.geometry as unknown as GeoJSON.Geometry,
+			(e) => {
+				shapes.delete(slug);
+				throw e;
+			}
+		);
+		shapes.set(slug, s);
+	}
+	return s;
+}
+
 /** The country's border, everything outside dimmed: the player sees where guesses make sense. */
-let shape: Promise<GeoJSON.Geometry> | null = null;
-export function countryShape(): Promise<GeoJSON.Geometry> {
-	shape ??= call(
-		api().GET('/v1/places/{slug}/shape', { params: { path: { slug: 'uzbekistan' } } })
-	).then(
-		(s) => s.geometry as unknown as GeoJSON.Geometry,
-		(e) => {
-			shape = null;
-			throw e;
-		}
-	);
-	return shape;
+export const countryShape = () => placeShape('uzbekistan');
+
+const polygons = (g: GeoJSON.Geometry): GeoJSON.Position[][][] =>
+	g.type === 'MultiPolygon' ? g.coordinates : g.type === 'Polygon' ? [g.coordinates] : [];
+
+/** The box around a shape, for zooming to a hint. */
+export function shapeBox(g: GeoJSON.Geometry): BBox {
+	const pts = polygons(g).flatMap((p) => p[0]);
+	return boxOf(pts.map(([lon, lat]) => ({ lat, lon })));
 }
 
 const ring = (r: GeoJSON.Position[]): Pt[] => r.map(([lon, lat]) => [lat, lon]);
@@ -69,13 +83,7 @@ const ring = (r: GeoJSON.Position[]): Pt[] => r.map(([lon, lat]) => [lat, lon]);
 /** Adds the border, and with mask the dimmed world around it. */
 export async function addBorder(map: YMap, geometry: GeoJSON.Geometry, mask: boolean) {
 	const ymaps = await loadYmaps('uz');
-	const polys =
-		geometry.type === 'MultiPolygon'
-			? geometry.coordinates
-			: geometry.type === 'Polygon'
-				? [geometry.coordinates]
-				: [];
-	const outlines = polys.map((p) => ring(p[0]));
+	const outlines = polygons(geometry).map((p) => ring(p[0]));
 	if (mask) {
 		// a box well past what the map can show, not the whole world: a ring across ±180°
 		// would be drawn the short way round, and dim Uzbekistan instead of the rest
@@ -151,6 +159,25 @@ export async function hintCircle(center: LatLon, radiusKm: number): Promise<any>
 			strokeStyle: 'dash',
 			interactivityModel: 'default#transparent'
 		}
+	);
+}
+
+/** A hint naming a district or region: its area, shaded, with a dashed red border. */
+export async function hintArea(geometry: GeoJSON.Geometry): Promise<any[]> {
+	const ymaps = await loadYmaps('uz');
+	return polygons(geometry).map(
+		(p) =>
+			new ymaps.Polygon(
+				[ring(p[0])],
+				{},
+				{
+					fillColor: COLORS.line + '1a',
+					strokeColor: COLORS.line,
+					strokeWidth: 2.5,
+					strokeStyle: 'dash',
+					interactivityModel: 'default#transparent'
+				}
+			)
 	);
 }
 

@@ -2,6 +2,7 @@
 // sets the session cookie; nobody is asked to sign in. Signing in (account.svelte.ts) only
 // adds a way back from another phone or laptop.
 import { api, call, type Me } from '#lib/api/client.js';
+import { adoptPrefs } from '#lib/compass.svelte.js';
 
 /** `version` goes up whenever the player on this device changes (signed in, merged, signed
  * out), so pages that show the player's games load them again. */
@@ -14,6 +15,7 @@ export function ensureSession(): Promise<Me> {
 	starting ??= call(api().POST('/v1/session')).then(
 		(me) => {
 			session.me = me;
+			adoptPrefs(me);
 			return me;
 		},
 		(err) => {
@@ -32,6 +34,7 @@ export async function refreshMe() {
 /** A new player on this device (after signing in, a merge, or signing out). */
 export function setMe(me: Me | null) {
 	session.me = me;
+	if (me) adoptPrefs(me);
 	starting = me ? Promise.resolve(me) : null;
 	session.version++;
 }

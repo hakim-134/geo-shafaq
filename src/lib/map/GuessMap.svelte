@@ -1,5 +1,6 @@
 <script lang="ts">
-	// The map the player guesses on (Yandex): tap to place the pin. Shows the hint circles.
+	// The map the player guesses on (Yandex): tap to place the pin. Shows the hints: the
+	// named district or region shaded, and the circles.
 	import { onMount } from 'svelte';
 	import {
 		addBorder,
@@ -8,8 +9,11 @@
 		COLORS,
 		countryShape,
 		createMap,
+		hintArea,
 		hintCircle,
 		marker,
+		placeShape,
+		shapeBox,
 		yandexType,
 		type BBox,
 		type Layer,
@@ -68,16 +72,37 @@
 
 	$effect(() => {
 		const m = map;
-		const list = hints.map((h) => h.circle);
+		const list = [...hints];
 		if (!m) return;
 		for (const c of circles) m.geoObjects.remove(c);
 		circles = [];
-		Promise.all(list.map((c) => hintCircle(c.center, c.radiusKm))).then((cs) => {
-			for (const c of cs) m.geoObjects.add(c);
-			circles = cs;
+		let gone = false;
+		// only the latest named place: the region's border goes once the district is named
+		const lastNamed = list.findLast((h) => h.place);
+		const drawn = list.map(async (h) => {
+			const out: any[] = [];
+			if (h.place && h === lastNamed) {
+				const shape = await placeShape(h.place).catch(() => null);
+				if (shape) {
+					out.push(...(await hintArea(shape)));
+					if (h === list.at(-1)) m.setBounds(bounds(shapeBox(shape)), { duration: 400 });
+				}
+			}
+			if (h.circle) {
+				out.push(await hintCircle(h.circle.center, h.circle.radiusKm));
+				if (h === list.at(-1))
+					m.setBounds(bounds(circleBox(h.circle.center, h.circle.radiusKm)), { duration: 400 });
+			}
+			return out;
 		});
-		const last = list.at(-1);
-		if (last) m.setBounds(bounds(circleBox(last.center, last.radiusKm)), { duration: 400 });
+		Promise.all(drawn).then((all) => {
+			if (gone) return;
+			for (const o of all.flat()) m.geoObjects.add(o);
+			circles = all.flat();
+		});
+		return () => {
+			gone = true;
+		};
 	});
 
 	$effect(() => {

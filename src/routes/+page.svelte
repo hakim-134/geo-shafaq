@@ -9,18 +9,30 @@
 	import { openSignIn } from '#lib/account.svelte.js';
 	import { fmtClock, fmtNum } from '#lib/format.js';
 	import {
+		applyPreset,
 		loadChoice,
 		saveChoice,
 		rulesFor,
 		testProviders,
-		ROUNDS,
-		TIMES,
+		roundsFromSlider,
+		sliderFromRounds,
+		timeFromSlider,
+		sliderFromTime,
+		ROUNDS_END,
+		TIME_END,
+		MAX_HINTS,
+		HINT_COSTS,
+		HINT_KINDS,
+		MOVEMENTS,
 		type Preset
 	} from '#lib/rules.js';
+	import { compass, setCompassStyle, COMPASS_STYLES, MNEMONIC } from '#lib/compass.svelte.js';
+	import Progress from '#lib/maps/Progress.svelte';
 	import { showToast } from '#lib/toast.svelte.js';
 	import { load, save } from '#lib/storage.js';
 
 	let maps = $state<MapSummary[]>([]);
+	let placeMap = $state<MapSummary | null>(null); // a place picked in the place picker
 	let history = $state<GameListItem[]>([]);
 	let choice = $state(loadChoice());
 	let starting = $state(false);
@@ -29,7 +41,9 @@
 	let settingsOpen = $state(false);
 	let nudgeHidden = $state(load('nudge_hidden', '') === '1');
 
-	const selected = $derived(maps.find((m) => m.slug === choice.map) ?? maps[0]);
+	const allMaps = $derived(placeMap ? [placeMap, ...maps] : maps);
+	const selected = $derived(allMaps.find((m) => m.slug === choice.map) ?? maps[0]);
+	const canMove = $derived(selected?.canMove ?? true);
 	const me = $derived(session.me);
 	const banned = $derived(!!me?.user.banned);
 	const newPlayer = $derived(loaded && (me?.stats.games ?? 0) === 0);
@@ -52,7 +66,17 @@
 			maps = m;
 			history = h.games;
 			offline = false;
-			if (!m.some((x) => x.slug === choice.map) && m.length) choice.map = m[0].slug;
+			placeMap = null;
+			if (choice.map.startsWith('place-')) {
+				try {
+					placeMap = await call(
+						api().GET('/v1/maps/{slug}', { params: { path: { slug: choice.map } } })
+					);
+				} catch {
+					/* gone: back to the first map */
+				}
+			}
+			if (!placeMap && !m.some((x) => x.slug === choice.map) && m.length) choice.map = m[0].slug;
 		} catch {
 			offline = true;
 		}
@@ -98,14 +122,43 @@
 		if (e.key === 'Enter' && e.target === document.body) play();
 	}
 
-	const timeLabel = (s: number) => (s ? fmtClock(s) : '∞');
 	const summary = $derived(
 		[
 			t(`diff_${choice.preset}`),
-			t('nRounds', { n: choice.rounds }),
-			choice.timeSec ? t('perRound', { time: fmtClock(choice.timeSec) }) : t('noTimeLimit')
-		].join(' · ')
+			choice.rounds ? t('nRounds', { n: choice.rounds }) : t('endlessShort'),
+			choice.timeSec ? fmtClock(choice.timeSec) : t('noTimeLimit'),
+			choice.hints.count ? t('nHints', { n: choice.hints.count }) : t('hintsNone').toLowerCase(),
+			choice.movement !== 'move' || !canMove
+				? t(`move_${canMove ? choice.movement : 'nomove'}`).toLowerCase()
+				: '',
+			choice.compass ? '' : t('noCompass')
+		]
+			.filter(Boolean)
+			.join(' · ')
 	);
+
+	// the sliders paint their track up to the thumb
+	const fill = (v: number, max: number, min = 0) => `${((v - min) / (max - min)) * 100}%`;
+	const roundsPos = $derived(sliderFromRounds(choice.rounds));
+	const timePos = $derived(sliderFromTime(choice.timeSec));
+	const compassValue = $derived(choice.compass ? compass.style : 'none');
+	function pickCompass(v: string) {
+		choice.compass = v !== 'none';
+		if (v !== 'none') setCompassStyle(v as typeof compass.style);
+	}
+	// the numbers under the sliders, each where its value sits on the track
+	const roundMarks: [number, string][] = [
+		[1, '1'],
+		[5, '5'],
+		[10, '10'],
+		[15, '15'],
+		[ROUNDS_END, '∞']
+	];
+	const timeMarks: [number, string][] = [
+		...[10, 30, 60, 180].map((s): [number, string] => [sliderFromTime(s), fmtClock(s)]),
+		[TIME_END, '∞']
+	];
+	const costLabel = (c: number) => (c ? `−${Math.round(c * 100)}%` : t('costFree'));
 </script>
 
 <svelte:window onkeydown={onKey} />
@@ -139,16 +192,13 @@
 		{/if}
 
 		<section class="maps" aria-label={t('map')}>
-			{#each maps as m (m.slug)}
+			{#each allMaps as m (m.slug)}
 				{@const on = m.slug === selected?.slug}
 				<button class="map" aria-pressed={on} onclick={() => (choice.map = m.slug)}>
 					<MapSign slug={m.slug} name={tx(m.name)} top={tx(m.description)} outline={m.outline} />
 					<span class="meta">
-						{#if m.streets && m.seen !== undefined}
-							<span class="progress" style:--p={`${(m.seen / Math.max(m.groups, 1)) * 100}%`}>
-								<i></i>
-								<span>{t('streetsSeen', { n: m.seen, m: m.groups })}</span>
-							</span>
+						{#if m.progress && m.progress.unit !== 'spot'}
+							<Progress progress={m.progress} />
 						{:else}
 							<span>{t('nSpots', { n: m.panoramas })}</span>
 						{/if}
@@ -165,6 +215,26 @@
 					{#each { length: 4 } as _, i (i)}<div class="map skeleton"></div>{/each}
 				{/if}
 			{/each}
+			{#if maps.length}
+				<a class="map other" href="/places">
+					<span class="other-plate">
+						<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+							><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z" /><circle
+								cx="12"
+								cy="10"
+								r="2.3"
+							/></svg
+						>
+						<span class="text">
+							<b>{placeMap ? t('changePlace') : t('otherPlace')}</b>
+							<span>{t('otherPlaceText')}</span>
+						</span>
+						<svg viewBox="0 0 24 24" class="icon chev-r" aria-hidden="true"
+							><path d="m9 6 6 6-6 6" /></svg
+						>
+					</span>
+				</a>
+			{/if}
 		</section>
 
 		{#if newPlayer}
@@ -238,32 +308,143 @@
 					<div class="field-label">{t('difficulty')}</div>
 					<div class="segmented">
 						{#each presets as p (p)}
-							<button aria-pressed={choice.preset === p} onclick={() => (choice.preset = p)}
-								>{t(`diff_${p}`)}</button
+							<button
+								aria-pressed={choice.preset === p}
+								onclick={() => (choice = applyPreset(choice, p))}>{t(`diff_${p}`)}</button
 							>
 						{/each}
 					</div>
 					<p class="field-note">{t(`diffHint_${choice.preset}`)}</p>
 				</div>
-				<div>
-					<div class="field-label">{t('rounds')}</div>
-					<div class="segmented">
-						{#each ROUNDS as n (n)}
-							<button aria-pressed={choice.rounds === n} onclick={() => (choice.rounds = n)}
-								>{n}</button
-							>
+
+				<label class="slider">
+					<span class="field-head">
+						<span class="field-label">{t('rounds')}</span>
+						<b>{choice.rounds ? choice.rounds : t('roundsEndless')}</b>
+					</span>
+					<input
+						type="range"
+						class="range"
+						min="1"
+						max={ROUNDS_END}
+						step="1"
+						value={roundsPos}
+						style:--fill={fill(roundsPos, ROUNDS_END, 1)}
+						oninput={(e) => (choice.rounds = roundsFromSlider(+e.currentTarget.value))}
+					/>
+					<span class="scale">
+						{#each roundMarks as [v, label] (label)}
+							<span style:left={fill(v, ROUNDS_END, 1)}>{label}</span>
 						{/each}
+					</span>
+				</label>
+
+				<label class="slider">
+					<span class="field-head">
+						<span class="field-label">{t('time')}</span>
+						<b>{choice.timeSec ? fmtClock(choice.timeSec) : t('timeNone')}</b>
+					</span>
+					<input
+						type="range"
+						class="range"
+						min="0"
+						max={TIME_END}
+						step="1"
+						value={timePos}
+						style:--fill={fill(timePos, TIME_END)}
+						oninput={(e) => (choice.timeSec = timeFromSlider(+e.currentTarget.value))}
+					/>
+					<span class="scale">
+						{#each timeMarks as [v, label] (label)}
+							<span style:left={fill(v, TIME_END)}>{label}</span>
+						{/each}
+					</span>
+				</label>
+
+				<div>
+					<div class="field-head">
+						<span class="field-label">{t('hints')}</span>
+						<span class="stepper">
+							<button
+								aria-label="−"
+								disabled={choice.hints.count <= 0}
+								onclick={() => choice.hints.count--}
+								><svg viewBox="0 0 24 24" class="icon"><path d="M6 12h12" /></svg></button
+							>
+							<b>{choice.hints.count || t('hintsNone')}</b>
+							<button
+								aria-label="+"
+								disabled={choice.hints.count >= MAX_HINTS}
+								onclick={() => choice.hints.count++}
+								><svg viewBox="0 0 24 24" class="icon"><path d="M6 12h12M12 6v12" /></svg></button
+							>
+						</span>
 					</div>
+					{#if choice.hints.count > 0}
+						<div class="hint-rules">
+							<div class="segmented small">
+								{#each ['round', 'game'] as const as per (per)}
+									<button
+										aria-pressed={choice.hints.per === per}
+										onclick={() => (choice.hints.per = per)}>{t(`hintsPer_${per}`)}</button
+									>
+								{/each}
+							</div>
+							<div class="field-label sub">{t('hintStart')}</div>
+							<div class="segmented small">
+								{#each HINT_KINDS as k (k)}
+									<button
+										aria-pressed={choice.hints.kind === k}
+										onclick={() => (choice.hints.kind = k)}>{t(`hintKind_${k}`)}</button
+									>
+								{/each}
+							</div>
+							<p class="field-note">{t(`hintKindNote_${choice.hints.kind}`)}</p>
+							<div class="field-label sub">{t('hintCost')}</div>
+							<div class="segmented small">
+								{#each HINT_COSTS as c (c)}
+									<button
+										aria-pressed={choice.hints.cost === c}
+										onclick={() => (choice.hints.cost = c)}>{costLabel(c)}</button
+									>
+								{/each}
+							</div>
+						</div>
+					{/if}
 				</div>
+
 				<div>
-					<div class="field-label">{t('time')}</div>
+					<div class="field-label">{t('movement')}</div>
 					<div class="segmented">
-						{#each TIMES as s (s)}
-							<button aria-pressed={choice.timeSec === s} onclick={() => (choice.timeSec = s)}
-								>{timeLabel(s)}</button
+						{#each MOVEMENTS as mv (mv)}
+							<button
+								aria-pressed={(canMove
+									? choice.movement
+									: choice.movement === 'move'
+										? 'nomove'
+										: choice.movement) === mv}
+								disabled={mv === 'move' && !canMove}
+								onclick={() => (choice.movement = mv)}>{t(`move_${mv}`)}</button
 							>
 						{/each}
 					</div>
+					<p class="field-note">
+						{!canMove && choice.movement === 'move'
+							? t('moveNoteCantMove')
+							: t(`moveNote_${choice.movement}`)}
+					</p>
+				</div>
+
+				<div>
+					<div class="field-label">{t('compass')}</div>
+					<div class="segmented">
+						{#each [...COMPASS_STYLES, 'none'] as c (c)}
+							<button aria-pressed={compassValue === c} onclick={() => pickCompass(c)}
+								>{c === 'none' ? t('compassNone') : t(`compass_${c}` as Key)}</button
+							>
+						{/each}
+					</div>
+					<p class="field-note">{t(`compassNote_${compassValue}` as Key, MNEMONIC)}</p>
 				</div>
 			</div>
 
@@ -422,18 +603,50 @@
 		font-size: 13px;
 		color: var(--muted);
 	}
-	.progress {
+	/* the way to the place picker: a blank plate waiting for a name */
+	.other {
+		text-decoration: none;
+		color: var(--text);
+	}
+	.other-plate {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: 12px;
+		min-height: 82px;
+		padding: 12px 16px;
+		border-radius: 10px;
+		border: 2px dashed color-mix(in srgb, var(--muted) 55%, transparent);
+		background: color-mix(in srgb, var(--surface) 60%, transparent);
+		transition:
+			border-color 0.15s,
+			transform 0.15s;
+	}
+	.other:hover .other-plate {
+		border-color: var(--sky);
+		transform: translateY(-2px);
+	}
+	.other-plate > .icon {
+		width: 30px;
+		height: 30px;
+		color: var(--sky);
+		flex: none;
+	}
+	.other-plate .text {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
 		min-width: 0;
 	}
-	.progress i {
-		width: 64px;
-		height: 6px;
-		border-radius: 3px;
-		flex: none;
-		background: linear-gradient(to right, var(--gold) var(--p), var(--surface-2) var(--p));
+	.other-plate b {
+		font-family: var(--display);
+		font-size: 16px;
+	}
+	.other-plate .text span {
+		font-size: 13px;
+		color: var(--muted);
+	}
+	.chev-r {
+		color: var(--muted);
 	}
 	.picked {
 		display: inline-flex;
@@ -574,6 +787,94 @@
 	.settings .field-note {
 		min-height: 0;
 		margin-top: 8px;
+	}
+	.field-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+	}
+	.field-head .field-label {
+		margin-bottom: 0;
+	}
+	.field-head > b {
+		font-family: var(--display);
+		font-size: 17px;
+		font-variant-numeric: tabular-nums;
+	}
+	.slider {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+	/* the thumb's middle runs 13px in from each end of the track */
+	.scale {
+		position: relative;
+		height: 14px;
+		margin: -6px 13px 0;
+		font-size: 11.5px;
+		color: var(--muted);
+	}
+	.scale span {
+		position: absolute;
+		transform: translateX(-50%);
+		white-space: nowrap;
+	}
+	.stepper {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 3px;
+		border-radius: 12px;
+		background: var(--surface-2);
+	}
+	.stepper button {
+		width: 38px;
+		height: 34px;
+		border: none;
+		border-radius: 9px;
+		background: var(--surface);
+		color: var(--text);
+		display: grid;
+		place-items: center;
+	}
+	.stepper button:disabled {
+		opacity: 0.4;
+	}
+	.stepper .icon {
+		width: 16px;
+		height: 16px;
+		stroke-width: 2.4;
+	}
+	.stepper b {
+		min-width: 64px;
+		text-align: center;
+		font-family: var(--display);
+		font-size: 15px;
+	}
+	.hint-rules {
+		margin-top: 10px;
+		padding: 12px;
+		border-radius: 14px;
+		background: var(--bg);
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.hint-rules .field-note {
+		margin-top: 0;
+	}
+	.field-label.sub {
+		margin: 4px 0 0;
+		font-size: 12px;
+	}
+	.segmented.small button {
+		min-height: 34px;
+		font-size: 13.5px;
+	}
+	.segmented button:disabled {
+		opacity: 0.35;
+		cursor: default;
 	}
 	.btn-play {
 		margin: 0 8px;

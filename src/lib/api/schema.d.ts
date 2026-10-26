@@ -237,6 +237,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/prefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Saves the player's preferences, so every device gets them.
+         * @description Only the fields sent change. `bad_input` for an unknown value.
+         */
+        post: operations["updatePrefs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/identities/unlink": {
         parameters: {
             query?: never;
@@ -321,6 +341,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/places/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A place for the place picker, with where it is and what is inside it.
+         * @description Start at `uzbekistan`. Each place counts its panoramas on the players' providers and
+         *     this player's progress there. Its map (`map`) is playable like any other.
+         */
+        get: operations["getPlace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/places/{slug}/shape": {
         parameters: {
             query?: never;
@@ -366,6 +407,27 @@ export interface paths {
         get: operations["getGame"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/games/{gameId}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ends the game now, after any round (endless games end this way).
+         * @description Not while a round is on screen (`wrong_phase`): guess first. A game without a single
+         *     guessed round is dropped (`abandoned`). Finishing a finished game returns it.
+         */
+        post: operations["finishGame"];
         delete?: never;
         options?: never;
         head?: never;
@@ -535,6 +597,15 @@ export interface components {
             /** @description No way to sign in yet; everything is kept on the server all the same. */
             guest: boolean;
             banned?: boolean;
+            prefs?: components["schemas"]["Prefs"];
+        };
+        /** @description The player's own preferences. Absent fields are not set yet (the device's own choice stands). */
+        Prefs: {
+            /**
+             * @description The compass style. Whether a game has a compass at all is its rule.
+             * @enum {string}
+             */
+            compass?: "classic" | "modern" | "mnemonic";
         };
         Stats: {
             games: number;
@@ -656,6 +727,11 @@ export interface components {
             /** @enum {string} */
             per: "game" | "round";
             /**
+             * @description Where a round's hints start: the region's name, the district's, or a circle. Each next hint narrows down (region → district → circles, each half the last); a name that would not narrow anything on this map is skipped. Absent: games from before, a name with a circle.
+             * @enum {string}
+             */
+            kind?: "region" | "district" | "circle";
+            /**
              * Format: double
              * @description Share of the round score each hint takes (0.2 = −20%).
              */
@@ -663,6 +739,7 @@ export interface components {
         };
         /** @description One set of rules for solo games, rooms and challenges. */
         Rules: {
+            /** @description 0 = endless, until the player finishes the game. */
             rounds: number;
             /** @description Seconds per round; 0 = no limit, otherwise at least 10. */
             timeSec: number;
@@ -691,10 +768,11 @@ export interface components {
             panoramas: number;
             /** @description Streets (on a street map) or places the panoramas are grouped by. */
             groups: number;
-            /** @description A street map; `groups` counts streets, and progress counts streets seen. */
-            streets?: boolean;
-            /** @description Streets this player has already been on (street maps only). */
-            seen?: number;
+            place?: components["schemas"]["PlaceRef"];
+            parent?: components["schemas"]["PlaceRef"];
+            progress?: components["schemas"]["Progress"];
+            /** @description The map's panoramas let the player walk; otherwise `move` plays as `nomove`. */
+            canMove?: boolean;
             /** @description [west, south, east, north] */
             bbox: number[];
             /**
@@ -707,6 +785,54 @@ export interface components {
             providers: string[];
             /** @description The place's outline as a small SVG (maps of one place only). */
             outline?: string;
+        };
+        /** @description A place, by name. On a map, the map's one place (or its parent). */
+        PlaceRef: {
+            /** @example chilonzor-tumani */
+            slug: string;
+            /** @enum {string} */
+            kind: "country" | "region" | "district" | "city";
+            name: components["schemas"]["Text"];
+            /**
+             * @description The place's own map: `place-<slug>`.
+             * @example place-chilonzor-tumani
+             */
+            map: string;
+        };
+        /**
+         * @description How much of a place this player has seen (played a round there) and learned: a street
+         *     or spot guessed within 500 m, a district or region guessed inside it.
+         */
+        Progress: {
+            /** @enum {string} */
+            unit: "street" | "district" | "region" | "spot";
+            total: number;
+            seen: number;
+            learned: number;
+        };
+        PlaceCard: {
+            slug: string;
+            /** @enum {string} */
+            kind: "country" | "region" | "district" | "city";
+            name: components["schemas"]["Text"];
+            map: string;
+            /** @description The outline as a small SVG. */
+            outline: string;
+            /** @description A photo of the place (Wikimedia Commons). */
+            banner?: string;
+            bannerCredit?: string;
+            /** @description Active panoramas, on the players' providers. */
+            panoramas: number;
+            /** @description Places inside it that have panoramas (the picker can go deeper). */
+            places: number;
+            progress: components["schemas"]["Progress"];
+        };
+        PlaceDetail: {
+            place: components["schemas"]["PlaceCard"];
+            /** @description Where it is, the country first. */
+            path: components["schemas"]["PlaceRef"][];
+            /** @description The places inside it, those with the most panoramas first. */
+            children: components["schemas"]["PlaceCard"][];
         };
         PlaceShape: {
             slug: string;
@@ -817,11 +943,14 @@ export interface components {
         GuessRequest: {
             pos?: components["schemas"]["LatLon"];
         };
+        /** @description A name (region or district, with its outline on the map), or a circle that holds the place. */
         Hint: {
             /** @enum {string} */
-            kind: "district" | "region";
-            text: components["schemas"]["Text"];
-            circle: components["schemas"]["Circle"];
+            kind: "district" | "region" | "circle";
+            text?: components["schemas"]["Text"];
+            /** @description The named place's slug, for its outline (`/v1/places/{slug}/shape`). */
+            place?: string;
+            circle?: components["schemas"]["Circle"];
         };
         Circle: {
             center: components["schemas"]["LatLon"];
@@ -1223,6 +1352,33 @@ export interface operations {
             401: components["responses"]["Error"];
         };
     };
+    updatePrefs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Prefs"];
+            };
+        };
+        responses: {
+            /** @description The player */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
     unlinkIdentity: {
         parameters: {
             query?: never;
@@ -1349,6 +1505,29 @@ export interface operations {
             404: components["responses"]["Error"];
         };
     };
+    getPlace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The place */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceDetail"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
     getPlaceShape: {
         parameters: {
             query?: never;
@@ -1421,6 +1600,30 @@ export interface operations {
                 };
             };
             404: components["responses"]["Error"];
+        };
+    };
+    finishGame: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gameId: components["parameters"]["GameId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The finished game */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Game"];
+                };
+            };
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
         };
     };
     nextRound: {

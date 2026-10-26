@@ -45,11 +45,13 @@ export async function createYandex(el: HTMLElement, opts: ViewerOptions): Promis
 			const dir: [number, number] = [view.heading ?? 0, 0];
 			start = { pano, dir };
 			if (!player) {
+				const still = opts.movement === 'nmpz'; // no move, no pan, no zoom: not even by keys
 				player = new ymaps.panorama.Player(el, pano, {
 					direction: dir,
-					controls: ['zoomControl'],
+					controls: still ? [] : ['zoomControl'],
 					suppressMapOpenBlock: true,
-					hotkeysEnabled: true
+					hotkeysEnabled: !still,
+					scrollZoomBehavior: !still
 				});
 				player.events.add('directionchange', onDirection);
 				player.events.add('panoramachange', onPanorama);

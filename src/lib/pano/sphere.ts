@@ -26,7 +26,9 @@ export async function createSphere(el: HTMLElement, opts: ViewerOptions): Promis
 						panorama: imageSrc(view.imageUrl),
 						defaultYaw: startYaw,
 						defaultPitch: 0,
-						navbar: ['zoom'],
+						navbar: opts.movement === 'nmpz' ? false : ['zoom'],
+						keyboard: opts.movement === 'nmpz' ? false : 'fullscreen',
+						mousewheel: opts.movement !== 'nmpz',
 						loadingTxt: '',
 						withCredentials: false
 					});

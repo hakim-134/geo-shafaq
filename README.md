@@ -37,21 +37,23 @@ same network opens the laptop's address on port 8130.
 
 ## How it fits together
 
-| Where                               | What                                                                                                                                                                             |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/routes/+page.svelte`           | the home: maps as road signs, the game's settings, Play, recent games                                                                                                            |
-| `src/routes/game/[id]/+page.svelte` | a game: panorama, guess map, timer, hints, results, final summary (also someone else's finished game, by its link)                                                               |
-| `src/routes/me`, `u/[id]`, `games`  | the player's profile (name, avatar, ways to sign in), another player's page (with Report), all games                                                                             |
-| `src/lib/account.svelte.ts`         | signing in: Telegram (bot link, QR code, Mini App), Google, merging, signing out                                                                                                 |
-| `src/lib/api/`                      | the typed API client (openapi-fetch); never edit `schema.d.ts` by hand                                                                                                           |
-| `src/lib/pano/`                     | one `PanoViewer` interface; `yandex.ts`, `sphere.ts` (our own and demo panoramas, Photo Sphere Viewer). Each loads its SDK only when a round needs it                            |
-| `src/lib/map/`                      | the guess map (map / satellite / hybrid toolbar, as in v0; satellite only on hard rules) and the result map: Yandex's map, the same JS API as the panoramas (`src/lib/ymaps.ts`) |
-| `src/lib/game/`                     | score card, "you were here" card, share card                                                                                                                                     |
-| `src/lib/i18n/strings.ts`           | Uzbek (first), English, Russian                                                                                                                                                  |
-| `src/lib/config.ts`                 | where the API is, and the Yandex key: the only file that names the domains                                                                                                       |
-| `src/lib/errors.ts`                 | players' crashes to GlitchTip (`PUBLIC_GLITCHTIP_DSN`), a ~1 KB reporter                                                                                                         |
-| `src/env.ts`                        | the settings read from `.env.local`                                                                                                                                              |
-| `src/service-worker/`               | the PWA shell cache                                                                                                                                                              |
+| Where                                   | What                                                                                                                                                                             |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/routes/+page.svelte`               | the home: maps as road signs (and a picked place), the game's settings (sliders, hints, movement, compass), Play, recent games                                                   |
+| `src/routes/places/[slug]`              | the place picker: a place as its entry sign, its panoramas and the player's progress, the places inside it                                                                       |
+| `src/routes/game/[id]/+page.svelte`     | a game: panorama, guess map, timer, hints, results, final summary (also someone else's finished game, by its link)                                                               |
+| `src/routes/me`, `u/[id]`, `games`      | the player's profile (name, avatar, ways to sign in), another player's page (with Report), all games                                                                             |
+| `src/lib/account.svelte.ts`             | signing in: Telegram (bot link, QR code, Mini App), Google, merging, signing out                                                                                                 |
+| `src/lib/api/`                          | the typed API client (openapi-fetch); never edit `schema.d.ts` by hand                                                                                                           |
+| `src/lib/pano/`                         | one `PanoViewer` interface; `yandex.ts`, `sphere.ts` (our own and demo panoramas, Photo Sphere Viewer). Each loads its SDK only when a round needs it                            |
+| `src/lib/map/`                          | the guess map (map / satellite / hybrid toolbar, as in v0; satellite only on hard rules) and the result map: Yandex's map, the same JS API as the panoramas (`src/lib/ymaps.ts`) |
+| `src/lib/game/`                         | score card, "you were here" card, share card                                                                                                                                     |
+| `src/lib/rules.ts`, `compass.svelte.ts` | the settings as the server's rules (and the sliders' scales); the compass style, kept on the device                                                                              |
+| `src/lib/i18n/strings.ts`               | Uzbek (first), English, Russian                                                                                                                                                  |
+| `src/lib/config.ts`                     | where the API is, and the Yandex key: the only file that names the domains                                                                                                       |
+| `src/lib/errors.ts`                     | players' crashes to GlitchTip (`PUBLIC_GLITCHTIP_DSN`), a ~1 KB reporter                                                                                                         |
+| `src/env.ts`                            | the settings read from `.env.local`                                                                                                                                              |
+| `src/service-worker/`                   | the PWA shell cache                                                                                                                                                              |
 
 The game never scores anything: the server sends the result. Game state lives on the server,
 so a reload continues the round, clock included.

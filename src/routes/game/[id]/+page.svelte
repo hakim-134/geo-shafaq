@@ -18,6 +18,9 @@
 	import { LAYERS, type BBox, type Layer } from '#lib/map/map.js';
 	import { load, save } from '#lib/storage.js';
 	import Compass from '#lib/components/Compass.svelte';
+	import MapSign from '#lib/maps/MapSign.svelte';
+	import { compass, nextCompassStyle } from '#lib/compass.svelte.js';
+	import { loadChoice, saveChoice } from '#lib/rules.js';
 	import ScoreCard from '#lib/game/ScoreCard.svelte';
 	import PlaceCard from '#lib/game/PlaceCard.svelte';
 	import { i18n, t, tx, type Key } from '#lib/i18n/index.svelte.js';
@@ -76,6 +79,7 @@
 	let activeProvider = $state('');
 
 	const rules = $derived(game?.rules);
+	const endless = $derived(game?.rules.rounds === 0);
 	const total = $derived(game?.total ?? 0);
 	const done = $derived(game?.rounds.filter((r) => r.result) ?? []);
 	const bbox = $derived((game?.map.bbox ?? [55.9, 37.1, 73.3, 45.7]) as BBox);
@@ -321,6 +325,7 @@
 
 	const newBest = $derived(
 		mine &&
+			!endless &&
 			phase === 'final' &&
 			game?.status === 'finished' &&
 			total > bestBefore &&
@@ -338,16 +343,51 @@
 		return tx(p.street ?? p.district ?? p.city ?? p.region) || '—';
 	}
 
-	async function playAgain() {
-		if (!game) return;
+	async function playAgain(map = game?.map.slug) {
+		if (!game || !map) return;
 		try {
-			const g = await call(
-				api().POST('/v1/games', { body: { map: game.map.slug, rules: game.rules } })
-			);
+			const g = await call(api().POST('/v1/games', { body: { map, rules: game.rules } }));
 			goto(`/game/${g.id}`);
 		} catch (e) {
 			showToast(t(e instanceof ApiError && e.code === 'banned' ? 'bannedText' : errorKey(e)), 3500);
 		}
+	}
+
+	// "start narrow, go wide": after a good game in a place, the place around it
+	const wider = $derived(
+		mine &&
+			phase === 'final' &&
+			game?.status === 'finished' &&
+			game.max > 0 &&
+			total / game.max >= 0.7
+			? game.map.parent
+			: undefined
+	);
+	function goWider() {
+		if (!wider) return;
+		const c = loadChoice();
+		saveChoice({ ...c, map: wider.map }); // and the home picks it next time
+		playAgain(wider.map);
+	}
+
+	// an endless game ends when the player says so
+	async function finishGame() {
+		if (!game) return;
+		stopTimer();
+		try {
+			game = await call(
+				api().POST('/v1/games/{gameId}/finish', { params: { path: { gameId: game.id } } })
+			);
+			phase = 'final';
+			refreshMe().catch(() => {});
+		} catch (e) {
+			showToast(t(errorKey(e)));
+		}
+	}
+
+	function cycleCompass() {
+		const s = nextCompassStyle();
+		showToast(t('compassTap', { name: t(`compass_${s}`) }), 1500);
 	}
 
 	function share() {
@@ -382,7 +422,7 @@
 		if (phase === 'result' || phase === 'final') {
 			if (e.key === 'Enter') {
 				e.preventDefault();
-				if (phase === 'result') result?.gameOver ? showFinal(true) : nextRound();
+				if (phase === 'result') afterResult();
 			}
 			return;
 		}
@@ -397,6 +437,11 @@
 			if (window.innerWidth <= 700) openMap();
 			else togglePinned();
 		}
+	}
+
+	function afterResult() {
+		if (result?.gameOver) showFinal(true);
+		else nextRound();
 	}
 
 	onDestroy(() => {
@@ -428,9 +473,11 @@
 				>
 				<div class="chip">
 					<span class="chip-label">{t('round')}</span>
-					<span class="chip-value">{round?.n ?? done.length} / {game.rules.rounds}</span>
+					<span class="chip-value"
+						>{round?.n ?? done.length}{#if !endless}&nbsp;/ {game.rules.rounds}{/if}</span
+					>
 					<span class="dots">
-						{#each { length: game.rules.rounds } as _, i (i)}
+						{#each { length: endless ? 0 : game.rules.rounds } as _, i (i)}
 							{@const r = game.rounds[i]?.result}
 							<i
 								class={r
@@ -471,6 +518,7 @@
 							/></svg
 						>
 						<span class="label">{t('hint')}</span>
+						{#if hintsLeft > 1}<span class="left">{hintsLeft}</span>{/if}
 						<span class="tag" class:cost={hintCost > 0}
 							>{hintCost > 0 ? `−${Math.round(hintCost * 100)}%` : t('hintFree')}</span
 						>
@@ -492,13 +540,21 @@
 		</div>
 
 		{#if hints.length && phase === 'playing'}
-			<div class="hint-banner">
-				{t(hints.at(-1)!.kind === 'district' ? 'district' : 'region')}: {tx(hints.at(-1)!.text)}
+			{@const h = hints.at(-1)!}
+			<div class="hint-banner" class:low={game.rules.compass && compass.style === 'modern'}>
+				{h.kind === 'circle' ? t('hintCircle') : `${t(h.kind)}: ${tx(h.text)}`}
 			</div>
 		{/if}
 
 		{#if game.rules.compass && phase === 'playing'}
-			<div class="compass-spot"><Compass {heading} /></div>
+			<button
+				class="compass-spot {compass.style}"
+				onclick={cycleCompass}
+				title={t(`compass_${compass.style}`)}
+				aria-label={t('compass')}
+			>
+				<Compass {heading} style={compass.style} />
+			</button>
 		{/if}
 
 		<div
@@ -583,12 +639,12 @@
 					<span class="l-actual">{t('actual')}</span><span class="l-guess">{t('yourGuess')}</span>
 				</div>
 				<div class="actions">
-					<button
-						class="btn btn-primary"
-						onclick={() => (result?.gameOver ? showFinal(true) : nextRound())}
-					>
+					<button class="btn btn-primary" onclick={afterResult}>
 						{result.gameOver ? t('finish') : t('next')}
 					</button>
+					{#if endless}
+						<button class="btn btn-sky" onclick={finishGame}>{t('finishGame')}</button>
+					{/if}
 					<a class="btn btn-ghost" href="/">{t('menu')}</a>
 				</div>
 			</div>
@@ -643,8 +699,18 @@
 				<div class="legend">
 					<span class="l-actual">{t('actual')}</span><span class="l-guess">{t('yourGuess')}</span>
 				</div>
+				{#if wider}
+					<div class="wider">
+						<p>{t('goWider')}</p>
+						<button class="wider-go" onclick={goWider}>
+							<MapSign slug={wider.map} name={tx(wider.name)} size="small" />
+							<span class="go">{t('goWiderPlay')}</span>
+							<svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" /></svg>
+						</button>
+					</div>
+				{/if}
 				<div class="actions">
-					<button class="btn btn-primary" onclick={playAgain}
+					<button class="btn btn-primary" onclick={() => playAgain()}
 						>{mine ? t('playAgain') : t('playThisMap')}</button
 					>
 					<button class="btn btn-sky" onclick={share}>{t('share')}</button>
@@ -847,6 +913,11 @@
 	.hud-btn .tag.cost {
 		background: #ce1126;
 	}
+	.hud-btn .left {
+		font-family: var(--display);
+		font-size: 13px;
+		opacity: 0.8;
+	}
 	.hint-banner {
 		position: fixed;
 		top: 84px;
@@ -861,12 +932,59 @@
 		z-index: 1000;
 		white-space: nowrap;
 	}
-	/* under the HUD: the bottom corners belong to the viewers' own controls */
+	/* under the HUD: the bottom corners belong to the viewers' own controls. The strip sits
+	   in the middle, where the eye already is; the hint goes under it. */
 	.compass-spot {
 		position: fixed;
 		left: 14px;
 		top: 92px;
 		z-index: 1000;
+		padding: 0;
+		border: none;
+		background: none;
+		border-radius: 50%;
+	}
+	.compass-spot.modern {
+		left: 50%;
+		top: 84px;
+		transform: translateX(-50%);
+		border-radius: 10px;
+	}
+	.hint-banner.low {
+		top: 128px;
+	}
+	/* go wider */
+	.wider {
+		padding: 14px;
+		border-radius: 16px;
+		background: color-mix(in srgb, var(--gold) 16%, var(--surface));
+		border: 1px solid color-mix(in srgb, var(--gold) 40%, transparent);
+	}
+	.wider p {
+		font-size: 14px;
+		font-weight: 600;
+	}
+	.wider-go {
+		margin-top: 10px;
+		width: 100%;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 12px;
+		border: none;
+		border-radius: 12px;
+		background: var(--surface);
+		color: var(--text);
+		font-weight: 700;
+		box-shadow: 0 1px 0 var(--border);
+	}
+	.wider-go .go {
+		margin-left: auto;
+	}
+	.wider-go svg {
+		width: 18px;
+		height: 18px;
+		fill: var(--green);
 	}
 
 	/* the guess map */
@@ -1169,6 +1287,14 @@
 		.compass-spot {
 			top: 140px;
 			left: 10px;
+		}
+		.compass-spot.modern {
+			left: 50%;
+			top: 72px;
+			transform: translateX(-50%) scale(0.82); /* clear of the map's close button */
+		}
+		.hint-banner.low {
+			top: 116px;
 		}
 		.minimap {
 			left: 10px;
