@@ -52,8 +52,12 @@
 			},
 			() => {} // no Yandex: the round itself shows the error
 		);
+		// the box grows on hover and with the size button: the map follows it, centre kept
+		const seen = new ResizeObserver(() => map?.container.fitToViewport(true));
+		seen.observe(el);
 		return () => {
 			gone = true;
+			seen.disconnect();
 			map?.destroy();
 		};
 	});
@@ -99,14 +103,9 @@
 	export function fitArea() {
 		map?.setBounds(bounds(bbox));
 	}
-
-	/** After the container changed size (bigger on hover, shown on a phone). */
-	export function resize() {
-		map?.container.fitToViewport();
-	}
 </script>
 
-<div class="guess-map" class:scheme={layer === 'map'} bind:this={el}></div>
+<div class="guess-map" bind:this={el}></div>
 
 <style>
 	.guess-map {

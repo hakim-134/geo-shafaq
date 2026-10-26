@@ -10,7 +10,9 @@
 		createMap,
 		guessLine,
 		marker,
+		yandexType,
 		type BBox,
+		type Layer,
 		type YMap
 	} from './map.js';
 	import type { LatLon } from '#lib/api/client.js';
@@ -22,7 +24,8 @@
 		label?: string;
 	}
 
-	let { pairs, bbox }: { pairs: Pair[]; bbox: BBox } = $props();
+	// layer: the look the player chose on the guess map
+	let { pairs, bbox, layer }: { pairs: Pair[]; bbox: BBox; layer: Layer } = $props();
 
 	let el: HTMLDivElement;
 	let map = $state<YMap | null>(null);
@@ -31,7 +34,7 @@
 
 	onMount(() => {
 		let gone = false;
-		createMap({ container: el, lang: i18n.lang, layer: 'map', bbox }).then(
+		createMap({ container: el, lang: i18n.lang, layer, bbox }).then(
 			(m) => {
 				if (gone) return m.destroy();
 				countryShape().then(
@@ -46,6 +49,10 @@
 			gone = true;
 			map?.destroy();
 		};
+	});
+
+	$effect(() => {
+		map?.setType(yandexType(layer));
 	});
 
 	$effect(() => {
@@ -74,7 +81,7 @@
 	});
 </script>
 
-<div class="result-map scheme" bind:this={el}></div>
+<div class="result-map" bind:this={el}></div>
 
 <style>
 	.result-map {

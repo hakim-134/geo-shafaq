@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, tick } from 'svelte';
+	import { onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import {
@@ -67,7 +67,6 @@
 	}
 	function togglePinned() {
 		mapPinned = !mapPinned;
-		setTimeout(() => guessMap?.resize(), 260);
 	}
 	let guessMap = $state<ReturnType<typeof GuessMap>>();
 
@@ -366,10 +365,8 @@
 	}
 
 	// ---------- layout and keys ----------
-	async function openMap(open = !mapOpen) {
+	function openMap(open = !mapOpen) {
 		mapOpen = open;
-		await tick();
-		setTimeout(() => guessMap?.resize(), 50);
 	}
 
 	function onKey(e: KeyboardEvent) {
@@ -588,7 +585,11 @@
 				</div>
 			</div>
 			<div class="overlay-map">
-				<ResultMap {bbox} pairs={[{ actual: result.actual, guess: result.guess }]} />
+				<ResultMap
+					{bbox}
+					layer={chosenLayer}
+					pairs={[{ actual: result.actual, guess: result.guess }]}
+				/>
 			</div>
 		</div>
 	{/if}
@@ -631,7 +632,7 @@
 				</div>
 			</div>
 			<div class="overlay-map">
-				<ResultMap {bbox} pairs={finalPairs} />
+				<ResultMap {bbox} layer={chosenLayer} pairs={finalPairs} />
 			</div>
 		</div>
 	{/if}
