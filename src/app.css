@@ -1,6 +1,7 @@
 /* Shafaq Geo — the colours of the flag (sky, white, green, a thin red) with gold and lapis,
-   on warm paper by day and deep night blue at night. Shared parts only; each screen keeps
-   its own styles next to its markup. */
+   on warm paper by day and deep night blue at night. Everything a player presses is a
+   chunky plate with a darker edge under it that sinks when pressed, like a road sign's
+   plate or a game button. Shared parts only; each screen keeps its own styles. */
 
 *,
 *::before,
@@ -13,10 +14,13 @@
 :root {
 	--sky: #0099b5;
 	--sky-ink: #007890;
+	--sky-edge: #00657a;
 	--green: #1eb53a;
 	--green-ink: #15912d;
+	--green-edge: #0f7a24;
 	--red: #ce1126;
 	--gold: #c99a2e;
+	--star: #f5b81c;
 	--lapis: #13233f;
 	--lapis-2: #1c3157;
 	/* road signs, as on Uzbek streets: blue street plates, white town signs, brown for
@@ -30,15 +34,22 @@
 	--bg: #f4efe4;
 	--surface: #fffdf8;
 	--surface-2: #ebe3d3;
+	--edge: #d9cfbb; /* the edge under a light plate */
 	--text: #13233f;
 	--muted: #6c6a63;
 	--border: rgba(19, 35, 63, 0.13);
 	--shadow: 0 10px 30px rgba(19, 35, 63, 0.14);
-	--hud: rgba(12, 20, 36, 0.8);
+	--hud: rgba(13, 22, 40, 0.78);
+	--hud-edge: rgba(0, 0, 0, 0.35);
 
 	--display: 'Unbounded', 'Arial Black', sans-serif;
 	--body: 'Onest', system-ui, sans-serif;
 	--radius: 16px;
+
+	/* motion: a pop that overshoots a little, a settle, a bounce for rewards */
+	--pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+	--settle: cubic-bezier(0.2, 0.8, 0.2, 1);
+	--bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
 
 	/* 8-point star lattice (girih), used as a mask so it follows the theme colour */
 	--girih: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 60'%3E%3Cg fill='none' stroke='black' stroke-width='1.1'%3E%3Cpath d='M19 19h22v22H19zM30 14.4 45.6 30 30 45.6 14.4 30z'/%3E%3Cpath d='M30 0v14.4M30 45.6V60M0 30h14.4M45.6 30H60M0 0l19 19M60 0 41 19M0 60l19-19M60 60 41 41'/%3E%3C/g%3E%3C/svg%3E");
@@ -48,8 +59,10 @@
 :root[data-theme='dark'] {
 	--sky: #2bb7d3;
 	--sky-ink: #63cfe4;
+	--sky-edge: #137f96;
 	--green: #36c853;
 	--green-ink: #2aa845;
+	--green-edge: #1a8a33;
 	--red: #f04157;
 	--gold: #e0b44e;
 	--lapis: #1a2c4e;
@@ -62,6 +75,7 @@
 	--bg: #0c1424;
 	--surface: #131e33;
 	--surface-2: #1a2742;
+	--edge: #070d18;
 	--text: #edf1f8;
 	--muted: #94a1b8;
 	--border: rgba(237, 241, 248, 0.12);
@@ -94,6 +108,7 @@ input {
 }
 button {
 	cursor: pointer;
+	touch-action: manipulation;
 }
 a {
 	color: inherit;
@@ -102,7 +117,7 @@ a {
 	display: none !important;
 }
 :focus-visible {
-	outline: 2.5px solid var(--sky);
+	outline: 3px solid var(--sky);
 	outline-offset: 2px;
 }
 
@@ -122,29 +137,43 @@ a {
 	pointer-events: none;
 }
 
-/* ---------- buttons ---------- */
+/* ---------- buttons: plates with an edge that sink when pressed ---------- */
 .btn {
-	height: 52px;
+	--b-bg: var(--surface-2);
+	--b-ink: var(--text);
+	--b-edge: var(--edge);
+	position: relative;
+	height: 54px;
 	padding: 0 24px;
 	border: none;
-	border-radius: 14px;
+	border-radius: 16px;
+	background: var(--b-bg);
+	color: var(--b-ink);
+	box-shadow: 0 4px 0 var(--b-edge);
 	font-family: var(--display);
 	font-weight: 700;
 	font-size: 15px;
-	letter-spacing: 0.02em;
+	letter-spacing: 0.01em;
 	text-decoration: none;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	gap: 10px;
+	margin-bottom: 4px; /* room for the edge */
 	transition:
-		background 0.15s,
-		transform 0.1s,
-		opacity 0.15s,
-		border-color 0.15s;
+		transform 0.08s,
+		box-shadow 0.08s,
+		filter 0.15s,
+		opacity 0.15s;
+	user-select: none;
+	-webkit-user-select: none;
+}
+.btn:hover:not(:disabled) {
+	filter: brightness(1.06);
 }
 .btn:active:not(:disabled) {
-	transform: translateY(1px);
+	transform: translateY(3px);
+	box-shadow: 0 1px 0 var(--b-edge);
 }
 .btn:disabled {
 	opacity: 0.5;
@@ -162,43 +191,64 @@ a {
 	flex: none;
 }
 .btn-primary {
-	background: var(--green);
-	color: #fff;
-}
-.btn-primary:hover:not(:disabled) {
-	background: var(--green-ink);
+	--b-bg: var(--green);
+	--b-ink: #fff;
+	--b-edge: var(--green-edge);
 }
 .btn-sky {
-	background: var(--sky);
-	color: #fff;
-}
-.btn-sky:hover:not(:disabled) {
-	background: var(--sky-ink);
+	--b-bg: var(--sky);
+	--b-ink: #fff;
+	--b-edge: var(--sky-edge);
 }
 .btn-ghost {
-	background: transparent;
-	border: 1.5px solid var(--border);
+	--b-bg: transparent;
+	--b-edge: transparent;
+	box-shadow: inset 0 0 0 2px var(--border);
+	margin-bottom: 0;
 }
-.btn-ghost:hover {
-	border-color: var(--text);
+.btn-ghost:hover:not(:disabled) {
+	box-shadow: inset 0 0 0 2px var(--text);
+	filter: none;
+}
+.btn-ghost:active:not(:disabled) {
+	box-shadow: inset 0 0 0 2px var(--text);
+	transform: scale(0.98);
+}
+.btn-danger {
+	--b-bg: var(--red);
+	--b-ink: #fff;
+	--b-edge: #8e0a1a;
+}
+.btn-telegram {
+	--b-bg: var(--telegram);
+	--b-ink: #fff;
+	--b-edge: #1680b8;
+	font-family: var(--body);
+	font-weight: 700;
+	font-size: 16px;
+	letter-spacing: 0;
 }
 
 .icon-btn {
-	width: 40px;
-	height: 40px;
+	width: 44px;
+	height: 44px;
 	border: none;
-	border-radius: 12px;
+	border-radius: 14px;
 	background: var(--surface-2);
 	display: grid;
 	place-items: center;
 	color: var(--text);
+	transition: transform 0.1s;
+}
+.icon-btn:active {
+	transform: scale(0.92);
 }
 
 /* ---------- cards and fields ---------- */
 .card {
 	background: var(--surface);
 	border: 1px solid var(--border);
-	border-radius: var(--radius);
+	border-radius: 20px;
 	padding: 22px;
 }
 .card-title {
@@ -210,11 +260,9 @@ a {
 }
 .field-label {
 	display: block;
-	font-size: 12px;
-	font-weight: 600;
-	letter-spacing: 0.08em;
-	text-transform: uppercase;
-	color: var(--muted);
+	font-size: 14px;
+	font-weight: 700;
+	color: var(--text);
 	margin-bottom: 10px;
 }
 .field-note {
@@ -233,7 +281,7 @@ a {
 }
 .segmented button {
 	flex: 1;
-	min-height: 40px;
+	min-height: 42px;
 	border: none;
 	border-radius: 10px;
 	background: transparent;
@@ -242,14 +290,19 @@ a {
 	color: var(--muted);
 	transition:
 		background 0.15s,
-		color 0.15s;
+		color 0.15s,
+		transform 0.1s;
 }
 .segmented button:hover {
 	color: var(--text);
 }
+.segmented button:active {
+	transform: scale(0.96);
+}
 .segmented button[aria-pressed='true'] {
-	background: var(--sky);
-	color: #fff;
+	background: var(--surface);
+	color: var(--text);
+	box-shadow: 0 2px 0 var(--edge);
 }
 
 /* a slider: a thick track filled up to the thumb (--fill), a big thumb for the thumb */
@@ -257,14 +310,14 @@ a {
 	-webkit-appearance: none;
 	appearance: none;
 	width: 100%;
-	height: 28px;
+	height: 32px;
 	background: transparent;
 	cursor: pointer;
 	touch-action: pan-y;
 }
 .range::-webkit-slider-runnable-track {
-	height: 8px;
-	border-radius: 4px;
+	height: 10px;
+	border-radius: 5px;
 	background: linear-gradient(
 		to right,
 		var(--sky) var(--fill, 0%),
@@ -272,8 +325,8 @@ a {
 	);
 }
 .range::-moz-range-track {
-	height: 8px;
-	border-radius: 4px;
+	height: 10px;
+	border-radius: 5px;
 	background: linear-gradient(
 		to right,
 		var(--sky) var(--fill, 0%),
@@ -282,21 +335,21 @@ a {
 }
 .range::-webkit-slider-thumb {
 	-webkit-appearance: none;
-	width: 26px;
-	height: 26px;
-	margin-top: -9px;
+	width: 30px;
+	height: 30px;
+	margin-top: -10px;
 	border-radius: 50%;
 	background: #fff;
-	border: 3px solid var(--sky);
-	box-shadow: 0 2px 6px rgba(19, 35, 63, 0.25);
+	border: 4px solid var(--sky);
+	box-shadow: 0 3px 0 var(--sky-edge);
 }
 .range::-moz-range-thumb {
-	width: 20px;
-	height: 20px;
+	width: 22px;
+	height: 22px;
 	border-radius: 50%;
 	background: #fff;
-	border: 3px solid var(--sky);
-	box-shadow: 0 2px 6px rgba(19, 35, 63, 0.25);
+	border: 4px solid var(--sky);
+	box-shadow: 0 3px 0 var(--sky-edge);
 }
 .range:focus-visible {
 	outline: none;
@@ -305,16 +358,16 @@ a {
 	outline: 3px solid color-mix(in srgb, var(--sky) 40%, transparent);
 }
 
-/* the flag, as a thin band on top of every page */
+/* the flag, as a thin band on top of the pages around the game */
 .flag-band {
-	height: 13px;
+	height: 9px;
 	background: linear-gradient(
 		to bottom,
-		var(--sky) 0 4px,
-		var(--red) 4px 5px,
-		#fff 5px 8px,
-		var(--red) 8px 9px,
-		var(--green) 9px 13px
+		var(--sky) 0 3px,
+		var(--red) 3px 4px,
+		#fff 4px 5px,
+		var(--red) 5px 6px,
+		var(--green) 6px 9px
 	);
 }
 
@@ -341,21 +394,10 @@ a {
 :root[data-theme='dark'] .link-btn {
 	color: var(--sky);
 }
-.btn-telegram {
-	background: var(--telegram);
-	color: #fff;
-	font-family: var(--body);
-	font-weight: 600;
-	font-size: 16px;
-	letter-spacing: 0;
-}
-.btn-telegram:hover {
-	background: #1e96d4;
-}
 .section-title {
 	font-family: var(--display);
 	font-weight: 700;
-	font-size: 16px;
+	font-size: 17px;
 	letter-spacing: -0.01em;
 }
 .spinner {
@@ -373,26 +415,69 @@ a {
 	}
 }
 
+/* rewards and attention, shared by the screens */
+@keyframes pop-in {
+	0% {
+		transform: scale(0.4);
+		opacity: 0;
+	}
+	60% {
+		transform: scale(1.12);
+		opacity: 1;
+	}
+	100% {
+		transform: scale(1);
+	}
+}
+@keyframes boing {
+	0% {
+		transform: scale(1);
+	}
+	30% {
+		transform: scale(1.18, 0.82);
+	}
+	50% {
+		transform: scale(0.9, 1.1);
+	}
+	70% {
+		transform: scale(1.04, 0.96);
+	}
+	100% {
+		transform: scale(1);
+	}
+}
+@keyframes rise {
+	from {
+		transform: translateY(24px);
+		opacity: 0;
+	}
+	to {
+		transform: none;
+		opacity: 1;
+	}
+}
+
 /* ---------- toast ---------- */
 .toast {
 	position: fixed;
 	left: 50%;
-	bottom: 28px;
-	transform: translate(-50%, 16px);
+	top: calc(max(12px, env(safe-area-inset-top)) + 64px); /* under the HUD and the top bar */
+	transform: translate(-50%, -16px);
 	background: var(--lapis);
 	color: #fff;
-	padding: 11px 18px;
-	border-radius: 12px;
-	font-size: 14px;
-	font-weight: 500;
+	padding: 12px 20px;
+	border-radius: 14px;
+	font-size: 15px;
+	font-weight: 600;
 	opacity: 0;
 	pointer-events: none;
 	transition:
 		opacity 0.2s,
-		transform 0.2s;
+		transform 0.25s var(--pop);
 	z-index: 5000;
 	max-width: calc(100vw - 32px);
 	text-align: center;
+	box-shadow: 0 4px 0 rgba(0, 0, 0, 0.25);
 }
 .toast.show {
 	opacity: 1;
@@ -404,6 +489,59 @@ a {
 	*::before,
 	*::after {
 		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
 		transition-duration: 0.01ms !important;
+	}
+}
+
+/* ---------- the real place's pin on the result map (Yandex draws it from map.ts) ---------- */
+.sg-drop {
+	position: absolute;
+	left: -9px;
+	top: -47px;
+	width: 40px;
+	height: 50px;
+}
+.sg-drop img {
+	display: block;
+	transform-origin: 9px 47px; /* the pole's foot */
+	animation: pin-drop 0.55s cubic-bezier(0.3, 1.4, 0.5, 1) both;
+	filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.35));
+}
+.sg-drop-ring {
+	position: absolute;
+	left: 9px;
+	top: 47px;
+	width: 28px;
+	height: 28px;
+	margin: -14px 0 0 -14px;
+	border-radius: 50%;
+	border: 3px solid #1eb53a;
+	animation: drop-ring 1.2s 0.35s ease-out 2 both;
+}
+@keyframes pin-drop {
+	0% {
+		transform: translateY(-70px) scale(0.8);
+		opacity: 0;
+	}
+	55% {
+		transform: translateY(0) scale(1.15, 0.8);
+		opacity: 1;
+	}
+	75% {
+		transform: translateY(-6px) scale(0.95, 1.06);
+	}
+	100% {
+		transform: none;
+	}
+}
+@keyframes drop-ring {
+	0% {
+		transform: scale(0.3);
+		opacity: 1;
+	}
+	100% {
+		transform: scale(2.4);
+		opacity: 0;
 	}
 }

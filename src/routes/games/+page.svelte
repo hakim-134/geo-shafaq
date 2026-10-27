@@ -1,79 +1,118 @@
 <script lang="ts">
-	import TopBar from '#lib/components/TopBar.svelte';
+	// All the player's games, ten to a page, newest first, under a heading for each day. The
+	// page is in the address (?page=2).
+	import { page as here } from '$app/state';
+	import SubPage from '#lib/components/SubPage.svelte';
+	import Pager from '#lib/components/Pager.svelte';
 	import GameRow from '#lib/game/GameRow.svelte';
 	import { api, call, type GameListItem } from '#lib/api/client.js';
 	import { ensureSession, session } from '#lib/session.svelte.js';
 	import { t } from '#lib/i18n/index.svelte.js';
+	import { fmtDay } from '#lib/format.js';
+
+	const PER_PAGE = 10;
 
 	let games = $state<GameListItem[]>([]);
-	let next = $state<string | undefined>();
+	let total = $state(0);
 	let loading = $state(true);
 	let failed = $state(false);
 
+	const page = $derived(Math.max(1, Number(here.url.searchParams.get('page')) || 1));
+	const pages = $derived(Math.max(1, Math.ceil(total / PER_PAGE)));
+
 	$effect(() => {
 		void session.version;
-		games = [];
-		next = undefined;
-		more();
+		load(page);
 	});
 
-	async function more() {
+	async function load(p: number) {
 		loading = true;
 		failed = false;
 		try {
 			await ensureSession();
-			const page = await call(
-				api().GET('/v1/me/games', { params: { query: { limit: 20, before: next } } })
+			const res = await call(
+				api().GET('/v1/me/games', { params: { query: { limit: PER_PAGE, page: p } } })
 			);
-			games = [...games, ...page.games];
-			next = page.next;
+			games = res.games;
+			total = res.total ?? res.games.length;
+			window.scrollTo({ top: 0 });
 		} catch {
 			failed = true;
 		}
 		loading = false;
 	}
+
+	// the games of each day together
+	const days = $derived.by(() => {
+		const out: { day: string; games: GameListItem[] }[] = [];
+		for (const g of games) {
+			const day = fmtDay(g.startedAt);
+			if (out.at(-1)?.day === day) out.at(-1)!.games.push(g);
+			else out.push({ day, games: [g] });
+		}
+		return out;
+	});
 </script>
 
-<svelte:head><title>{t('gamesTitle')} — Shafaq Geo</title></svelte:head>
+<SubPage title={t('myGames')} back={{ href: '/me', label: t('profile') }}>
+	{#if total > 0}
+		<p class="count">
+			{t('nGames', { n: total })}{#if pages > 1}
+				· {t('pageOf', { n: page, m: pages })}{/if}
+		</p>
+	{/if}
 
-<TopBar />
-
-<main class="page">
-	<a class="back link-btn" href="/me">← {t('profile')}</a>
-	<h1>{t('gamesTitle')}</h1>
-	<div class="list">
-		{#each games as g (g.id)}<GameRow game={g} />{/each}
+	<div class="days" class:dim={loading && games.length > 0}>
+		{#each days as d (d.day)}
+			<section>
+				<h2>{d.day}</h2>
+				<div class="list">
+					{#each d.games as g (g.id)}<GameRow game={g} day={false} />{/each}
+				</div>
+			</section>
+		{/each}
 	</div>
-	{#if !loading && !failed && games.length === 0}
+
+	{#if failed}
+		<p class="empty">{t('err_network')}</p>
+		<button class="btn btn-ghost" onclick={() => load(page)}>{t('retry')}</button>
+	{:else if loading && !games.length}
+		<div class="spin"><span class="spinner"></span></div>
+	{:else if !games.length}
 		<p class="empty">{t('historyEmpty')}</p>
 		<a class="btn btn-primary" href="/">{t('play')}</a>
 	{/if}
-	{#if failed}
-		<p class="empty">{t('err_network')}</p>
-		<button class="btn btn-ghost" onclick={more}>{t('retry')}</button>
-	{:else if loading}
-		<div class="spin"><span class="spinner"></span></div>
-	{:else if next}
-		<button class="btn btn-ghost more" onclick={more}>{t('loadMore')}</button>
-	{/if}
-</main>
+
+	<div class="pager">
+		<Pager {page} {pages} href={(p) => (p === 1 ? '/games' : `/games?page=${p}`)} />
+	</div>
+</SubPage>
 
 <style>
-	.page {
-		max-width: 720px;
-		margin: 0 auto;
-		padding: 16px 24px 64px;
+	.count {
+		margin: -12px 0 18px;
+		color: var(--muted);
+		font-weight: 600;
 	}
-	.back {
-		font-size: 14px;
-		text-decoration: none;
+	.days {
+		display: flex;
+		flex-direction: column;
+		gap: 18px;
+		transition: opacity 0.15s;
 	}
-	h1 {
-		margin: 8px 0 12px;
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 28px;
-		letter-spacing: -0.02em;
+	.days.dim {
+		opacity: 0.5;
+	}
+	h2 {
+		display: inline-block;
+		padding: 3px 12px;
+		border-radius: 10px;
+		background: var(--surface-2);
+		font-size: 13.5px;
+		font-weight: 700;
+	}
+	.list {
+		margin-top: 4px;
 	}
 	.list > :global(* + *) {
 		border-top: 1px solid var(--border);
@@ -88,13 +127,7 @@
 		padding: 24px;
 		color: var(--muted);
 	}
-	.more {
-		margin-top: 18px;
-		width: 100%;
-	}
-	@media (max-width: 640px) {
-		.page {
-			padding: 12px 16px 48px;
-		}
+	.pager {
+		margin-top: 28px;
 	}
 </style>

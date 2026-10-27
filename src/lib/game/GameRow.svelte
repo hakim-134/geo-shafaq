@@ -6,17 +6,24 @@
 	import { t, tx } from '#lib/i18n/index.svelte.js';
 	import { fmtDay, fmtNum } from '#lib/format.js';
 
-	let { game }: { game: GameListItem } = $props();
+	// day: say which day (off under a day's heading)
+	let { game, day = true }: { game: GameListItem; day?: boolean } = $props();
+	const meta = $derived(
+		[
+			day ? fmtDay(game.startedAt) : '',
+			t('nRounds', { n: game.rounds }),
+			game.players ? t('withPlayers', { n: game.players }) : ''
+		]
+			.filter(Boolean)
+			.join(' · ')
+	);
 	const share = $derived(game.max ? game.total / game.max : 0);
 </script>
 
 <a class="row" href={`/game/${game.id}`}>
 	<span class="what">
 		<MapSign slug={game.map.slug} name={tx(game.map.name)} size="small" />
-		<span class="when"
-			>{fmtDay(game.startedAt)} · {t('nRounds', { n: game.rounds })}{#if game.players}
-				· {t('withPlayers', { n: game.players })}{/if}</span
-		>
+		<span class="when">{meta}</span>
 	</span>
 	<span class="score">
 		<b>{fmtNum(game.total)}</b>

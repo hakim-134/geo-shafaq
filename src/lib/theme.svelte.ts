@@ -11,10 +11,12 @@ function current(): Theme {
 	return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
 }
 
-export function toggleTheme() {
-	theme.value = theme.value === 'dark' ? 'light' : 'dark';
-	document.documentElement.dataset.theme = theme.value;
-	save('theme', theme.value);
+export function setTheme(t: Theme) {
+	theme.value = t;
+	document.documentElement.dataset.theme = t;
+	save('theme', t);
 }
+
+export const toggleTheme = () => setTheme(theme.value === 'dark' ? 'light' : 'dark');
 
 export const savedTheme = () => load('theme', '');

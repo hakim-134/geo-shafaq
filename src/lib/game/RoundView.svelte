@@ -1,19 +1,33 @@
 <script lang="ts">
-	// A round on screen, for solo games and rooms alike: the panorama, the HUD (round, score,
-	// clock, hint, back to start), the compass, the hint banner, the red glow when time runs
-	// low, and the guess map. The page drives it: it opens each round's panorama through
-	// open(), starts the clock with the server's remaining time, and answers the buttons.
+	// A round on screen, for solo games and rooms alike. The panorama is the playfield; on top
+	// of it only: one status pill (round and score), the clock when there is one, a pause
+	// button, the hint and "back to start" under the right thumb, and one big button at the
+	// bottom that opens the guess map. On a phone the map slides up as a sheet; on a computer
+	// it sits small in the corner and grows under the mouse. A first-time player is shown
+	// what to do (look around, open the map, tap it) instead of being told.
+	// The page drives it: it opens each round's panorama through open(), starts the clock
+	// with the server's remaining time, and answers the buttons.
 	import { onDestroy, type Snippet } from 'svelte';
 	import type { Hint, LatLon, PanoView, Rules } from '#lib/api/client.js';
 	import { createViewer, type PanoViewer } from '#lib/pano/index.js';
 	import GuessMap from '#lib/map/GuessMap.svelte';
 	import { LAYERS, savedLayer, saveLayer, type BBox, type Layer } from '#lib/map/map.js';
 	import Compass from '#lib/components/Compass.svelte';
-	import { compass, nextCompassStyle } from '#lib/compass.svelte.js';
-	import { i18n, t, tx } from '#lib/i18n/index.svelte.js';
+	import Sheet from '#lib/components/Sheet.svelte';
+	import { compass, setCompassStyle, COMPASS_STYLES } from '#lib/compass.svelte.js';
+	import { i18n, t, tx, type Key } from '#lib/i18n/index.svelte.js';
 	import { fmtClock, fmtNum } from '#lib/format.js';
 	import { showToast } from '#lib/toast.svelte.js';
-	import { beep, unlockAudio, vibrate } from '#lib/sfx.js';
+	import { load, save } from '#lib/storage.js';
+	import {
+		beep,
+		setSound,
+		sfxGuess,
+		sfxPin,
+		sound,
+		unlockAudio,
+		vibrate
+	} from '#lib/sfx.svelte.js';
 
 	/** opening: the panorama is loading; playing: look and guess; sending: the guess is on its
 	 *  way; waiting: guessed, the others are still looking (rooms); off: a result is on top. */
@@ -31,7 +45,7 @@
 		status: Status;
 		guess: LatLon | null;
 		guessLabel?: string; // the Guess button's words, when not the usual ones
-		hud?: Snippet; // more chips after the clock (a room's players)
+		hud?: Snippet; // more chips next to the status pill (a room's players)
 		onpick: (p: LatLon) => void;
 		onguess: () => void;
 		onhint: () => Promise<boolean>;
@@ -69,12 +83,13 @@
 	// layout
 	let mapOpen = $state(false); // phones: the map is a sheet you open
 	let mapPinned = $state(false); // computers: keep the map big
-	// the player's map look, remembered on this device; hard rules (no map labels) are satellite only
+	let menuOpen = $state(false);
 	let chosenLayer = $state<Layer>(savedLayer());
+	// hard rules (no map labels) are satellite only
 	const layer = $derived<Layer>(!rules.mapLabels ? 'satellite' : chosenLayer);
-	function chooseLayer(l: Layer) {
-		chosenLayer = l;
-		saveLayer(l);
+	function nextLayer() {
+		chosenLayer = LAYERS[(LAYERS.indexOf(chosenLayer) + 1) % LAYERS.length];
+		saveLayer(chosenLayer);
 	}
 	let guessMap = $state<ReturnType<typeof GuessMap>>();
 
@@ -85,10 +100,51 @@
 
 	const playing = $derived(status === 'playing');
 	const hintCost = $derived(rules.hints.cost ?? 0);
+	const guessed = $derived(status === 'sending' || status === 'waiting');
+
+	// ---------- the first game: show, don't tell ----------
+	// look: a finger swipes over the street; map: the big button breathes; pin: the map
+	// shows where to tap. Once the first guess is in, never again on this device.
+	type Coach = 'look' | 'map' | 'pin' | '';
+	let coach = $state<Coach>(load('coach_done', '') ? '' : 'look');
+	let lookFrom: number | null = null;
+	let coachTimer: ReturnType<typeof setTimeout> | undefined;
+	$effect(() => {
+		if (coach !== 'look' || !playing) return;
+		lookFrom = null;
+		coachTimer = setTimeout(() => coach === 'look' && toMapStep(), 7000);
+		return () => clearTimeout(coachTimer);
+	});
+	function looked(d: number) {
+		if (coach !== 'look' || !playing) return;
+		lookFrom ??= d;
+		const turn = Math.abs(((d - lookFrom + 540) % 360) - 180);
+		if (turn > 25) toMapStep();
+	}
+	// on a phone the next step is the big button; on a computer the map is already in sight
+	const toMapStep = () => (coach = window.innerWidth <= 760 ? 'map' : 'pin');
+	function coachDone() {
+		if (!coach) return;
+		coach = '';
+		save('coach_done', '1');
+	}
+
+	// ---------- each round opens with its number ----------
+	let intro = $state<number | null>(null);
+	let introFor = -1;
+	let introTimer: ReturnType<typeof setTimeout> | undefined;
+	$effect(() => {
+		if (!playing || n == null || n === introFor) return;
+		introFor = n;
+		intro = n;
+		clearTimeout(introTimer);
+		introTimer = setTimeout(() => (intro = null), 1500);
+	});
 
 	/** Opens a round's panorama; resolves with where a Yandex viewer landed. */
 	export async function open(view: PanoView): Promise<{ pos: LatLon | null }> {
 		mapOpen = false;
+		menuOpen = false;
 		guessMap?.fitArea();
 		const v = await viewerFor(view.provider);
 		return v.open(view);
@@ -104,7 +160,10 @@
 				lang: i18n.lang,
 				labels: rules.panoLabels,
 				movement: rules.movement,
-				onHeading: (d) => (heading = d)
+				onHeading: (d) => {
+					heading = d;
+					looked(d);
+				}
 			});
 			v = { viewer, el };
 			viewers.set(provider, v);
@@ -120,6 +179,12 @@
 
 	export function closeMap() {
 		mapOpen = false;
+	}
+
+	function openMap() {
+		mapOpen = true;
+		if (!guess && !hints.length) guessMap?.fitArea(); // the whole area, sized to the sheet
+		if (coach === 'look' || coach === 'map') coach = 'pin';
 	}
 
 	/** Starts the clock with the server's time left (undefined = no limit). */
@@ -172,22 +237,27 @@
 
 	async function hint() {
 		if (!playing || hintsLeft <= 0) return;
-		if ((await onhint()) && window.innerWidth <= 700) mapOpen = true;
+		if ((await onhint()) && window.innerWidth <= 760) mapOpen = true;
+	}
+
+	function pick(p: LatLon) {
+		if (!playing) return;
+		if (!guess) vibrate(12);
+		sfxPin();
+		onpick(p);
+		if (coach) coach = 'pin';
 	}
 
 	function guessNow() {
 		if (!playing || !guess) return;
 		mapOpen = false;
+		sfxGuess();
+		coachDone();
 		onguess();
 	}
 
-	function cycleCompass() {
-		const s = nextCompassStyle();
-		showToast(t('compassTap', { name: t(`compass_${s}`) }), 1500);
-	}
-
 	function onKey(e: KeyboardEvent) {
-		if ((e.target as HTMLElement).closest('input, textarea') || !playing) return;
+		if ((e.target as HTMLElement).closest('input, textarea') || !playing || menuOpen) return;
 		const k = e.key.toLowerCase();
 		if (e.key === ' ' && guess) {
 			e.preventDefault();
@@ -195,13 +265,17 @@
 		} else if (k === 'h') hint();
 		else if (k === 'r') backToStart();
 		else if (k === 'm') {
-			if (window.innerWidth <= 700) mapOpen = !mapOpen;
+			if (window.innerWidth <= 760) mapOpen = !mapOpen;
 			else mapPinned = !mapPinned;
-		}
+		} else if (e.key === 'Escape' && mapOpen) mapOpen = false;
 	}
+
+	const layerKey = (l: Layer): Key => l;
 
 	onDestroy(() => {
 		stopTimer();
+		clearTimeout(introTimer);
+		clearTimeout(coachTimer);
 		for (const { viewer } of viewers.values()) viewer.destroy();
 	});
 </script>
@@ -219,122 +293,252 @@
 	style:--danger={dangerLevel}
 ></div>
 
-<div class="hud">
-	<div class="group">
-		<a class="logo" href="/" title={t('menu')}
-			><img src="/mark.svg" alt="Shafaq Geo" width="30" height="30" /></a
-		>
-		<div class="chip">
-			<span class="chip-label">{t('round')}</span>
-			<span class="chip-value"
-				>{n ?? 0}{#if rounds}&nbsp;/ {rounds}{/if}</span
-			>
-			{#if rounds}
-				<span class="dots">
-					{#each dots as d, i (i)}<i class={d}></i>{/each}
-				</span>
-			{/if}
-		</div>
-		<div class="chip">
-			<span class="chip-label">{t('score')}</span>
-			<span class="chip-value">{fmtNum(total)}</span>
-		</div>
-		{#if left !== null && status !== 'off'}
-			<div
-				class="chip timer"
-				class:warn={playing && left <= 15 && left > 10}
-				class:low={playing && left <= 10}
-			>
-				<span class="chip-label">{t('time')}</span>
-				<span class="chip-value">{fmtClock(left)}</span>
+<!-- top: status on the left, the clock in the middle, pause on the right -->
+<div class="hud" class:hide={status === 'off'}>
+	<div class="hud-left">
+		<div class="status">
+			<div class="st-round">
+				<span class="st-n"
+					>{n ?? 0}{#if rounds}<small>/{rounds}</small>{/if}</span
+				>
+				{#if rounds && rounds <= 20}
+					<span class="dots" aria-hidden="true">
+						{#each dots as d, i (i)}<i class={d}></i>{/each}
+					</span>
+				{:else}
+					<span class="st-label">{t('round').toLowerCase()}</span>
+				{/if}
 			</div>
-		{/if}
+			<div class="st-score">
+				<span class="st-n">{fmtNum(total)}</span>
+				<span class="st-label">{t('points')}</span>
+			</div>
+		</div>
 		{@render hud?.()}
 	</div>
-	<div class="group">
+
+	{#if left !== null && status !== 'off'}
+		<div
+			class="clock"
+			class:warn={playing && left <= 15 && left > 10}
+			class:low={playing && left <= 10}
+			role="timer"
+		>
+			<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+				><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2M9.5 2.5h5" /></svg
+			>
+			<span>{fmtClock(left)}</span>
+		</div>
+	{/if}
+
+	<button class="round-btn pause" onclick={() => (menuOpen = true)} aria-label={t('pause')}>
+		<svg viewBox="0 0 24 24" class="icon"><path d="M9 6v12M15 6v12" /></svg>
+	</button>
+</div>
+
+{#if intro !== null}
+	<div class="intro" aria-live="polite">
+		<span class="intro-n"
+			>{t('roundN', { n: intro })}{#if rounds}<small> / {rounds}</small>{/if}</span
+		>
+		<span class="intro-q">{t('whereAreYou')}</span>
+	</div>
+{/if}
+
+{#if hints.length && playing}
+	{@const h = hints.at(-1)!}
+	<div class="hint-banner" class:low={rules.compass && compass.style === 'modern'}>
+		<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+			><path
+				d="M9 18h6M10 21.5h4M12 2.5a6.5 6.5 0 0 0-3.8 11.8V16.5h7.6v-2.2A6.5 6.5 0 0 0 12 2.5z"
+			/></svg
+		>
+		{h.kind === 'circle' ? t('hintCircle') : `${t(h.kind)}: ${tx(h.text)}`}
+	</div>
+{/if}
+
+{#if rules.compass && (playing || status === 'waiting')}
+	<div class="compass-spot {compass.style}" aria-label={t('compass')}>
+		<Compass {heading} style={compass.style} />
+	</div>
+{/if}
+
+<!-- the first game: a finger shows how to look around -->
+{#if coach === 'look' && playing && intro === null}
+	<div class="coach-look" aria-live="polite">
+		<span class="finger" aria-hidden="true">👆</span>
+		<span class="coach-text">{t('coachLook')}</span>
+	</div>
+{/if}
+
+<!-- under the right thumb: the hint and back to start -->
+{#if playing || status === 'waiting'}
+	<div class="rail" class:lifted={mapOpen}>
 		{#if rules.hints.count > 0}
 			<button
-				class="hud-btn"
+				class="round-btn hint"
 				onclick={hint}
 				disabled={!playing || hintsLeft <= 0}
-				title={t('hint')}
+				aria-label={t('hint')}
+				title={`${t('hint')} (H)`}
 			>
 				<svg class="icon" viewBox="0 0 24 24"
 					><path
 						d="M9 18h6M10 21.5h4M12 2.5a6.5 6.5 0 0 0-3.8 11.8V16.5h7.6v-2.2A6.5 6.5 0 0 0 12 2.5z"
 					/></svg
 				>
-				<span class="label">{t('hint')}</span>
-				{#if hintsLeft > 1}<span class="left">{hintsLeft}</span>{/if}
-				<span class="tag" class:cost={hintCost > 0}
-					>{hintCost > 0 ? `−${Math.round(hintCost * 100)}%` : t('hintFree')}</span
-				>
+				{#if hintsLeft > 0}<span class="badge">{hintsLeft}</span>{/if}
+				{#if hintCost > 0 && hintsLeft > 0}<span class="cost">−{Math.round(hintCost * 100)}%</span
+					>{/if}
 			</button>
 		{/if}
 		{#if rules.movement !== 'nmpz'}
-			<button class="hud-btn" onclick={backToStart} title={t('backToStart')}>
+			<button
+				class="round-btn"
+				onclick={backToStart}
+				disabled={!playing}
+				aria-label={t('backToStart')}
+				title={`${t('backToStart')} (R)`}
+			>
 				<svg class="icon" viewBox="0 0 24 24"
 					><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3L3.5 8.3" /><path d="M3.5 3.5v4.8h4.8" /></svg
 				>
-				<span class="label">{t('backToStart')}</span>
 			</button>
 		{/if}
-		<a class="hud-btn" href="/" title={t('menu')}>
-			<svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
-			<span class="label">{t('menu')}</span>
-		</a>
-	</div>
-</div>
-
-{#if hints.length && playing}
-	{@const h = hints.at(-1)!}
-	<div class="hint-banner" class:low={rules.compass && compass.style === 'modern'}>
-		{h.kind === 'circle' ? t('hintCircle') : `${t(h.kind)}: ${tx(h.text)}`}
 	</div>
 {/if}
 
-{#if rules.compass && (playing || status === 'waiting')}
-	<button
-		class="compass-spot {compass.style}"
-		onclick={cycleCompass}
-		title={t(`compass_${compass.style}`)}
-		aria-label={t('compass')}
-	>
-		<Compass {heading} style={compass.style} />
-	</button>
-{/if}
-
-<div class="minimap" class:open={mapOpen} class:pinned={mapPinned} class:hidden={status === 'off'}>
-	<div class="map-toolbar">
-		{#if rules.mapLabels}
-			{#each LAYERS as l (l)}
-				<button aria-pressed={layer === l} onclick={() => chooseLayer(l)}>{t(l)}</button>
-			{/each}
+<!-- phones: the big button at the bottom; the map comes up from it -->
+{#if (playing || guessed) && !mapOpen}
+	<div class="bottom">
+		{#if guess && playing}
+			<button class="btn btn-sky reopen" onclick={openMap} aria-label={t('map')}>
+				<svg viewBox="0 0 24 24"
+					><path d="M3 6.5 9 4l6 2.5L21 4v13.5L15 20l-6-2.5L3 20z" /><path
+						d="M9 4v13.5M15 6.5V20"
+					/></svg
+				>
+			</button>
+			<button class="btn btn-primary go" onclick={guessNow}>
+				<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
+				{t('guess')}
+			</button>
 		{:else}
-			<span class="toolbar-note">{t('satellite')}</span>
+			<button
+				class="btn btn-sky go open-map"
+				class:breathe={coach === 'map'}
+				onclick={openMap}
+				disabled={!playing && !guessed}
+			>
+				{#if guessed}
+					{#if status === 'sending'}<span class="spinner"></span>{/if}
+					{guessLabel ?? t('sending')}
+				{:else}
+					<svg viewBox="0 0 24 24"
+						><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z" /><circle
+							cx="12"
+							cy="10"
+							r="2.3"
+						/></svg
+					>
+					{t('openMapGuess')}
+				{/if}
+			</button>
+		{/if}
+	</div>
+	{#if coach === 'map' && playing}
+		<div class="coach-map" aria-live="polite">{t('coachMap')}</div>
+	{/if}
+{/if}
+
+{#if mapOpen}
+	<button class="scrim" aria-label={t('close')} onclick={() => (mapOpen = false)}></button>
+{/if}
+
+<div
+	class="minimap"
+	class:open={mapOpen}
+	class:pinned={mapPinned}
+	class:hidden={status === 'off'}
+	role="region"
+	aria-label={t('map')}
+>
+	<div class="map-head">
+		<button class="grab" onclick={() => (mapOpen = false)} aria-label={t('close')}>
+			<svg viewBox="0 0 24 24" class="icon"><path d="m6 9 6 6 6-6" /></svg>
+		</button>
+		<span class="map-title">{t('whereAreYou')}</span>
+		{#if rules.mapLabels}
+			<button class="layer-btn" onclick={nextLayer} title={t('mapLook')}>
+				<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+					><path d="m12 3 9 5-9 5-9-5z" /><path d="m3 13 9 5 9-5" /></svg
+				>
+				<span>{t(layerKey(layer))}</span>
+			</button>
+		{:else}
+			<span class="layer-btn static">{t('satellite')}</span>
 		{/if}
 		<button
 			class="size-btn"
 			aria-pressed={mapPinned}
 			aria-label={t('bigMap')}
-			title={t('bigMap')}
+			title={`${t('bigMap')} (M)`}
 			onclick={() => (mapPinned = !mapPinned)}
 		>
-			<svg viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" /></svg>
+			<svg viewBox="0 0 24 24" class="icon"
+				>{#if mapPinned}<path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7" />{:else}<path
+						d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"
+					/>{/if}</svg
+			>
 		</button>
 	</div>
 	<div class="map-box">
-		<GuessMap bind:this={guessMap} {bbox} {layer} {hints} {guess} active={playing} {onpick} />
+		<GuessMap bind:this={guessMap} {bbox} {layer} {hints} {guess} active={playing} onpick={pick} />
+		{#if coach === 'pin' && !guess && playing}
+			<div class="coach-pin" aria-hidden="true"><i></i><span>{t('coachPin')}</span></div>
+		{/if}
 	</div>
-	<button class="btn btn-guess" disabled={!guess || !playing} onclick={guessNow}>
-		{guessLabel ?? (guess ? t('guess') : t('placePin'))}
+	<button class="btn btn-primary btn-guess" disabled={!guess || !playing} onclick={guessNow}>
+		{#if guessLabel && !playing}
+			{guessLabel}
+		{:else if guess}
+			<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
+			{t('guess')}
+		{:else}
+			{t('tapTheMap')}
+		{/if}
 	</button>
 </div>
-{#if playing || status === 'waiting'}
-	<button class="btn map-fab" onclick={() => (mapOpen = !mapOpen)}
-		>{mapOpen ? '✕' : t('map')}</button
-	>
-{/if}
+
+<Sheet open={menuOpen} onclose={() => (menuOpen = false)} title={t('pause')}>
+	<div class="menu">
+		<button class="btn btn-primary" onclick={() => (menuOpen = false)}>
+			<svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" /></svg>
+			{t('resume')}
+		</button>
+		{#if rules.compass}
+			<div class="menu-row">
+				<span class="field-label">{t('compass')}</span>
+				<div class="segmented">
+					{#each COMPASS_STYLES as c (c)}
+						<button aria-pressed={compass.style === c} onclick={() => setCompassStyle(c)}
+							>{t(`compass_${c}`)}</button
+						>
+					{/each}
+				</div>
+			</div>
+		{/if}
+		<div class="menu-row">
+			<span class="field-label">{t('sound')}</span>
+			<div class="segmented">
+				<button aria-pressed={sound.on} onclick={() => setSound(true)}>{t('soundOn')}</button>
+				<button aria-pressed={!sound.on} onclick={() => setSound(false)}>{t('soundOff')}</button>
+			</div>
+		</div>
+		<p class="keys">{t('keys')}</p>
+		<a class="btn btn-ghost" href="/">{t('leaveGame')}</a>
+	</div>
+</Sheet>
 
 <style>
 	.pano,
@@ -393,341 +597,744 @@
 		}
 	}
 
-	/* HUD */
+	/* ---------- the HUD: dark glass over the street, white text, no labels in capitals ---------- */
 	.hud {
 		position: fixed;
-		top: max(14px, env(safe-area-inset-top));
-		left: 14px;
-		right: 14px;
+		top: max(12px, env(safe-area-inset-top));
+		left: 12px;
+		right: 12px;
 		display: flex;
 		justify-content: space-between;
 		align-items: flex-start;
 		gap: 10px;
 		pointer-events: none;
 		z-index: 1000;
+		transition: opacity 0.2s;
 	}
-	.group {
+	.hud.hide {
+		opacity: 0;
+	}
+	.hud > * {
+		pointer-events: auto;
+	}
+	.hud-left {
 		display: flex;
 		gap: 8px;
 		align-items: stretch;
 		flex-wrap: wrap;
+		pointer-events: none;
+	}
+	.hud-left > :global(*) {
 		pointer-events: auto;
 	}
-	.logo,
-	.chip,
-	.hud-btn,
-	.group :global(.chip) {
+	.status,
+	.round-btn,
+	.clock,
+	.hud-left :global(.chip) {
 		background: var(--hud);
 		color: #fff;
-		backdrop-filter: blur(8px);
-		-webkit-backdrop-filter: blur(8px);
-		border-radius: 14px;
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
+		box-shadow: 0 3px 0 var(--hud-edge);
 	}
-	.logo {
-		display: grid;
-		place-items: center;
-		width: 52px;
+	.status {
+		display: flex;
+		align-items: stretch;
+		border-radius: 18px;
+		padding: 6px 4px;
 	}
-	.chip,
-	.group :global(.chip) {
-		padding: 7px 14px;
+	.status > div {
 		display: flex;
 		flex-direction: column;
 		justify-content: center;
-		min-width: 74px;
+		padding: 0 12px;
+		min-width: 0;
 	}
-	.chip-label,
-	.group :global(.chip-label) {
-		font-size: 10.5px;
-		font-weight: 600;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-		opacity: 0.65;
+	.st-round {
+		border-right: 1px solid rgba(255, 255, 255, 0.16);
 	}
-	.chip-value,
-	.group :global(.chip-value) {
+	.st-n {
 		font-family: var(--display);
-		font-weight: 700;
-		font-size: 18px;
-		line-height: 1.25;
+		font-weight: 800;
+		font-size: 19px;
+		line-height: 1.15;
 		font-variant-numeric: tabular-nums;
+		letter-spacing: -0.01em;
 	}
-	.timer.warn .chip-value {
-		color: #ffc94d;
+	.st-n small {
+		font-size: 13px;
+		font-weight: 700;
+		opacity: 0.6;
+		margin-left: 1px;
 	}
-	.timer.low .chip-value {
-		color: #ff7a8a;
-	}
-	.timer.warn {
-		animation: pulse 1s ease-in-out infinite;
-	}
-	.timer.low {
-		animation: pulse 0.5s ease-in-out infinite alternate;
-		box-shadow: 0 0 0 2px rgba(206, 17, 38, 0.6);
-	}
-	@keyframes pulse {
-		50% {
-			transform: scale(1.08);
-		}
+	.st-label {
+		font-size: 12px;
+		font-weight: 500;
+		opacity: 0.7;
+		line-height: 1.2;
 	}
 	.dots {
 		display: flex;
 		gap: 4px;
 		margin-top: 4px;
+		flex-wrap: wrap;
+		max-width: 110px;
 	}
 	.dots i {
-		width: 7px;
-		height: 7px;
+		width: 8px;
+		height: 8px;
 		border-radius: 50%;
 		background: rgba(255, 255, 255, 0.22);
 	}
 	.dots i.now {
 		background: #fff;
+		animation: now 1.6s ease-in-out infinite;
+	}
+	@keyframes now {
+		50% {
+			box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.25);
+		}
 	}
 	.dots i.hi {
 		background: #36c853;
 	}
 	.dots i.mid {
-		background: #e0b44e;
+		background: #f5b81c;
 	}
 	.dots i.lo {
 		background: #f04157;
 	}
-	.hud-btn {
-		height: 48px;
-		border: none;
-		padding: 0 15px;
-		display: inline-flex;
+	/* a room's chip, given through the hud snippet */
+	.hud-left :global(.chip) {
+		border-radius: 18px;
+		padding: 6px 14px;
+		display: flex;
 		align-items: center;
 		gap: 8px;
-		font-size: 14px;
-		font-weight: 500;
-		text-decoration: none;
-		align-self: flex-start;
 	}
-	.hud-btn:hover:not(:disabled) {
-		background: rgba(12, 20, 36, 0.95);
-	}
-	.hud-btn:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-	.hud-btn .tag {
-		font-size: 11px;
-		font-weight: 600;
-		padding: 2px 7px;
-		border-radius: 7px;
-		background: #1eb53a;
-	}
-	.hud-btn .tag.cost {
-		background: #ce1126;
-	}
-	.hud-btn .left {
+	.hud-left :global(.chip-value) {
 		font-family: var(--display);
-		font-size: 13px;
+		font-weight: 800;
+		font-size: 17px;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.clock {
+		position: absolute;
+		left: 50%;
+		top: 0;
+		transform: translateX(-50%);
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		height: 52px;
+		padding: 0 18px 0 14px;
+		border-radius: 26px;
+		font-family: var(--display);
+		font-weight: 800;
+		font-size: 22px;
+		font-variant-numeric: tabular-nums;
+	}
+	.clock .icon {
 		opacity: 0.8;
 	}
-	.hint-banner {
-		position: fixed;
-		top: 84px;
+	.clock.warn {
+		background: #b07a00;
+		animation: tick 1s ease-in-out infinite;
+	}
+	.clock.low {
+		background: var(--red);
+		animation: tick 0.5s ease-in-out infinite alternate;
+	}
+	@keyframes tick {
+		50% {
+			transform: translateX(-50%) scale(1.1);
+		}
+	}
+
+	.round-btn {
+		position: relative;
+		width: 52px;
+		height: 52px;
+		border: none;
+		border-radius: 18px;
+		display: grid;
+		place-items: center;
+		transition:
+			transform 0.08s,
+			box-shadow 0.08s;
+	}
+	.round-btn .icon {
+		width: 24px;
+		height: 24px;
+	}
+	.round-btn:active:not(:disabled) {
+		transform: translateY(2px);
+		box-shadow: 0 1px 0 var(--hud-edge);
+	}
+	.round-btn:disabled {
+		opacity: 0.45;
+		cursor: default;
+	}
+	.round-btn .badge {
+		position: absolute;
+		top: -6px;
+		right: -6px;
+		min-width: 22px;
+		height: 22px;
+		padding: 0 6px;
+		border-radius: 11px;
+		background: var(--star);
+		color: #3a2600;
+		font-family: var(--display);
+		font-weight: 800;
+		font-size: 12px;
+		display: grid;
+		place-items: center;
+		box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+	}
+	.round-btn .cost {
+		position: absolute;
+		bottom: -7px;
 		left: 50%;
 		transform: translateX(-50%);
-		background: var(--sky);
-		color: #fff;
-		padding: 10px 18px;
-		border-radius: 12px;
-		font-weight: 600;
-		box-shadow: var(--shadow);
-		z-index: 1000;
+		padding: 1px 6px;
+		border-radius: 8px;
+		background: var(--red);
+		font-size: 11px;
+		font-weight: 700;
 		white-space: nowrap;
 	}
-	/* under the HUD: the bottom corners belong to the viewers' own controls. The strip sits
-	   in the middle, where the eye already is; the hint goes under it. */
+	.round-btn.hint:not(:disabled) .icon {
+		color: #ffd75e;
+	}
+
+	/* ---------- each round's number ---------- */
+	.intro {
+		position: fixed;
+		left: 50%;
+		top: 38%;
+		z-index: 1001;
+		transform: translate(-50%, -50%);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 6px;
+		pointer-events: none;
+		color: #fff;
+		text-align: center;
+		animation: intro 1.5s var(--settle) both;
+	}
+	.intro-n {
+		font-family: var(--display);
+		font-weight: 800;
+		font-size: 44px;
+		line-height: 1;
+		letter-spacing: -0.02em;
+		padding: 14px 26px 16px;
+		border-radius: 20px;
+		background: var(--sign-blue);
+		box-shadow:
+			inset 0 0 0 3px var(--sign-blue),
+			inset 0 0 0 5px #fff,
+			0 6px 0 rgba(0, 0, 0, 0.3);
+	}
+	.intro-n small {
+		font-size: 24px;
+		opacity: 0.7;
+	}
+	.intro-q {
+		font-family: var(--display);
+		font-weight: 700;
+		font-size: 20px;
+		text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+	}
+	@keyframes intro {
+		0% {
+			opacity: 0;
+			transform: translate(-50%, -50%) scale(0.5);
+		}
+		18% {
+			opacity: 1;
+			transform: translate(-50%, -50%) scale(1.08);
+		}
+		28% {
+			transform: translate(-50%, -50%) scale(1);
+		}
+		78% {
+			opacity: 1;
+			transform: translate(-50%, -50%) scale(1);
+		}
+		100% {
+			opacity: 0;
+			transform: translate(-50%, -80%) scale(0.9);
+		}
+	}
+
+	.hint-banner {
+		position: fixed;
+		top: calc(max(12px, env(safe-area-inset-top)) + 64px);
+		left: 50%;
+		transform: translateX(-50%);
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		background: var(--sky);
+		color: #fff;
+		padding: 10px 16px;
+		border-radius: 14px;
+		font-weight: 700;
+		box-shadow: 0 3px 0 var(--sky-edge);
+		z-index: 1000;
+		white-space: nowrap;
+		animation: pop-in 0.35s var(--pop);
+	}
+	.hint-banner.low {
+		top: calc(max(12px, env(safe-area-inset-top)) + 108px);
+	}
 	.compass-spot {
 		position: fixed;
-		left: 14px;
-		top: 92px;
-		z-index: 1000;
-		padding: 0;
-		border: none;
-		background: none;
-		border-radius: 50%;
+		left: 12px;
+		top: calc(max(12px, env(safe-area-inset-top)) + 72px);
+		z-index: 999;
+		pointer-events: none;
 	}
 	.compass-spot.modern {
 		left: 50%;
-		top: 84px;
+		top: calc(max(12px, env(safe-area-inset-top)) + 64px);
 		transform: translateX(-50%);
-		border-radius: 10px;
-	}
-	.hint-banner.low {
-		top: 128px;
 	}
 
-	/* the guess map */
+	/* ---------- first game ---------- */
+	.coach-look {
+		position: fixed;
+		left: 50%;
+		top: 50%;
+		transform: translate(-50%, -50%);
+		z-index: 1001;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 14px;
+		pointer-events: none;
+		animation: rise 0.4s var(--settle);
+	}
+	.finger {
+		font-size: 54px;
+		filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.45));
+		animation: swipe 1.8s ease-in-out infinite;
+	}
+	@keyframes swipe {
+		0%,
+		100% {
+			transform: translateX(-60px) rotate(-12deg);
+		}
+		50% {
+			transform: translateX(60px) rotate(12deg);
+		}
+	}
+	.coach-text {
+		max-width: calc(100vw - 40px);
+	}
+	.coach-text,
+	.coach-map {
+		padding: 10px 18px;
+		border-radius: 14px;
+		background: var(--hud);
+		color: #fff;
+		font-weight: 700;
+		font-size: 16px;
+		text-align: center;
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
+	}
+	.coach-map {
+		position: fixed;
+		left: 50%;
+		bottom: calc(max(14px, env(safe-area-inset-bottom)) + 76px);
+		transform: translateX(-50%);
+		z-index: 1001;
+		white-space: nowrap;
+		pointer-events: none;
+		animation: rise 0.4s var(--settle);
+	}
+	.coach-map::after {
+		content: '';
+		position: absolute;
+		left: 50%;
+		bottom: -7px;
+		margin-left: -7px;
+		border: 7px solid transparent;
+		border-bottom: 0;
+		border-top-color: var(--hud);
+	}
+	@media (min-width: 761px) {
+		.coach-map {
+			display: none;
+		}
+	}
+	.breathe {
+		animation: breathe 1.3s ease-in-out infinite;
+	}
+	@keyframes breathe {
+		50% {
+			transform: scale(1.05);
+			filter: brightness(1.12);
+		}
+	}
+	.coach-pin {
+		position: absolute;
+		left: 50%;
+		top: 50%;
+		transform: translate(-50%, -50%);
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 10px;
+		pointer-events: none;
+	}
+	.coach-pin i {
+		width: 46px;
+		height: 46px;
+		border-radius: 50%;
+		border: 4px solid var(--sky);
+		animation: ripple 1.4s ease-out infinite;
+	}
+	@keyframes ripple {
+		0% {
+			transform: scale(0.4);
+			opacity: 1;
+		}
+		100% {
+			transform: scale(1.6);
+			opacity: 0;
+		}
+	}
+	.coach-pin span {
+		padding: 8px 14px;
+		border-radius: 12px;
+		background: var(--lapis);
+		color: #fff;
+		font-weight: 700;
+		font-size: 14px;
+		white-space: nowrap;
+	}
+
+	/* ---------- the thumb's buttons: bottom left on a computer (the map is on the right),
+	   above the big button on the right on a phone ---------- */
+	.rail {
+		position: fixed;
+		left: 16px;
+		bottom: 140px; /* above Yandex's own + and − (bottom left, 16–116px up) */
+		z-index: 1000;
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+	}
+
+	/* ---------- the bottom button (phones) ---------- */
+	.bottom {
+		position: fixed;
+		left: 12px;
+		right: 12px;
+		bottom: max(12px, env(safe-area-inset-bottom));
+		z-index: 1000;
+		display: none;
+		gap: 10px;
+	}
+	.bottom .btn {
+		height: 60px;
+		font-size: 17px;
+		border-radius: 18px;
+	}
+	.bottom .go {
+		flex: 1;
+		min-width: 0;
+	}
+	.bottom .reopen {
+		width: 64px;
+		padding: 0;
+	}
+	.bottom .btn svg {
+		width: 24px;
+		height: 24px;
+	}
+	.open-map:disabled {
+		--b-bg: var(--hud);
+		--b-edge: var(--hud-edge);
+		opacity: 1;
+		font-family: var(--body);
+		font-weight: 600;
+		cursor: default;
+	}
+
+	/* ---------- the guess map ---------- */
+	.scrim {
+		display: none;
+	}
 	.minimap {
 		position: fixed;
 		right: 16px;
 		bottom: 16px;
 		z-index: 1000;
-		width: 340px;
+		width: 360px;
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
-		transition: width 0.25s;
+		transition: width 0.25s var(--settle);
 	}
 	.minimap.hidden {
 		visibility: hidden;
 	}
-	.minimap:not(.pinned) {
-		opacity: 0.88;
+	.minimap:not(.pinned):not(:hover) {
+		opacity: 0.9;
 	}
 	.minimap:hover,
 	.minimap.pinned {
-		opacity: 1;
-		width: min(580px, calc(100vw - 32px));
+		width: min(620px, calc(100vw - 32px));
 	}
-	/* v0's toolbar: the map's look, and keep it big */
-	.map-toolbar {
+	.map-head {
 		display: flex;
+		align-items: center;
 		gap: 6px;
 	}
-	.map-toolbar button,
-	.toolbar-note {
-		flex: 1;
-		height: 34px;
+	.grab,
+	.map-title {
+		display: none;
+	}
+	.layer-btn,
+	.size-btn {
+		height: 36px;
 		border: none;
-		border-radius: 10px;
+		border-radius: 12px;
 		background: var(--hud);
 		color: #fff;
 		font-size: 13px;
-		font-weight: 500;
-		display: grid;
-		place-items: center;
+		font-weight: 600;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 0 12px;
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
 	}
-	.map-toolbar button[aria-pressed='true'] {
-		background: var(--sky);
+	.layer-btn {
+		margin-left: auto;
 	}
-	.map-toolbar .size-btn {
-		flex: 0 0 34px;
+	.layer-btn.static {
+		cursor: default;
 	}
-	.size-btn svg {
-		width: 15px;
-		height: 15px;
-		fill: none;
-		stroke: currentColor;
-		stroke-width: 2.2;
-		stroke-linecap: round;
+	.layer-btn .icon,
+	.size-btn .icon {
+		width: 17px;
+		height: 17px;
+	}
+	.size-btn {
+		width: 36px;
+		padding: 0;
+		justify-content: center;
 	}
 	.map-box {
-		height: 250px;
-		border-radius: 14px;
+		position: relative;
+		height: 260px;
+		border-radius: 18px;
 		overflow: hidden;
-		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-		transition: height 0.25s;
+		box-shadow:
+			0 0 0 3px rgba(255, 255, 255, 0.9),
+			0 12px 30px rgba(0, 0, 0, 0.4);
+		transition: height 0.25s var(--settle);
 		background: #dfe3e0;
 	}
 	.minimap:hover .map-box,
 	.minimap.pinned .map-box {
-		height: min(430px, calc(100vh - 230px));
+		height: min(460px, calc(100vh - 220px));
 	}
 	.btn-guess {
 		width: 100%;
-		background: var(--green);
-		color: #fff;
-	}
-	.btn-guess:hover:not(:disabled) {
-		background: var(--green-ink);
+		height: 56px;
+		font-size: 16px;
 	}
 	.btn-guess:disabled {
-		background: var(--hud);
+		--b-bg: var(--hud);
+		--b-edge: var(--hud-edge);
 		opacity: 1;
-		color: rgba(255, 255, 255, 0.75);
+		color: rgba(255, 255, 255, 0.85);
 		font-family: var(--body);
-		font-weight: 500;
-	}
-	.map-fab {
-		display: none;
+		font-weight: 600;
+		cursor: default;
 	}
 
-	@media (max-width: 700px) {
+	/* ---------- the pause menu ---------- */
+	.menu {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+	}
+	.menu > .btn {
+		width: 100%;
+	}
+	.menu-row .field-label {
+		margin-bottom: 8px;
+	}
+	.keys {
+		font-size: 13px;
+		color: var(--muted);
+	}
+
+	/* ---------- phones ---------- */
+	@media (max-width: 760px) {
+		/* pinch to zoom; the viewers' own zoom buttons would sit under the big button */
+		.pano :global(.psv-navbar),
+		.pano :global([class*='panorama-control__zoom']) {
+			display: none !important;
+		}
 		.hud {
-			top: max(10px, env(safe-area-inset-top));
 			left: 10px;
 			right: 10px;
+			top: max(10px, env(safe-area-inset-top));
 		}
-		.logo {
-			display: none;
+		.status > div {
+			padding: 0 10px;
 		}
-		.chip,
-		.group :global(.chip) {
-			padding: 6px 10px;
-			min-width: 0;
+		.st-n {
+			font-size: 17px;
 		}
-		.chip-value,
-		.group :global(.chip-value) {
-			font-size: 16px;
+		.clock {
+			height: 46px;
+			font-size: 19px;
+			padding: 0 14px 0 12px;
 		}
-		.hud-btn {
-			height: 44px;
-			padding: 0 12px;
-		}
-		.hud-btn .label {
-			display: none;
-		}
-		.hint-banner {
-			top: 76px;
-			white-space: normal;
-			max-width: calc(100vw - 32px);
+		.round-btn {
+			width: 48px;
+			height: 48px;
 		}
 		.compass-spot {
-			top: 140px;
 			left: 10px;
+			top: calc(max(10px, env(safe-area-inset-top)) + 68px);
 		}
 		.compass-spot.modern {
-			left: 50%;
-			top: 72px;
-			transform: translateX(-50%) scale(0.82); /* clear of the map's close button */
+			top: calc(max(10px, env(safe-area-inset-top)) + 60px);
+			transform: translateX(-50%) scale(0.85);
+		}
+		.hint-banner {
+			white-space: normal;
+			max-width: calc(100vw - 32px);
+			top: calc(max(10px, env(safe-area-inset-top)) + 62px);
 		}
 		.hint-banner.low {
-			top: 116px;
+			top: calc(max(10px, env(safe-area-inset-top)) + 104px);
 		}
-		.minimap {
-			left: 10px;
+		.keys {
+			display: none;
+		}
+		.bottom {
+			display: flex;
+		}
+		.rail {
+			left: auto;
 			right: 10px;
-			bottom: 10px;
-			width: auto;
+			bottom: calc(max(14px, env(safe-area-inset-bottom)) + 80px);
+		}
+		.rail.lifted {
+			display: none;
+		}
+		/* the map is a sheet from the bottom; the street stays in sight above it */
+		.scrim {
+			display: block;
+			position: fixed;
+			inset: 0;
+			z-index: 1000;
+			border: none;
+			background: rgba(8, 14, 26, 0.35);
+			animation: fade 0.2s;
+		}
+		@keyframes fade {
+			from {
+				opacity: 0;
+			}
+		}
+		.minimap:not(.pinned):not(:hover) {
 			opacity: 1;
-			visibility: hidden;
 		}
-		.minimap.open {
-			visibility: visible;
-		}
+		.minimap,
 		.minimap:hover,
 		.minimap.pinned {
+			left: 0;
+			right: 0;
+			bottom: 0;
 			width: auto;
+			height: 74vh;
+			height: 74dvh;
+			opacity: 1;
+			z-index: 1001;
+			padding: 6px 12px max(12px, env(safe-area-inset-bottom));
+			border-radius: 26px 26px 0 0;
+			background: var(--surface);
+			color: var(--text);
+			box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.35);
+			transform: translateY(105%);
+			visibility: hidden;
+			transition:
+				transform 0.32s var(--settle),
+				visibility 0s 0.32s;
+		}
+		.minimap.open {
+			transform: none;
+			visibility: visible;
+			transition:
+				transform 0.32s var(--settle),
+				visibility 0s;
+		}
+		.map-head {
+			gap: 8px;
+			padding: 0 0 8px;
+		}
+		.grab {
+			display: grid;
+			place-items: center;
+			width: 44px;
+			height: 40px;
+			border: none;
+			border-radius: 12px;
+			background: var(--surface-2);
+			color: var(--text);
+		}
+		.map-title {
+			display: block;
+			flex: 1;
+			font-family: var(--display);
+			font-weight: 700;
+			font-size: 16px;
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+		.layer-btn {
+			margin-left: 0;
+			height: 40px;
+			background: var(--surface-2);
+			color: var(--text);
+		}
+		.size-btn {
+			display: none;
 		}
 		.map-box,
 		.minimap:hover .map-box,
 		.minimap.pinned .map-box {
-			height: 55vh;
+			flex: 1;
+			height: auto;
+			box-shadow: inset 0 0 0 1px var(--border);
 		}
-		.map-toolbar .size-btn {
-			display: none;
+		.btn-guess {
+			height: 60px;
+			font-size: 17px;
+			border-radius: 18px;
+			margin-top: 4px;
 		}
-		.map-fab {
-			display: inline-flex;
-			position: fixed;
-			right: 14px;
-			bottom: max(14px, env(safe-area-inset-bottom));
-			z-index: 1001;
-			height: 56px;
-			background: var(--sky);
-			color: #fff;
-			box-shadow: var(--shadow);
-		}
-		.minimap.open ~ .map-fab {
-			bottom: auto;
-			top: 70px;
+		.btn-guess:disabled {
+			--b-bg: var(--surface-2);
+			--b-edge: var(--edge);
+			color: var(--muted);
 		}
 	}
 </style>

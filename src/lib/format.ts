@@ -60,3 +60,8 @@ const UZ_MONTHS = [
 
 /** A guest's name already starts with its emoji (🐼_42): don't put the avatar next to it. */
 export const nameHasAvatar = (u: { name: string; avatar: string }) => u.name.startsWith(u.avatar);
+
+/** Stars for a round (0–3), the reward a child reads at a glance: 1 000, 2 500, 4 000 points. */
+export function starsFor(score: number): number {
+	return score >= 4000 ? 3 : score >= 2500 ? 2 : score >= 1000 ? 1 : 0;
+}

@@ -12,4 +12,8 @@ export function apiUrl(): string {
 	return `${location.protocol}//${location.hostname}:8131`;
 }
 
+/** A page's address on the game's own site, for links players send each other (a finished
+ *  game). Always the site, never the laptop or LAN address the link was made on. */
+export const siteUrl = (path: string): string => `https://${WEB_HOST}${path}`;
+
 export const yandexKey = (): string => PUBLIC_YANDEX_KEY ?? '';

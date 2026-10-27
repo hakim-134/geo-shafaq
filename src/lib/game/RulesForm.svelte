@@ -55,7 +55,7 @@
 		<div class="segmented">
 			{#each presets as p (p)}
 				<button aria-pressed={choice.preset === p} onclick={() => (choice = applyPreset(choice, p))}
-					>{t(`diff_${p}`)}</button
+					><i class="dot {p}"></i>{t(`diff_${p}`)}</button
 				>
 			{/each}
 		</div>
@@ -195,6 +195,23 @@
 		display: flex;
 		flex-direction: column;
 		gap: 16px;
+	}
+	.dot {
+		display: inline-block;
+		width: 11px;
+		height: 11px;
+		border-radius: 50%;
+		margin-right: 7px;
+		vertical-align: 0;
+	}
+	.dot.easy {
+		background: var(--green);
+	}
+	.dot.normal {
+		background: var(--star);
+	}
+	.dot.hard {
+		background: var(--red);
 	}
 	.form .field-note {
 		min-height: 0;

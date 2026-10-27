@@ -1,13 +1,13 @@
 <script lang="ts">
-	// A player's profile: who, the streets of Tashkent learned (why the game exists), the
-	// numbers, the best game on each map, the last games. The player's own page and other
-	// players' pages both show it; `action` goes next to the name, `children` at the end.
+	// Another player's page, kept short: who, the streets of Tashkent learned (why the game
+	// exists), three numbers, the last games. `action` goes next to the name, `children` at
+	// the end. The player's own page is a menu of its own (routes/me).
 	import type { Snippet } from 'svelte';
 	import type { Profile } from '#lib/api/client.js';
 	import MapSign from '#lib/maps/MapSign.svelte';
 	import GameRow from '#lib/game/GameRow.svelte';
-	import { i18n, t, tx } from '#lib/i18n/index.svelte.js';
-	import { fmtDistance, fmtMonth, fmtNum } from '#lib/format.js';
+	import { i18n, t } from '#lib/i18n/index.svelte.js';
+	import { fmtMonth, fmtNum } from '#lib/format.js';
 
 	let {
 		profile,
@@ -60,34 +60,13 @@
 
 <section class="numbers">
 	<div><b>{fmtNum(st.games)}</b><span>{t('games')}</span></div>
-	<div><b>{fmtNum(st.rounds)}</b><span>{t('statRounds')}</span></div>
 	<div><b>{fmtNum(st.best)}</b><span>{t('best')}</span></div>
-	<div><b>{fmtNum(st.avgRound)}</b><span>{t('avgRound')}</span></div>
 	<div><b>{fmtNum(st.perfect)}</b><span>{t('statPerfect')}</span></div>
 </section>
-{#if st.km > 0}<p class="missed">{t('missedKm', { km: fmtDistance(st.km) })}</p>{/if}
-
-{#if profile.maps.length}
-	<section>
-		<h2 class="section-title">{t('mapsTitle')}</h2>
-		<div class="list">
-			{#each profile.maps as m (m.map.slug)}
-				<a class="best" href={`/game/${m.gameId}`}>
-					<MapSign slug={m.map.slug} name={tx(m.map.name)} size="small" />
-					<span class="best-score">
-						<b>{fmtNum(m.best)}</b>
-						<span>{t('nRounds', { n: m.rounds })} · {t('nGames', { n: m.games })}</span>
-					</span>
-				</a>
-			{/each}
-		</div>
-	</section>
-{/if}
 
 <section>
 	<div class="head">
 		<h2 class="section-title">{t('history')}</h2>
-		{#if own && profile.recent.length}<a class="link-btn" href="/games">{t('allGames')}</a>{/if}
 	</div>
 	<div class="list">
 		{#each profile.recent as g (g.id)}
@@ -101,9 +80,7 @@
 {@render children?.()}
 
 <style>
-	section + section,
-	section + .missed,
-	.missed + section {
+	section + section {
 		margin-top: 30px;
 	}
 	.who {
@@ -141,11 +118,9 @@
 		color: var(--muted);
 	}
 	.badge {
-		font-size: 11.5px;
+		font-size: 13px;
 		font-weight: 700;
-		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		padding: 2px 8px;
+		padding: 2px 10px;
 		border-radius: 999px;
 		background: var(--surface-2);
 		color: var(--text);
@@ -234,7 +209,7 @@
 	/* the numbers, as a scoreboard */
 	.numbers {
 		display: grid;
-		grid-template-columns: repeat(5, minmax(0, 1fr));
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 		border-radius: 18px;
 		background: var(--lapis);
 		color: #fff;
@@ -263,11 +238,6 @@
 		line-height: 1.25;
 		color: rgba(255, 255, 255, 0.7);
 	}
-	.missed {
-		margin-top: 10px;
-		font-size: 13px;
-		color: var(--muted);
-	}
 
 	.head {
 		display: flex;
@@ -280,71 +250,9 @@
 	.list > :global(* + *) {
 		border-top: 1px solid var(--border);
 	}
-	.best {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 12px 0;
-		text-decoration: none;
-	}
-	.best-score {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-end;
-		flex: none;
-	}
-	.best-score b {
-		font-family: var(--display);
-		font-size: 16px;
-	}
-	.best-score span {
-		font-size: 12px;
-		color: var(--muted);
-	}
-	.best:hover b {
-		color: var(--sky-ink);
-	}
 	.empty {
 		color: var(--muted);
 		font-size: 14px;
 		padding: 8px 0;
-	}
-	@media (max-width: 640px) {
-		/* games and best big on top, the other three below */
-		.numbers {
-			grid-template-columns: repeat(6, minmax(0, 1fr));
-		}
-		.numbers div {
-			grid-column: span 2;
-		}
-		.numbers div:nth-child(1),
-		.numbers div:nth-child(3) {
-			grid-column: span 3;
-			order: -1;
-		}
-		.numbers div:nth-child(1) b,
-		.numbers div:nth-child(3) b {
-			font-size: 26px;
-		}
-		.numbers div:nth-child(3) {
-			border-left: 1px solid rgba(255, 255, 255, 0.1);
-		}
-		.numbers div:nth-child(2) {
-			border-left: none;
-		}
-		.numbers div:nth-child(2),
-		.numbers div:nth-child(4),
-		.numbers div:nth-child(5) {
-			border-top: 1px solid rgba(255, 255, 255, 0.1);
-		}
-		.avatar.big {
-			width: 72px;
-			height: 72px;
-			font-size: 40px;
-		}
-		h1 {
-			font-size: 24px;
-		}
 	}
 </style>

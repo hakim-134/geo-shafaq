@@ -18,14 +18,21 @@
 	import { savedLayer, type BBox } from '#lib/map/map.js';
 	import MapSign from '#lib/maps/MapSign.svelte';
 	import { loadChoice, saveChoice } from '#lib/rules.js';
-	import ScoreCard from '#lib/game/ScoreCard.svelte';
-	import PlaceCard from '#lib/game/PlaceCard.svelte';
+	import Loader from '#lib/game/Loader.svelte';
+	import ResultLayout from '#lib/game/ResultLayout.svelte';
+	import RoundReveal from '#lib/game/RoundReveal.svelte';
+	import ScoreCount from '#lib/game/ScoreCount.svelte';
+	import Stars from '#lib/game/Stars.svelte';
+	import StreetPlate from '#lib/game/StreetPlate.svelte';
+	import Confetti from '#lib/game/Confetti.svelte';
+	import { sfxFanfare } from '#lib/sfx.svelte.js';
 	import { t, tx, type Key } from '#lib/i18n/index.svelte.js';
 	import { ensureSession, refreshMe, session } from '#lib/session.svelte.js';
-	import { fmtDistance, fmtNum, nameHasAvatar, verdictKey } from '#lib/format.js';
+	import { fmtDistance, fmtNum, nameHasAvatar, starsFor } from '#lib/format.js';
 	import { showToast } from '#lib/toast.svelte.js';
 	import { yandexKey } from '#lib/config.js';
-	import { shareResult } from '#lib/game/share.js';
+	import { gameShare, nativeShare, type Share } from '#lib/game/share.js';
+	import ShareSheet from '#lib/components/ShareSheet.svelte';
 
 	type Phase = 'loading' | 'opening' | 'playing' | 'sending' | 'result' | 'final' | 'error';
 
@@ -42,6 +49,7 @@
 	});
 	let bestBefore = 0;
 	let finalPick = $state<number | null>(null); // a round chosen in the final table
+	let landed = $state(false); // the real pin is on the result map: the result plays
 	let rv = $state<ReturnType<typeof RoundView>>();
 
 	const endless = $derived(game?.rules.rounds === 0);
@@ -195,7 +203,10 @@
 			result = res;
 			game.total = res.total ?? game.total;
 			upsertRound({ ...round, result: res });
+			landed = false;
 			phase = 'result';
+			// the map's reveal says when; without a map, a moment later anyway
+			setTimeout(() => (landed = true), 2600);
 		} catch (e) {
 			phase = 'playing';
 			showToast(t(errorKey(e)));
@@ -232,6 +243,11 @@
 		if (justFinished) refreshMe().catch(() => {});
 	}
 
+	const starsWon = $derived(done.reduce((s, r) => s + starsFor(r.result!.score), 0));
+	$effect(() => {
+		if (newBest) setTimeout(sfxFanfare, 600);
+	});
+
 	// a game opened by its link from someone else: whose it is, and "play this map"
 	const mine = $derived(!game || game.player.id === session.me?.user.id);
 
@@ -250,11 +266,6 @@
 			.filter((r, i) => finalPick === null || i === finalPick)
 			.map((r) => ({ actual: r.result!.actual, guess: r.result!.guess, label: String(r.n) }))
 	);
-
-	function label(r: RoundResult): string {
-		const p = r.place;
-		return tx(p.street ?? p.district ?? p.city ?? p.region) || '—';
-	}
 
 	async function playAgain(map = game?.map.slug) {
 		if (!game || !map) return;
@@ -298,8 +309,12 @@
 		}
 	}
 
-	function share() {
-		if (game) shareResult(game, label);
+	// a link to the game on the site; the phone's share sheet, or our own
+	let sharing = $state<Share | null>(null);
+	async function share() {
+		if (!game) return;
+		const s = gameShare(game);
+		if (!(await nativeShare(s))) sharing = s;
 	}
 
 	// ---------- errors ----------
@@ -358,107 +373,122 @@
 		/>
 	{/if}
 
-	{#if phase === 'loading' || phase === 'opening' || phase === 'error'}
-		<div class="loader girih">
-			<img class="mark" src="/mark.svg" alt="" width="64" height="64" />
-			<div class="loader-text">
-				{phase === 'error' ? t(error.key) : phase === 'loading' ? t('starting') : t('loading')}
-			</div>
-			{#if phase === 'error'}
-				<div class="loader-actions">
-					{#if error.retry}<button class="btn btn-primary" onclick={error.retry}
-							>{t('retry')}</button
-						>{/if}
-					{#if error.getKey}<a
-							class="btn btn-ghost"
-							href="https://developer.tech.yandex.ru/services"
-							target="_blank"
-							rel="noopener">{t('getKey')}</a
-						>{/if}
-					<a class="btn btn-ghost" href="/">{t('menu')}</a>
-				</div>
-			{/if}
-		</div>
+	{#if phase === 'loading' || phase === 'opening'}
+		<Loader text={phase === 'loading' ? t('starting') : t('loading')} />
+	{:else if phase === 'error'}
+		<Loader text={t(error.key)} error>
+			{#if error.retry}<button class="btn btn-primary" onclick={error.retry}>{t('retry')}</button
+				>{/if}
+			{#if error.getKey}<a
+					class="btn btn-ghost"
+					href="https://developer.tech.yandex.ru/services"
+					target="_blank"
+					rel="noopener">{t('getKey')}</a
+				>{/if}
+			<a class="btn btn-ghost" href="/">{t('home')}</a>
+		</Loader>
 	{/if}
 
 	{#if game && phase === 'result' && result}
-		<div class="overlay">
-			<div class="side">
-				<div>
-					<div class="sub">{t('round')} {round?.n} / {game.rules.rounds}</div>
-					<div class="title">
-						{result.late ? t('late') : result.guess ? t(verdictKey(result.score)) : t('noGuess')}
-					</div>
-				</div>
-				<ScoreCard label={t('score')} score={result.score} max={5000} km={result.km ?? null} />
-				<PlaceCard place={result.place} at={result.actual} />
-				<div class="legend">
-					<span class="l-actual">{t('actual')}</span><span class="l-guess">{t('yourGuess')}</span>
-				</div>
-				<div class="actions">
-					<button class="btn btn-primary" onclick={afterResult}>
-						{result.gameOver ? t('finish') : t('next')}
-					</button>
-					{#if endless}
-						<button class="btn btn-sky" onclick={finishGame}>{t('finishGame')}</button>
-					{/if}
-					<a class="btn btn-ghost" href="/">{t('menu')}</a>
-				</div>
-			</div>
-			<div class="overlay-map">
+		<ResultLayout>
+			{#snippet map()}
 				<ResultMap
 					{bbox}
 					layer={savedLayer()}
-					pairs={[{ actual: result.actual, guess: result.guess }]}
+					pairs={[{ actual: result!.actual, guess: result!.guess }]}
+					reveal
+					onlanded={() => (landed = true)}
 				/>
-			</div>
-		</div>
+			{/snippet}
+			<RoundReveal
+				n={round?.n ?? done.length}
+				rounds={endless ? 0 : game.rules.rounds}
+				score={result.score}
+				km={result.km}
+				guessed={!!result.guess}
+				late={result.late}
+				place={result.place}
+				actual={result.actual}
+				go={landed}
+			/>
+			{#snippet actions()}
+				<button class="btn btn-primary next" onclick={afterResult}>
+					{result!.gameOver ? t('finish') : t('next')}
+					<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></svg>
+				</button>
+				{#if endless}
+					<button class="btn btn-ghost" onclick={finishGame}>{t('finishGame')}</button>
+				{/if}
+			{/snippet}
+		</ResultLayout>
 	{/if}
 
 	{#if game && phase === 'final'}
-		<div class="overlay">
-			<div class="side">
-				<div>
-					<div class="sub">{tx(game.map.name)}</div>
-					<div class="title">
+		<ResultLayout tall>
+			{#snippet map()}
+				<ResultMap {bbox} layer={savedLayer()} pairs={finalPairs} />
+			{/snippet}
+			<div class="final">
+				<div class="final-head">
+					<MapSign slug={game.map.slug} name={tx(game.map.name)} size="small" />
+					<h1 class:best={newBest}>
 						{newBest
 							? t('newBest')
 							: mine
 								? t('gameOver')
 								: t('playerGame', { name: game.player.name })}
+					</h1>
+					{#if !mine}
+						<a class="player" href={`/u/${game.player.id}`}>
+							{#if !nameHasAvatar(game.player)}<span class="avatar">{game.player.avatar}</span>{/if}
+							<span>{game.player.name}</span>
+						</a>
+					{/if}
+				</div>
+
+				<div class="total">
+					<ScoreCount score={total} max={game.max} big delay={200} />
+					{#if done.length}
+						<div class="total-stars">
+							<Stars n={1} of={1} size={22} quiet />
+							<b>{starsWon}</b>
+							<span>/ {done.length * 3}</span>
+							<span class="sep"></span>
+							<span>{fmtDistance(done.reduce((s, r) => s + (r.result?.km ?? 0), 0))}</span>
+						</div>
+					{/if}
+				</div>
+
+				{#if done.length}
+					<div class="trip">
+						<h2 class="section-title">{t('streetsThisGame')}</h2>
+						<ol>
+							{#each done as r, i (r.n)}
+								<li>
+									<button
+										class="stop"
+										aria-pressed={finalPick === i}
+										onclick={() => (finalPick = finalPick === i ? null : i)}
+										style:animation-delay={`${300 + i * 90}ms`}
+									>
+										<span class="stop-n">{r.n}</span>
+										<span class="stop-plate"
+											><StreetPlate place={r.result!.place} size="small" /></span
+										>
+										<span class="stop-score">
+											<Stars n={starsFor(r.result!.score)} size={13} quiet />
+											<b>{fmtNum(r.result!.score)}</b>
+										</span>
+									</button>
+								</li>
+							{/each}
+						</ol>
 					</div>
-					<a class="player" href={mine ? '/me' : `/u/${game.player.id}`}>
-						{#if !nameHasAvatar(game.player)}<span class="avatar">{game.player.avatar}</span>{/if}
-						<span>{game.player.name}</span>
-					</a>
-				</div>
-				<ScoreCard
-					label={t('total')}
-					score={total}
-					max={game.max}
-					km={done.reduce((s, r) => s + (r.result?.km ?? 0), 0)}
-				/>
-				<table class="rounds">
-					<tbody>
-						{#each done as r, i (r.n)}
-							<tr
-								class:picked={finalPick === i}
-								onclick={() => (finalPick = finalPick === i ? null : i)}
-							>
-								<td>{r.n}</td>
-								<td>{label(r.result!)}</td>
-								<td>{r.result!.km != null ? fmtDistance(r.result!.km) : '—'}</td>
-								<td>{fmtNum(r.result!.score)}</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-				<div class="legend">
-					<span class="l-actual">{t('actual')}</span><span class="l-guess">{t('yourGuess')}</span>
-				</div>
+				{/if}
+
 				{#if game.room}
 					<div class="room-table">
-						<div class="sub">{t('roomPlayers')}</div>
+						<h2 class="section-title">{t('roomPlayers')}</h2>
 						{#each game.room.players as row, i (row.game)}
 							<a class="room-row" class:me={row.game === game.id} href={`/game/${row.game}`}>
 								<span class="place">{i + 1}</span>
@@ -469,6 +499,7 @@
 						{/each}
 					</div>
 				{/if}
+
 				{#if wider}
 					<div class="wider">
 						<p>{t('goWider')}</p>
@@ -479,20 +510,32 @@
 						</button>
 					</div>
 				{/if}
-				<div class="actions">
-					<button class="btn btn-primary" onclick={() => playAgain()}
-						>{mine ? t('playAgain') : t('playThisMap')}</button
+			</div>
+			{#snippet actions()}
+				<button class="btn btn-primary" onclick={() => playAgain()}>
+					<svg viewBox="0 0 24 24"
+						><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3L3.5 8.3M3.5 3.5v4.8h4.8" /></svg
 					>
-					<button class="btn btn-sky" onclick={share}>{t('share')}</button>
-					<a class="btn btn-ghost" href="/">{t('menu')}</a>
+					{mine ? t('playAgain') : t('playThisMap')}
+				</button>
+				<div class="row">
+					<button class="btn btn-sky" onclick={share}>
+						<svg viewBox="0 0 24 24"
+							><path
+								d="M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5"
+							/></svg
+						>
+						{t('share')}
+					</button>
+					<a class="btn btn-ghost" href="/">{t('home')}</a>
 				</div>
-			</div>
-			<div class="overlay-map">
-				<ResultMap {bbox} layer={savedLayer()} pairs={finalPairs} />
-			</div>
-		</div>
+			{/snippet}
+		</ResultLayout>
+		{#if newBest}<Confetti />{/if}
 	{/if}
 </div>
+
+<ShareSheet share={sharing} onclose={() => (sharing = null)} />
 
 <style>
 	.game {
@@ -502,10 +545,182 @@
 		background: #000;
 		color: #fff;
 	}
+	.next {
+		height: 60px;
+		font-size: 17px;
+	}
+
+	/* ---------- the end of a game ---------- */
+	.final {
+		display: flex;
+		flex-direction: column;
+		gap: 22px;
+	}
+	.final-head {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 10px;
+	}
+	h1 {
+		font-family: var(--display);
+		font-weight: 800;
+		font-size: 32px;
+		line-height: 1.08;
+		letter-spacing: -0.02em;
+		animation: pop-in 0.5s var(--pop) both;
+	}
+	h1.best {
+		color: var(--green-ink);
+	}
+	:global(:root[data-theme='dark']) h1.best {
+		color: var(--green);
+	}
+	.player {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 5px 12px 5px 5px;
+		border-radius: 999px;
+		background: var(--bg);
+		text-decoration: none;
+		font-weight: 600;
+		font-size: 14px;
+	}
+	.player .avatar {
+		width: 28px;
+		height: 28px;
+		font-size: 16px;
+		background: var(--surface);
+	}
+	.total-stars {
+		margin-top: 12px;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 15px;
+		color: var(--muted);
+		font-weight: 600;
+	}
+	.total-stars b {
+		font-family: var(--display);
+		color: var(--text);
+		font-size: 17px;
+	}
+	.total-stars .sep {
+		width: 4px;
+		height: 4px;
+		border-radius: 50%;
+		background: var(--border);
+		margin: 0 6px;
+	}
+
+	/* the streets of this game, as small plates in the order they came */
+	.trip ol {
+		margin-top: 10px;
+		list-style: none;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	.stop {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 10px;
+		border: none;
+		border-radius: 14px;
+		background: transparent;
+		color: var(--text);
+		text-align: left;
+		animation: rise 0.4s var(--settle) both;
+		transition: background 0.15s;
+	}
+	.stop:hover,
+	.stop[aria-pressed='true'] {
+		background: color-mix(in srgb, var(--sky) 12%, transparent);
+	}
+	.stop-n {
+		width: 24px;
+		height: 24px;
+		border-radius: 50%;
+		background: var(--surface-2);
+		font-weight: 700;
+		font-size: 12.5px;
+		display: grid;
+		place-items: center;
+		flex: none;
+	}
+	.stop-plate {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+	}
+	.stop-plate :global(.where) {
+		max-width: 100%;
+	}
+	.stop-score {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 2px;
+		flex: none;
+	}
+	.stop-score b {
+		font-family: var(--display);
+		font-size: 15px;
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* a room game: everyone's total */
+	.room-table {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.room-table .section-title {
+		margin-bottom: 6px;
+	}
+	.room-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 7px 8px;
+		border-radius: 12px;
+		text-decoration: none;
+		font-size: 14px;
+	}
+	.room-row:hover,
+	.room-row.me {
+		background: color-mix(in srgb, var(--sky) 10%, transparent);
+	}
+	.room-row .place {
+		width: 18px;
+		color: var(--muted);
+		font-weight: 700;
+	}
+	.room-row .avatar {
+		width: 30px;
+		height: 30px;
+		font-size: 17px;
+		background: var(--bg);
+	}
+	.room-row .name {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.room-row b {
+		font-family: var(--display);
+	}
+
 	/* go wider */
 	.wider {
 		padding: 14px;
-		border-radius: 16px;
+		border-radius: 18px;
 		background: color-mix(in srgb, var(--gold) 16%, var(--surface));
 		border: 1px solid color-mix(in srgb, var(--gold) 40%, transparent);
 	}
@@ -521,11 +736,15 @@
 		gap: 10px;
 		padding: 8px 12px;
 		border: none;
-		border-radius: 12px;
+		border-radius: 14px;
 		background: var(--surface);
 		color: var(--text);
 		font-weight: 700;
-		box-shadow: 0 1px 0 var(--border);
+		box-shadow: 0 3px 0 var(--edge);
+	}
+	.wider-go:active {
+		transform: translateY(2px);
+		box-shadow: 0 1px 0 var(--edge);
 	}
 	.wider-go .go {
 		margin-left: auto;
@@ -536,228 +755,12 @@
 		fill: var(--green);
 	}
 
-	/* loader */
-	.loader {
-		position: fixed;
-		inset: 0;
-		z-index: 3000;
-		background: var(--bg);
-		color: var(--text);
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 18px;
-		padding: 24px;
-		text-align: center;
-	}
-	.mark {
-		animation: bob 1.4s ease-in-out infinite;
-	}
-	@keyframes bob {
-		50% {
-			transform: translateY(-8px);
-		}
-	}
-	.loader-text {
-		font-family: var(--display);
-		font-weight: 700;
-		font-size: 17px;
-		max-width: 420px;
-	}
-	.loader-actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 10px;
-		justify-content: center;
-	}
-
-	/* a room game: everyone's total */
-	.room-table {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-	.room-row {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 7px 8px;
-		border-radius: 10px;
-		text-decoration: none;
-		font-size: 14px;
-	}
-	.room-row:hover,
-	.room-row.me {
-		background: color-mix(in srgb, var(--sky) 10%, transparent);
-	}
-	.room-row .place {
-		width: 18px;
-		color: var(--muted);
-		font-weight: 600;
-	}
-	.room-row .avatar {
-		width: 28px;
-		height: 28px;
-		font-size: 16px;
-		background: var(--bg);
-	}
-	.room-row .name {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.room-row b {
-		font-family: var(--display);
-	}
-
-	/* results */
-	.overlay {
-		position: fixed;
-		inset: 0;
-		z-index: 2000;
-		background: var(--bg);
-		color: var(--text);
-		display: grid;
-		grid-template-columns: 380px minmax(0, 1fr);
-		grid-template-rows: minmax(0, 1fr);
-	}
-	.side {
-		min-height: 0;
-		padding: 26px 24px;
-		display: flex;
-		flex-direction: column;
-		gap: 16px;
-		overflow-y: auto;
-		background: var(--surface);
-		border-right: 1px solid var(--border);
-	}
-	.sub {
-		font-size: 13px;
-		font-weight: 600;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		color: var(--muted);
-	}
-	.title {
-		margin-top: 4px;
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 32px;
-		line-height: 1.1;
-		letter-spacing: -0.02em;
-	}
-	.player {
-		margin-top: 10px;
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		padding: 6px 12px;
-		border-radius: 999px;
-		background: var(--bg);
-		text-decoration: none;
-		font-weight: 600;
-		font-size: 14px;
-	}
-	.player:has(.avatar) {
-		padding-left: 4px;
-	}
-	.player .avatar {
-		width: 28px;
-		height: 28px;
-		font-size: 16px;
-		background: var(--surface);
-	}
-	.legend {
-		display: flex;
-		gap: 16px;
-		font-size: 13px;
-		color: var(--muted);
-	}
-	.legend span::before {
-		content: '';
-		display: inline-block;
-		width: 10px;
-		height: 10px;
-		border-radius: 50%;
-		margin-right: 6px;
-	}
-	.l-actual::before {
-		background: #1eb53a;
-	}
-	.l-guess::before {
-		background: #0099b5;
-	}
-	.actions {
-		margin-top: auto;
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-	.actions .btn {
-		width: 100%;
-	}
-	.overlay-map {
-		position: relative;
-		min-height: 300px;
-	}
-	.overlay-map > :global(div) {
-		position: absolute;
-		inset: 0;
-	}
-	.rounds {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: 14px;
-	}
-	.rounds td {
-		padding: 9px 4px;
-		border-bottom: 1px solid var(--border);
-	}
-	.rounds td:first-child {
-		color: var(--muted);
-		width: 26px;
-	}
-	.rounds td:last-child {
-		text-align: right;
-		font-family: var(--display);
-		font-weight: 700;
-	}
-	.rounds tr {
-		cursor: pointer;
-	}
-	.rounds tr:hover td,
-	.rounds tr.picked td {
-		background: color-mix(in srgb, var(--sky) 10%, transparent);
-	}
-
 	@media (max-width: 760px) {
-		.overlay {
-			grid-template-columns: 1fr;
-			grid-template-rows: 40vh minmax(0, 1fr);
+		.final {
+			gap: 18px;
 		}
-		.overlay-map {
-			order: -1;
-		}
-		.side {
-			border-right: none;
-			border-top: 1px solid var(--border);
-			padding: 18px 16px;
-			gap: 14px;
-		}
-		.title {
+		h1 {
 			font-size: 26px;
-		}
-		/* the next step stays under the thumb, however long the card above it */
-		.actions {
-			position: sticky;
-			bottom: 0;
-			margin: auto -16px -18px;
-			padding: 12px 16px max(14px, env(safe-area-inset-bottom));
-			background: var(--surface);
-			box-shadow: 0 -8px 16px -8px rgba(0, 0, 0, 0.15);
 		}
 	}
 </style>

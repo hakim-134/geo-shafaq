@@ -1,14 +1,10 @@
-// The game's settings in one line: "Oson · 5 raund · vaqtsiz · 1 yordam". The home's folded
-// settings, and a room's rules in its lobby.
+// A game's settings past its three facts (RulesFacts: difficulty, rounds, time) in one line:
+// "1 yordam · joyida · kompassiz". A room's lobby shows it under the facts.
 import { t } from '#lib/i18n/index.svelte.js';
-import { fmtClock } from '#lib/format.js';
 import type { Choice } from '#lib/rules.js';
 
-export function summary(c: Choice, canMove: boolean): string {
+export function extras(c: Choice, canMove: boolean): string {
 	return [
-		t(`diff_${c.preset}`),
-		c.rounds ? t('nRounds', { n: c.rounds }) : t('endlessShort'),
-		c.timeSec ? fmtClock(c.timeSec) : t('noTimeLimit'),
 		c.hints.count ? t('nHints', { n: c.hints.count }) : t('hintsNone').toLowerCase(),
 		c.movement !== 'move' || !canMove
 			? t(`move_${canMove ? c.movement : 'nomove'}`).toLowerCase()

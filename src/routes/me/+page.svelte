@@ -1,13 +1,15 @@
 <script lang="ts">
+	// The player's own page, kept short: who, the streets learned (why the game exists), three
+	// numbers, and a menu to the rest, each a simple page of its own: games, streets, records,
+	// settings, ways to sign in, name and picture.
 	import TopBar from '#lib/components/TopBar.svelte';
-	import ProfileView from '#lib/components/ProfileView.svelte';
-	import Sheet from '#lib/components/Sheet.svelte';
-	import { api, call, ApiError, type Profile } from '#lib/api/client.js';
-	import { ensureSession, session, setMe } from '#lib/session.svelte.js';
-	import { account, loadConfig, openSignIn, signOut, unlink } from '#lib/account.svelte.js';
+	import MenuRow from '#lib/components/MenuRow.svelte';
+	import MapSign from '#lib/maps/MapSign.svelte';
+	import { api, call, type Profile } from '#lib/api/client.js';
+	import { ensureSession, session } from '#lib/session.svelte.js';
+	import { openSignIn } from '#lib/account.svelte.js';
 	import { i18n, t } from '#lib/i18n/index.svelte.js';
-	import { fmtMonth } from '#lib/format.js';
-	import { showToast } from '#lib/toast.svelte.js';
+	import { fmtMonth, fmtNum } from '#lib/format.js';
 
 	let profile = $state<Profile | null>(null);
 	let failed = $state(false);
@@ -27,117 +29,124 @@
 		}
 	}
 
-	// ---------- name and avatar ----------
-	let editing = $state(false);
-	let name = $state('');
-	let avatar = $state('');
-	let nameError = $state(false);
-	let saving = $state(false);
-
-	function edit() {
-		name = session.me?.user.name ?? '';
-		avatar = session.me?.user.avatar ?? '';
-		nameError = false;
-		editing = true;
-		loadConfig();
-	}
-
-	async function saveProfile(e: SubmitEvent) {
-		e.preventDefault();
-		if (saving) return;
-		saving = true;
-		nameError = false;
-		try {
-			const me = await call(api().POST('/v1/me/profile', { body: { name, avatar } }));
-			setMe(me);
-			editing = false;
-			showToast(t('saved'));
-		} catch (err) {
-			if (err instanceof ApiError && err.code === 'bad_name') nameError = true;
-			else showToast(t('err_other'));
-		} finally {
-			saving = false;
-		}
-	}
-
 	const me = $derived(session.me);
 	const ids = $derived(me?.identities ?? []);
 	const providerName = { telegram: 'Telegram', google: 'Google' } as const;
-	// another way in is offered only if the server has one the player hasn't linked yet
-	const canAdd = $derived(
-		(!!account.config?.telegramBot && !ids.some((i) => i.provider === 'telegram')) ||
-			(!!account.config?.googleClientId && !ids.some((i) => i.provider === 'google'))
+	const waysFact = $derived(
+		ids.length ? ids.map((i) => providerName[i.provider]).join(', ') : t('notLinked')
 	);
-	loadConfig();
+	const streets = $derived(profile?.streets);
+	const pct = (n: number) => `${(n / Math.max(streets?.total ?? 1, 1)) * 100}%`;
 </script>
 
 <svelte:head><title>{me?.user.name ?? t('profile')} — Shafaq Geo</title></svelte:head>
 
 <TopBar />
 
-<main class="page">
+<main class="me">
 	{#if profile && me}
-		<ProfileView {profile} own>
-			{#snippet action()}
-				<button class="btn btn-ghost edit" onclick={edit}>
-					<svg viewBox="0 0 24 24" class="icon"
-						><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" /></svg
-					>
-					<span>{t('editProfile')}</span>
-				</button>
-			{/snippet}
+		<section class="who">
+			<a class="avatar big" href="/me/edit" aria-label={t('editNameAvatar')}>{me.user.avatar}</a>
+			<div class="who-text">
+				<h1>{me.user.name}</h1>
+				<p>
+					{#if me.user.guest}<span class="badge">{t('guestBadge')}</span>{/if}
+					<span>{t('joined', { date: fmtMonth(profile.user.joinedAt, i18n.lang) })}</span>
+				</p>
+			</div>
+			<a class="icon-btn" href="/me/edit" aria-label={t('editNameAvatar')}>
+				<svg viewBox="0 0 24 24" class="icon"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" /></svg
+				>
+			</a>
+		</section>
 
-			<section class="accounts">
-				<h2 class="section-title">{t('accountsTitle')}</h2>
-				{#if me.user.guest}
-					<p class="note">{t('accountsGuest')}</p>
-					<button class="btn btn-telegram wide" onclick={() => openSignIn('save')}
-						>{t('signIn')}</button
-					>
-				{:else}
-					<ul>
-						{#each ids as id (id.id)}
-							<li>
-								<span class="prov {id.provider}" aria-hidden="true">
-									{#if id.provider === 'telegram'}
-										<svg viewBox="0 0 24 24"
-											><path
-												d="M21.4 4.3 2.9 11.4c-1.2.5-1.2 1.2-.2 1.5l4.7 1.5 1.8 5.6c.2.6.4.8.9.8.4 0 .6-.2.9-.5l2.3-2.2 4.8 3.5c.9.5 1.5.2 1.7-.8l3.1-14.7c.3-1.3-.5-1.9-1.5-1.5z"
-											/></svg
-										>
-									{:else}
-										<b>G</b>
-									{/if}
-								</span>
-								<span class="id-text">
-									<b>{providerName[id.provider]}{id.username ? ` · ${id.username}` : ''}</b>
-									<span
-										>{id.name || '—'} · {t('linkedSince', {
-											date: fmtMonth(id.createdAt, i18n.lang)
-										})}</span
-									>
-								</span>
-								{#if ids.length > 1}
-									<button class="link-btn" onclick={() => unlink(id.id)}>{t('unlinkBtn')}</button>
-								{/if}
-							</li>
-						{/each}
-					</ul>
-					{#if canAdd}
-						<button class="btn btn-ghost wide" onclick={() => openSignIn('link')}
-							>{t('addWay')}</button
-						>
-					{/if}
-					<div class="out">
-						<p class="note">{t('signOutNote')}</p>
-						<div class="out-btns">
-							<button class="btn btn-ghost" onclick={() => signOut(false)}>{t('signOut')}</button>
-							<button class="btn btn-ghost" onclick={() => signOut(true)}>{t('signOutAll')}</button>
-						</div>
-					</div>
-				{/if}
+		{#if streets && streets.total > 0}
+			<a class="streets" href="/me/streets">
+				<MapSign slug="tashkent-streets" name={t('streetsTitle')} size="small" />
+				<p class="learned">
+					<b>{fmtNum(streets.learned)}</b>
+					<span>{t('streetsLearnedMe', { n: streets.learned })}</span>
+				</p>
+				<div class="bar" aria-hidden="true">
+					<i class="seen" style:width={pct(streets.seen)}></i>
+					<i class="got" style:width={pct(streets.learned)}></i>
+				</div>
+				<p class="line">
+					{t('streetsLine', { seen: streets.seen, total: streets.total })}
+					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+				</p>
+			</a>
+		{/if}
+
+		<section class="numbers">
+			<div><b>{fmtNum(profile.stats.games)}</b><span>{t('games')}</span></div>
+			<div><b>{fmtNum(profile.stats.best)}</b><span>{t('best')}</span></div>
+			<div><b>{fmtNum(profile.stats.perfect)}</b><span>{t('statPerfect')}</span></div>
+		</section>
+
+		<nav class="menu">
+			<MenuRow
+				href="/games"
+				label={t('myGames')}
+				fact={t('nGames', { n: profile.stats.games })}
+				color="var(--sign-blue)"
+			>
+				{#snippet icon()}<svg viewBox="0 0 24 24"
+						><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></svg
+					>{/snippet}
+			</MenuRow>
+			<MenuRow
+				href="/me/streets"
+				label={t('myStreets')}
+				fact={streets ? `${fmtNum(streets.learned)} / ${fmtNum(streets.total)}` : ''}
+				color="var(--green)"
+			>
+				{#snippet icon()}<svg viewBox="0 0 24 24"
+						><rect x="3" y="7" width="18" height="10" rx="2" /><path d="M7 12h10" /></svg
+					>{/snippet}
+			</MenuRow>
+			<MenuRow
+				href="/me/records"
+				label={t('myRecords')}
+				fact={profile.maps.length ? t('nMaps', { n: profile.maps.length }) : ''}
+				color="var(--gold)"
+			>
+				{#snippet icon()}<svg viewBox="0 0 24 24"
+						><path
+							d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8.5 20h7"
+						/></svg
+					>{/snippet}
+			</MenuRow>
+			<MenuRow href="/settings" label={t('settings')} color="var(--lapis-2)">
+				{#snippet icon()}<svg viewBox="0 0 24 24"
+						><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle
+							cx="10"
+							cy="17"
+							r="2"
+						/></svg
+					>{/snippet}
+			</MenuRow>
+			<MenuRow
+				href="/me/accounts"
+				label={t('accountsTitle')}
+				fact={waysFact}
+				color="var(--telegram)"
+			>
+				{#snippet icon()}<svg viewBox="0 0 24 24"
+						><rect x="5" y="10.5" width="14" height="10" rx="2" /><path
+							d="M8 10.5V8a4 4 0 0 1 8 0v2.5"
+						/></svg
+					>{/snippet}
+			</MenuRow>
+		</nav>
+
+		{#if me.user.guest}
+			<section class="save">
+				<b>{t('nudgeTitle')}</b>
+				<p>{t('nudgeText')}</p>
+				<button class="btn btn-telegram" onclick={() => openSignIn('save')}>{t('signIn')}</button>
 			</section>
-		</ProfileView>
+		{/if}
 	{:else if failed}
 		<div class="center">
 			<p>{t('err_network')}</p>
@@ -148,37 +157,14 @@
 	{/if}
 </main>
 
-<Sheet open={editing} onclose={() => (editing = false)} title={t('profile')}>
-	<form onsubmit={saveProfile}>
-		<label class="field-label" for="name">{t('nameLabel')}</label>
-		<input
-			id="name"
-			class="input"
-			class:bad={nameError}
-			bind:value={name}
-			maxlength="24"
-			autocomplete="nickname"
-			spellcheck="false"
-		/>
-		<p class="help" class:bad={nameError}>{nameError ? t('badName') : t('nameHelp')}</p>
-
-		<div class="field-label">{t('avatarLabel')}</div>
-		<div class="avatars" role="radiogroup" aria-label={t('avatarLabel')}>
-			{#each account.config?.avatars ?? [] as a (a)}
-				<button type="button" role="radio" aria-checked={avatar === a} onclick={() => (avatar = a)}
-					>{a}</button
-				>
-			{/each}
-		</div>
-		<button class="btn btn-primary wide save" disabled={saving}>{t('save')}</button>
-	</form>
-</Sheet>
-
 <style>
-	.page {
-		max-width: 720px;
+	.me {
+		max-width: 640px;
 		margin: 0 auto;
-		padding: 16px 24px 64px;
+		padding: 12px 24px 64px;
+		display: flex;
+		flex-direction: column;
+		gap: 22px;
 	}
 	.center {
 		min-height: 50vh;
@@ -189,159 +175,180 @@
 		gap: 16px;
 		color: var(--muted);
 	}
-	.edit {
-		height: 42px;
-		padding: 0 14px;
-		font-family: var(--body);
-		font-weight: 600;
-		font-size: 14px;
-		letter-spacing: 0;
-	}
-	.edit .icon {
-		width: 17px;
-		height: 17px;
-	}
-	.accounts {
-		margin-top: 34px;
-		padding-top: 26px;
-		border-top: 1px dashed var(--border);
-	}
-	.note {
-		margin: 8px 0 14px;
-		font-size: 14px;
-		color: var(--muted);
-	}
-	.wide {
-		width: 100%;
-	}
-	ul {
-		list-style: none;
-		margin: 10px 0 14px;
-	}
-	li {
+	.who {
 		display: flex;
 		align-items: center;
-		gap: 12px;
-		padding: 12px 0;
+		gap: 16px;
 	}
-	li + li {
-		border-top: 1px solid var(--border);
-	}
-	.prov {
-		width: 40px;
-		height: 40px;
-		border-radius: 50%;
-		display: grid;
-		place-items: center;
-		flex: none;
-		color: #fff;
-	}
-	.prov.telegram {
-		background: var(--telegram);
-	}
-	.prov.telegram svg {
-		width: 20px;
-		height: 20px;
-		fill: currentColor;
-	}
-	.prov.google {
+	.avatar.big {
+		width: 80px;
+		height: 80px;
+		font-size: 44px;
 		background: var(--surface);
 		border: 1px solid var(--border);
-		color: #4285f4;
-		font-size: 18px;
+		box-shadow: 0 4px 0 var(--edge);
+		text-decoration: none;
 	}
-	.id-text {
+	.who-text {
 		flex: 1;
 		min-width: 0;
-		display: flex;
-		flex-direction: column;
 	}
-	.id-text b {
-		font-weight: 600;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+	h1 {
+		font-family: var(--display);
+		font-weight: 800;
+		font-size: 26px;
+		line-height: 1.1;
+		letter-spacing: -0.02em;
+		overflow-wrap: anywhere;
 	}
-	.id-text span {
-		font-size: 12.5px;
-		color: var(--muted);
-	}
-	.out {
-		margin-top: 22px;
-	}
-	.out-btns {
+	.who-text p {
+		margin-top: 6px;
 		display: flex;
 		flex-wrap: wrap;
-		gap: 10px;
-	}
-	.out-btns .btn {
-		height: 44px;
-		font-family: var(--body);
-		font-weight: 600;
+		align-items: center;
+		gap: 6px 8px;
 		font-size: 14px;
-		letter-spacing: 0;
-	}
-
-	/* the edit sheet */
-	.input {
-		width: 100%;
-		height: 50px;
-		padding: 0 14px;
-		border-radius: 12px;
-		border: 1.5px solid var(--border);
-		background: var(--bg);
-		font-size: 17px;
-		font-weight: 600;
-	}
-	.input:focus {
-		outline: none;
-		border-color: var(--sky);
-	}
-	.input.bad {
-		border-color: var(--red);
-	}
-	.help {
-		margin: 6px 0 18px;
-		font-size: 12.5px;
 		color: var(--muted);
 	}
-	.help.bad {
-		color: var(--red);
-		font-weight: 600;
+	.badge {
+		font-size: 13px;
+		font-weight: 700;
+		padding: 2px 10px;
+		border-radius: 999px;
+		background: var(--surface-2);
+		color: var(--text);
 	}
-	.avatars {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
-		gap: 6px;
-		max-height: 220px;
-		overflow-y: auto;
-		padding: 2px;
+
+	/* the streets learned: the big number of this page */
+	.streets {
+		display: block;
+		padding: 18px 20px;
+		border-radius: 22px;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		box-shadow: 0 4px 0 var(--edge);
+		text-decoration: none;
+		color: var(--text);
+		transition: transform 0.1s;
 	}
-	.avatars button {
-		aspect-ratio: 1;
-		border: none;
-		border-radius: 12px;
-		background: var(--bg);
-		font-size: 24px;
+	.streets:active {
+		transform: translateY(2px);
+	}
+	.learned {
+		margin-top: 12px;
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+	.learned b {
+		font-family: var(--display);
+		font-weight: 800;
+		font-size: 52px;
 		line-height: 1;
+		color: var(--green-ink);
 	}
-	.avatars button[aria-checked='true'] {
-		background: color-mix(in srgb, var(--green) 22%, var(--surface));
-		box-shadow: 0 0 0 2px var(--green);
+	:global(:root[data-theme='dark']) .learned b {
+		color: var(--green);
 	}
+	.learned span {
+		font-weight: 600;
+		font-size: 16px;
+	}
+	.bar {
+		position: relative;
+		margin-top: 14px;
+		height: 12px;
+		border-radius: 6px;
+		background: var(--surface-2);
+		overflow: hidden;
+	}
+	.bar i {
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		border-radius: inherit;
+	}
+	.bar .seen {
+		background: color-mix(in srgb, var(--gold) 45%, transparent);
+	}
+	.bar .got {
+		background: var(--green);
+	}
+	.line {
+		margin-top: 10px;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		font-size: 14px;
+		color: var(--muted);
+	}
+	.line .icon {
+		width: 18px;
+		height: 18px;
+	}
+
+	.numbers {
+		display: grid;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		border-radius: 20px;
+		overflow: hidden;
+		background: var(--lapis);
+		color: #fff;
+	}
+	.numbers div {
+		padding: 14px 14px 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		min-width: 0;
+	}
+	.numbers div + div {
+		border-left: 1px solid rgba(255, 255, 255, 0.12);
+	}
+	.numbers b {
+		font-family: var(--display);
+		font-weight: 800;
+		font-size: 22px;
+		font-variant-numeric: tabular-nums;
+	}
+	.numbers span {
+		font-size: 13px;
+		opacity: 0.75;
+	}
+
 	.save {
-		margin-top: 18px;
+		padding: 18px;
+		border-radius: 22px;
+		background: color-mix(in srgb, var(--telegram) 10%, var(--surface));
+		border: 1px solid color-mix(in srgb, var(--telegram) 30%, transparent);
+	}
+	.save b {
+		font-family: var(--display);
+		font-size: 15px;
+	}
+	.save p {
+		margin: 6px 0 14px;
+		font-size: 14px;
+		color: var(--muted);
+	}
+	.save .btn {
+		width: 100%;
+		height: 50px;
+	}
+
+	.menu {
+		display: flex;
+		flex-direction: column;
+		margin: 0 -12px;
 	}
 	@media (max-width: 640px) {
-		.page {
-			padding: 12px 16px 48px;
+		.me {
+			padding: 8px 16px 48px;
 		}
-		.edit span {
-			display: none;
-		}
-		.edit {
-			width: 42px;
-			padding: 0;
+		.learned b {
+			font-size: 44px;
 		}
 	}
 </style>

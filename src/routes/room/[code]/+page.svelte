@@ -25,15 +25,22 @@
 	import TopBar from '#lib/components/TopBar.svelte';
 	import Sheet from '#lib/components/Sheet.svelte';
 	import RulesForm from '#lib/game/RulesForm.svelte';
-	import PlaceCard from '#lib/game/PlaceCard.svelte';
-	import ScoreCard from '#lib/game/ScoreCard.svelte';
-	import { summary } from '#lib/game/summary.js';
+	import Loader from '#lib/game/Loader.svelte';
+	import ResultLayout from '#lib/game/ResultLayout.svelte';
+	import RoundReveal from '#lib/game/RoundReveal.svelte';
+	import StreetPlate from '#lib/game/StreetPlate.svelte';
+	import Confetti from '#lib/game/Confetti.svelte';
+	import { extras } from '#lib/game/summary.js';
+	import RulesFacts from '#lib/game/RulesFacts.svelte';
+	import ShareSheet from '#lib/components/ShareSheet.svelte';
+	import { nativeShare, type Share } from '#lib/game/share.js';
+	import { siteUrl } from '#lib/config.js';
 	import { playerColor } from '#lib/game/colors.js';
 	import { choiceFrom, rulesFor, testProviders, type Choice } from '#lib/rules.js';
 	import { PanoError } from '#lib/pano/index.js';
 	import { t, tx, type Key } from '#lib/i18n/index.svelte.js';
 	import { ensureSession, refreshMe, setMe } from '#lib/session.svelte.js';
-	import { fmtDistance, fmtNum, verdictKey } from '#lib/format.js';
+	import { fmtDistance, fmtNum, starsFor } from '#lib/format.js';
 	import { showToast } from '#lib/toast.svelte.js';
 
 	let link = $state<RoomLink | null>(null);
@@ -134,6 +141,10 @@
 		if (st?.phase !== 'playing') {
 			rv?.stopTimer();
 			deadline = 0;
+			// between rounds and games: the next round opens fresh, even when it is the same
+			// number (round 1 of the next game, "play again")
+			opened = '';
+			guess = null;
 		}
 	});
 
@@ -252,6 +263,16 @@
 
 	// ---------- results ----------
 	const last = $derived(st?.phase === 'result' ? st.results.at(-1) : undefined);
+	// the real pin is on the map: the result plays (or a moment later without a map)
+	let landed = $state(false);
+	let landedFor = -1;
+	$effect(() => {
+		const n = last?.n ?? -1;
+		if (n === landedFor) return;
+		landedFor = n;
+		landed = false;
+		if (n >= 0) setTimeout(() => landedFor === n && (landed = true), 2600);
+	});
 	const myLast = $derived(last?.scores.find((s) => s.player === st?.you));
 	const lastRows = $derived(
 		last ? [...last.scores].sort((a, b) => b.score - a.score || (a.km ?? 1e9) - (b.km ?? 1e9)) : []
@@ -408,17 +429,34 @@
 	const tgShare = $derived(
 		`https://t.me/share/url?url=${encodeURIComponent(roomUrl)}&text=${encodeURIComponent(inviteText)}`
 	);
+	// the phone's share sheet where there is one (https); our own sheet (copy, Telegram) anywhere else
+	let sharing = $state<{ share: Share; title: string } | null>(null);
 	async function shareLink() {
-		try {
-			if (navigator.share) {
-				await navigator.share({ text: inviteText, url: roomUrl });
-				return;
-			}
-			await navigator.clipboard.writeText(`${inviteText}\n${roomUrl}`);
-			showToast(t('linkCopied'));
-		} catch (e) {
-			if ((e as Error).name !== 'AbortError') showToast(roomUrl, 5000);
-		}
+		const share = { url: roomUrl, text: inviteText };
+		if (!(await nativeShare(share))) sharing = { share, title: t('inviteTitle') };
+	}
+
+	// after a game: my game's page on the site, with everyone's table on it
+	async function shareResults() {
+		if (!st?.yourGame) return;
+		const place = standings.findIndex((p) => p.id === st?.you) + 1;
+		const squares = st.results
+			.map((r) => r.scores.find((x) => x.player === st?.you)?.score ?? 0)
+			.map((sc) => ['🟥', '🟥', '🟨', '🟩'][starsFor(sc)])
+			.join('');
+		const share = {
+			url: siteUrl(`/game/${st.yourGame}`),
+			text: [
+				t('shareRoomText', {
+					map: tx(st.map.name),
+					place,
+					n: players.length,
+					score: fmtNum(me?.total ?? 0)
+				}),
+				squares
+			].join('\n')
+		};
+		if (!(await nativeShare(share))) sharing = { share, title: t('shareTitle') };
 	}
 
 	function errorKey(e: unknown): Key {
@@ -470,15 +508,12 @@
 		</div>
 	</main>
 {:else if !st}
-	<div class="loader girih">
-		<img class="mark" src="/mark.svg" alt="" width="64" height="64" />
-		<div class="loader-text">{t('connecting')}</div>
-	</div>
+	<Loader text={t('connecting')} />
 {:else if st.phase === 'lobby' || !st.joined}
 	<TopBar />
 	<main class="lobby">
 		<section class="head">
-			<p class="kicker">{t('friends')}</p>
+			<p class="kicker">{t('roomCode')}</p>
 			<div class="plate" aria-label={`${t('roomCode')}: ${code}`}>
 				<b>{code}</b>
 				<span class="plate-end" aria-hidden="true">
@@ -514,14 +549,34 @@
 					name={tx(st.map.name)}
 					top={tx(st.map.description)}
 					outline={st.map.outline}
-					size="small"
 				/>
 			</div>
 			<p class="setup-rules">
-				{summary(choiceFrom(st.rules, st.map.slug), st.map.canMove ?? true)}
+				<RulesFacts choice={choiceFrom(st.rules, st.map.slug)} />
+			</p>
+			<p class="setup-more">
+				{extras(choiceFrom(st.rules, st.map.slug), st.map.canMove ?? true)}
 			</p>
 			{#if isHost}
-				<button class="link-btn" onclick={openSettings}>{t('editSettings')}</button>
+				<button class="btn setup-btn" onclick={openSettings}>
+					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+						><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle
+							cx="10"
+							cy="17"
+							r="2"
+						/></svg
+					>
+					{t('changeMapRules')}
+				</button>
+			{:else}
+				<p class="setup-host">
+					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+						><rect x="5" y="10.5" width="14" height="10" rx="2" /><path
+							d="M8 10.5V8a4 4 0 0 1 8 0v2.5"
+						/></svg
+					>
+					{t('onlyHostChanges')}
+				</p>
 			{/if}
 		</section>
 
@@ -578,7 +633,7 @@
 				<p class="wait">{t('connecting')}</p>
 			{:else if isHost}
 				<button
-					class="btn btn-play"
+					class="btn btn-primary btn-play"
 					onclick={() => hostAct('/v1/rooms/{code}/start')}
 					disabled={busy}
 				>
@@ -631,86 +686,94 @@
 		</RoundView>
 
 		{#if st.phase === 'playing' && local === 'opening'}
-			<div class="loader girih">
-				<img class="mark" src="/mark.svg" alt="" width="64" height="64" />
-				<div class="loader-text">{t('loading')}</div>
-			</div>
+			<Loader text={t('loading')} />
 		{/if}
 		{#if blind && st.phase === 'playing'}
 			<div class="blind">{t('roomNoPano')}</div>
 		{/if}
 
 		{#if st.phase === 'result' && last}
-			<div class="overlay">
-				<div class="side">
-					<div>
-						<div class="sub">
-							{t('round')}
-							{last.n}{#if st.rules.rounds}&nbsp;/ {st.rules.rounds}{/if}
-						</div>
-						<div class="title">
-							{myLast?.guess ? t(verdictKey(myLast.score)) : t('noGuess')}
-						</div>
-					</div>
+			<ResultLayout legend={false}>
+				{#snippet map()}
+					<ResultMap
+						bbox={st.map.bbox as BBox}
+						layer={savedLayer()}
+						pairs={lastPairs}
+						reveal
+						onlanded={() => (landed = true)}
+					/>
+				{/snippet}
+				<RoundReveal
+					n={last.n}
+					rounds={st.rules.rounds}
+					score={myLast?.score ?? 0}
+					km={myLast?.km}
+					guessed={!!myLast?.guess}
+					place={last.place}
+					actual={last.actual}
+					go={landed}
+				>
 					<ol class="table">
-						{#each lastRows as s (s.player)}
+						{#each lastRows as s, i (s.player)}
 							{@const p = nameOf(s.player)}
-							<li class:me={s.player === st.you}>
-								<span class="dot" style:background={colorOf(s.player)}></span>
-								<span class="avatar">{p?.avatar}</span>
+							<li class:me={s.player === st.you} style:animation-delay={`${700 + i * 80}ms`}>
+								<span class="pos">{i + 1}</span>
+								<span class="avatar ring" style:--ring={colorOf(s.player)}>{p?.avatar}</span>
 								<span class="name">{p?.name ?? '—'}</span>
 								<span class="km">{s.km != null ? fmtDistance(s.km) : '—'}</span>
 								<b>+{fmtNum(s.score)}</b>
 							</li>
 						{/each}
 					</ol>
-					{#if myLast}
-						<ScoreCard label={t('score')} score={myLast.score} max={5000} km={myLast.km ?? null} />
-					{/if}
-					<PlaceCard place={last.place} at={last.actual} />
-					<div class="actions">
-						{#if isHost}
+				</RoundReveal>
+				{#snippet actions()}
+					{#if isHost}
+						<button
+							class="btn btn-primary next"
+							onclick={() => hostAct('/v1/rooms/{code}/next')}
+							disabled={busy}
+						>
+							{gameOver ? t('finish') : t('next')}
+							<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></svg>
+						</button>
+						{#if !st.rules.rounds}
 							<button
-								class="btn btn-primary"
-								onclick={() => hostAct('/v1/rooms/{code}/next')}
-								disabled={busy}
+								class="btn btn-ghost"
+								onclick={() => hostAct('/v1/rooms/{code}/next', true)}
+								disabled={busy}>{t('finishGame')}</button
 							>
-								{gameOver ? t('finish') : t('next')}
-							</button>
-							{#if !st.rules.rounds}
-								<button
-									class="btn btn-sky"
-									onclick={() => hostAct('/v1/rooms/{code}/next', true)}
-									disabled={busy}>{t('finishGame')}</button
-								>
-							{/if}
-						{:else}
-							<p class="wait">{t('waitHostNext')}</p>
 						{/if}
-					</div>
-				</div>
-				<div class="overlay-map">
-					<ResultMap bbox={st.map.bbox as BBox} layer={savedLayer()} pairs={lastPairs} />
-				</div>
-			</div>
+					{:else}
+						<p class="wait"><span class="spinner"></span>{t('waitHostNext')}</p>
+					{/if}
+				{/snippet}
+			</ResultLayout>
 		{/if}
 
 		{#if st.phase === 'final'}
-			<div class="overlay">
-				<div class="side">
-					<div>
-						<div class="sub">{tx(st.map.name)}</div>
-						<div class="title">
+			<ResultLayout tall legend={false}>
+				{#snippet map()}
+					<ResultMap bbox={st.map.bbox as BBox} layer={savedLayer()} pairs={finalPairs} />
+				{/snippet}
+				<div class="final">
+					<div class="final-head">
+						<MapSign slug={st.map.slug} name={tx(st.map.name)} size="small" />
+						<h1>
 							{#if winner && winner.total > 0}
 								{winner.id === st.you ? t('youWin') : t('wins', { name: winner.name })}
 							{:else}
 								{t('gameOver')}
 							{/if}
-						</div>
+						</h1>
 					</div>
 					<ol class="table standings">
 						{#each standings as p, i (p.id)}
-							<li class:me={p.id === st.you} class:off={p.left}>
+							<li
+								class:me={p.id === st.you}
+								class:off={p.left}
+								class:first={i === 0 && p.total > 0}
+								style:animation-delay={`${200 + i * 90}ms`}
+							>
 								<span class="medal">{i < 3 && p.total > 0 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span>
 								<span class="avatar ring" style:--ring={colorOf(p.id)}>{p.avatar}</span>
 								<span class="name">{p.name}</span>
@@ -718,42 +781,58 @@
 							</li>
 						{/each}
 					</ol>
-					<div class="rounds">
-						{#each st.results as r, i (r.n)}
-							<button
-								aria-pressed={finalPick === i}
-								onclick={() => (finalPick = finalPick === i ? null : i)}
-							>
-								<span>{r.n}</span>
-								<span class="where">{where(r)}</span>
-							</button>
-						{/each}
-					</div>
-					<div class="actions">
-						{#if isHost}
-							<button
-								class="btn btn-primary"
-								onclick={() => hostAct('/v1/rooms/{code}/start')}
-								disabled={busy}>{t('playAgain')}</button
-							>
-						{:else}
-							<p class="wait">{t('waitHostNext')}</p>
-						{/if}
-						<div class="row2">
-							{#if isHost}
-								<button class="btn btn-ghost" onclick={openSettings}>{t('roomSettings')}</button>
-							{/if}
-							{#if st.yourGame}
-								<a class="btn btn-ghost" href={`/game/${st.yourGame}`}>{t('myGame')}</a>
-							{/if}
+					<div class="trip">
+						<h2 class="section-title">{t('streetsThisGame')}</h2>
+						<div class="rounds">
+							{#each st.results as r, i (r.n)}
+								<button
+									aria-pressed={finalPick === i}
+									onclick={() => (finalPick = finalPick === i ? null : i)}
+								>
+									<span class="stop-n">{r.n}</span>
+									<StreetPlate place={r.place} size="small" />
+								</button>
+							{/each}
 						</div>
-						<button class="link-btn leave" onclick={leave}>{t('leave')}</button>
 					</div>
 				</div>
-				<div class="overlay-map">
-					<ResultMap bbox={st.map.bbox as BBox} layer={savedLayer()} pairs={finalPairs} />
-				</div>
-			</div>
+				{#snippet actions()}
+					{#if isHost}
+						<button
+							class="btn btn-primary"
+							onclick={() => hostAct('/v1/rooms/{code}/start')}
+							disabled={busy}
+						>
+							<svg viewBox="0 0 24 24"
+								><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3L3.5 8.3M3.5 3.5v4.8h4.8" /></svg
+							>
+							{t('playAgain')}
+						</button>
+					{:else}
+						<p class="wait"><span class="spinner"></span>{t('waitHostNext')}</p>
+					{/if}
+					{#if st.yourGame}
+						<button class="btn btn-sky" onclick={shareResults}>
+							<svg viewBox="0 0 24 24"
+								><path
+									d="M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5"
+								/></svg
+							>
+							{t('shareResults')}
+						</button>
+					{/if}
+					<div class="row">
+						{#if isHost}
+							<button class="btn btn-ghost" onclick={openSettings}>{t('roomSettings')}</button>
+						{/if}
+						{#if st.yourGame}
+							<a class="btn btn-ghost" href={`/game/${st.yourGame}`}>{t('myGame')}</a>
+						{/if}
+					</div>
+					<button class="link-btn leave" onclick={leave}>{t('leave')}</button>
+				{/snippet}
+			</ResultLayout>
+			{#if winner && winner.id === st.you && winner.total > 0}<Confetti />{/if}
 		{/if}
 	</div>
 {/if}
@@ -762,7 +841,13 @@
 	<div class="away">{t('connLost')}</div>
 {/if}
 
-<Sheet open={settingsOpen} onclose={() => (settingsOpen = false)} title={t('editSettings')}>
+<ShareSheet
+	share={sharing?.share ?? null}
+	title={sharing?.title}
+	onclose={() => (sharing = null)}
+/>
+
+<Sheet open={settingsOpen} onclose={() => (settingsOpen = false)} title={t('changeMapRules')}>
 	{#if choice}
 		<div class="sheet-body">
 			<div class="field-label">{t('map')}</div>
@@ -825,10 +910,8 @@
 		gap: 12px;
 	}
 	.kicker {
-		font-size: 13px;
+		font-size: 15px;
 		font-weight: 600;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
 		color: var(--muted);
 	}
 	/* the code as an Uzbek number plate: white, a black rim, the flag and UZ at the right end */
@@ -928,7 +1011,28 @@
 		text-align: center;
 	}
 	.setup-map {
-		width: min(300px, 100%);
+		width: min(340px, 100%);
+	}
+	.setup-btn {
+		width: 100%;
+		margin-top: 8px;
+		height: auto;
+		min-height: 52px;
+		padding: 10px 16px;
+		font-size: 14.5px;
+		line-height: 1.25;
+		text-align: center;
+	}
+	.setup-host {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 13.5px;
+		color: var(--muted);
+	}
+	.setup-host .icon {
+		width: 16px;
+		height: 16px;
 	}
 	.setup-rules {
 		font-size: 14px;
@@ -938,6 +1042,10 @@
 		display: flex;
 		align-items: baseline;
 		justify-content: space-between;
+	}
+	.setup-more {
+		font-size: 13px;
+		color: var(--muted);
 	}
 	.count {
 		font-family: var(--body);
@@ -1008,25 +1116,17 @@
 	}
 	.btn-play {
 		width: 100%;
-		height: 64px;
+		height: 66px;
 		justify-content: space-between;
 		padding: 0 22px 0 24px;
-		background: var(--green);
-		color: #fff;
-		font-size: 19px;
-		border-radius: 18px;
-		box-shadow:
-			0 4px 0 var(--green-ink),
-			0 10px 24px color-mix(in srgb, var(--green) 30%, transparent);
+		font-size: 20px;
+		border-radius: 20px;
 	}
 	.btn-play svg {
-		width: 22px;
-		height: 22px;
+		width: 24px;
+		height: 24px;
 		fill: currentColor;
-	}
-	.btn-play:active:not(:disabled) {
-		transform: translateY(3px);
-		box-shadow: 0 1px 0 var(--green-ink);
+		stroke: none;
 	}
 	.wait {
 		color: var(--muted);
@@ -1072,7 +1172,6 @@
 		box-shadow: var(--shadow);
 	}
 
-	.loader,
 	.gone {
 		position: fixed;
 		inset: 0;
@@ -1106,61 +1205,52 @@
 			transform: translateY(-8px);
 		}
 	}
-	.loader-text {
-		font-family: var(--display);
-		font-weight: 700;
+
+	/* results and the final table */
+	.next {
+		height: 60px;
 		font-size: 17px;
 	}
-
-	/* results, as the solo game's */
-	.overlay {
-		position: fixed;
-		inset: 0;
-		z-index: 2000;
-		background: var(--bg);
-		color: var(--text);
-		display: grid;
-		grid-template-columns: 400px minmax(0, 1fr);
-		grid-template-rows: minmax(0, 1fr);
+	.wait {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
 	}
-	.side {
-		min-height: 0;
-		padding: 26px 24px;
+	.final {
 		display: flex;
 		flex-direction: column;
-		gap: 16px;
-		overflow-y: auto;
-		background: var(--surface);
-		border-right: 1px solid var(--border);
+		gap: 22px;
 	}
-	.overlay .sub {
-		font-size: 13px;
-		font-weight: 600;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		color: var(--muted);
+	.final-head {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 10px;
 	}
-	.title {
-		margin-top: 4px;
+	.final h1 {
 		font-family: var(--display);
 		font-weight: 800;
 		font-size: 30px;
-		line-height: 1.1;
+		line-height: 1.08;
 		letter-spacing: -0.02em;
+		animation: pop-in 0.5s var(--pop) both;
 	}
 	.table {
 		list-style: none;
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+		margin-top: 4px;
 	}
 	.table li {
 		display: flex;
 		align-items: center;
 		gap: 10px;
 		padding: 8px;
-		border-radius: 10px;
+		border-radius: 12px;
 		font-size: 14px;
+		animation: rise 0.35s var(--settle) both;
 	}
 	.table li.me {
 		background: color-mix(in srgb, var(--sky) 12%, transparent);
@@ -1168,16 +1258,16 @@
 	.table li.off {
 		opacity: 0.5;
 	}
-	.table .dot {
-		width: 10px;
-		height: 10px;
-		border-radius: 50%;
-		flex: none;
+	.table .pos {
+		width: 18px;
+		text-align: center;
+		color: var(--muted);
+		font-weight: 700;
 	}
 	.table .avatar {
-		width: 28px;
-		height: 28px;
-		font-size: 16px;
+		width: 30px;
+		height: 30px;
+		font-size: 17px;
 		background: var(--bg);
 		flex: none;
 	}
@@ -1198,87 +1288,69 @@
 		min-width: 56px;
 		text-align: right;
 	}
+	/* the winner's row stands out like a podium's top step */
 	.standings li {
-		padding: 10px 8px;
+		padding: 10px 10px;
 		font-size: 15px;
+	}
+	.standings li.first {
+		background: color-mix(in srgb, var(--star) 20%, var(--surface));
+		box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--star) 60%, transparent);
 	}
 	.standings .medal {
 		width: 26px;
 		text-align: center;
-		font-size: 18px;
+		font-size: 20px;
 		color: var(--muted);
 		font-weight: 700;
 	}
-	.standings b {
-		font-size: 17px;
+	.standings .avatar {
+		width: 36px;
+		height: 36px;
+		font-size: 20px;
 	}
-	.rounds {
+	.standings b {
+		font-size: 18px;
+	}
+	.trip .rounds {
+		margin-top: 10px;
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		gap: 4px;
 	}
 	.rounds button {
 		display: flex;
+		align-items: center;
 		gap: 10px;
 		padding: 7px 8px;
 		border: none;
-		border-radius: 10px;
+		border-radius: 12px;
 		background: none;
 		color: var(--text);
 		text-align: left;
-		font-size: 13.5px;
-	}
-	.rounds button span:first-child {
-		width: 18px;
-		color: var(--muted);
 	}
 	.rounds button[aria-pressed='true'],
 	.rounds button:hover {
-		background: color-mix(in srgb, var(--sky) 10%, transparent);
+		background: color-mix(in srgb, var(--sky) 12%, transparent);
 	}
-	.actions {
-		margin-top: auto;
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
+	.stop-n {
+		width: 24px;
+		height: 24px;
+		border-radius: 50%;
+		background: var(--surface-2);
+		font-weight: 700;
+		font-size: 12.5px;
+		display: grid;
+		place-items: center;
+		flex: none;
 	}
-	.actions .btn {
-		width: 100%;
-	}
-	.row2 {
-		display: flex;
-		gap: 8px;
-	}
-	.row2:empty {
-		display: none;
-	}
-	.row2 .btn {
-		flex: 1;
-		min-width: 0;
-		padding: 0 10px;
-	}
-	.actions .leave {
+	.leave {
 		align-self: center;
-	}
-	/* the HUD's own chip styles come from RoundView; this one is a row */
-	.game :global(.players-chip) {
-		flex-direction: row;
-		align-items: center;
-		gap: 6px;
-		min-width: 0;
 	}
 	.game :global(.players-chip .icon) {
 		width: 20px;
 		height: 20px;
 		opacity: 0.8;
-	}
-	.overlay-map {
-		position: relative;
-		min-height: 300px;
-	}
-	.overlay-map > :global(div) {
-		position: absolute;
-		inset: 0;
 	}
 
 	/* the sheets */
@@ -1300,10 +1372,6 @@
 	}
 	.map-list button[aria-pressed='true'] {
 		border-color: var(--green);
-	}
-	.btn-danger {
-		background: var(--red);
-		color: #fff;
 	}
 	.name-input {
 		height: 48px;
@@ -1345,30 +1413,6 @@
 		}
 	}
 	@media (max-width: 760px) {
-		.overlay {
-			grid-template-columns: 1fr;
-			grid-template-rows: 38vh minmax(0, 1fr);
-		}
-		.overlay-map {
-			order: -1;
-		}
-		.side {
-			border-right: none;
-			border-top: 1px solid var(--border);
-			padding: 18px 16px;
-			gap: 14px;
-		}
-		.title {
-			font-size: 25px;
-		}
-		.actions {
-			position: sticky;
-			bottom: 0;
-			margin: auto -16px -18px;
-			padding: 12px 16px max(14px, env(safe-area-inset-bottom));
-			background: var(--surface);
-			box-shadow: 0 -8px 16px -8px rgba(0, 0, 0, 0.15);
-		}
 		/* Start stays under the thumb */
 		.go {
 			position: sticky;

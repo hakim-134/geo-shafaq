@@ -1,6 +1,12 @@
 <script lang="ts">
+	// The home is a lobby with one question: where are we going today? Alone or with friends
+	// is one switch; then each map is a road sign, and tapping a sign starts the game (or
+	// opens a room) at once. The settings fold into one line of three facts that opens a
+	// sheet. What a player hasn't earned stays out of sight: "start here" only before the
+	// first game, "keep your games" only after one.
 	import { goto } from '$app/navigation';
 	import TopBar from '#lib/components/TopBar.svelte';
+	import Sheet from '#lib/components/Sheet.svelte';
 	import MapSign from '#lib/maps/MapSign.svelte';
 	import GameRow from '#lib/game/GameRow.svelte';
 	import { api, call, ApiError, type GameListItem, type MapSummary } from '#lib/api/client.js';
@@ -10,29 +16,34 @@
 	import { fmtNum } from '#lib/format.js';
 	import { loadChoice, saveChoice, rulesFor, testProviders } from '#lib/rules.js';
 	import RulesForm from '#lib/game/RulesForm.svelte';
-	import { summary as summaryOf } from '#lib/game/summary.js';
+	import RulesFacts from '#lib/game/RulesFacts.svelte';
 	import Progress from '#lib/maps/Progress.svelte';
 	import { showToast } from '#lib/toast.svelte.js';
 	import { load, save } from '#lib/storage.js';
+
+	type Mode = 'solo' | 'friends';
 
 	let maps = $state<MapSummary[]>([]);
 	let placeMap = $state<MapSummary | null>(null); // a place picked in the place picker
 	let history = $state<GameListItem[]>([]);
 	let choice = $state(loadChoice());
-	let starting = $state(false);
+	let mode = $state<Mode>(load('mode', 'solo') === 'friends' ? 'friends' : 'solo');
+	let busy = $state<string | null>(null); // the sign being started
 	let offline = $state(false);
 	let loaded = $state(false);
 	let settingsOpen = $state(false);
 	let nudgeHidden = $state(load('nudge_hidden', '') === '1');
 
 	const allMaps = $derived(placeMap ? [placeMap, ...maps] : maps);
-	const selected = $derived(allMaps.find((m) => m.slug === choice.map) ?? maps[0]);
-	const canMove = $derived(selected?.canMove ?? true);
 	const me = $derived(session.me);
 	const banned = $derived(!!me?.user.banned);
 	const newPlayer = $derived(loaded && (me?.stats.games ?? 0) === 0);
+	// the settings' "can walk" follows the map last played or picked
+	const current = $derived(allMaps.find((m) => m.slug === choice.map) ?? allMaps[0]);
+	const canMove = $derived(current?.canMove ?? true);
 
 	$effect(() => saveChoice($state.snapshot(choice)));
+	$effect(() => save('mode', mode));
 
 	// again whenever the player on this device changes (signed in, merged, signed out)
 	$effect(() => {
@@ -67,26 +78,32 @@
 		loaded = true;
 	}
 
-	async function play() {
-		if (!selected || starting || banned) return;
-		starting = true;
+	const errorKeys: Record<string, Key> = {
+		no_panorama: 'err_no_panorama',
+		daily_cap: 'err_daily_cap',
+		network: 'err_network',
+		banned: 'bannedText',
+		too_many_rooms: 'err_too_many_rooms'
+	};
+
+	/** A sign was tapped: play there now, alone or in a new room. */
+	async function go(m: MapSummary) {
+		if (busy || banned) return;
+		busy = m.slug;
+		choice.map = m.slug;
+		const body = { map: m.slug, rules: rulesFor(choice, testProviders()) };
 		try {
-			const game = await call(
-				api().POST('/v1/games', {
-					body: { map: selected.slug, rules: rulesFor(choice, testProviders()) }
-				})
-			);
-			goto(`/game/${game.id}`);
+			if (mode === 'solo') {
+				const game = await call(api().POST('/v1/games', { body }));
+				goto(`/game/${game.id}`);
+			} else {
+				const room = await call(api().POST('/v1/rooms', { body }));
+				goto(`/room/${room.code}`);
+			}
 		} catch (e) {
-			starting = false;
+			busy = null;
 			const code = e instanceof ApiError ? e.code : 'other';
-			const keys: Record<string, Key> = {
-				no_panorama: 'err_no_panorama',
-				daily_cap: 'err_daily_cap',
-				network: 'err_network',
-				banned: 'bannedText'
-			};
-			showToast(t(keys[code] ?? 'err_other'), 3500);
+			showToast(t(errorKeys[code] ?? 'err_other'), 3500);
 		}
 	}
 
@@ -100,48 +117,19 @@
 		save('nudge_hidden', '1');
 	}
 
-	function onKey(e: KeyboardEvent) {
-		if (e.key === 'Enter' && e.target === document.body) play();
-	}
-
-	const summary = $derived(summaryOf(choice, canMove));
-
-	// ---------- with friends ----------
-	let opening = $state(false);
+	// ---------- a friend's room, by its code ----------
 	let code = $state('');
 	const codeOk = $derived(/^[A-Za-z2-9]{5}$/.test(code.trim()));
-
-	async function openRoom() {
-		if (!selected || opening || banned) return;
-		opening = true;
-		try {
-			const room = await call(
-				api().POST('/v1/rooms', {
-					body: { map: selected.slug, rules: rulesFor(choice, testProviders()) }
-				})
-			);
-			goto(`/room/${room.code}`);
-		} catch (e) {
-			opening = false;
-			const c = e instanceof ApiError ? e.code : 'other';
-			const keys: Record<string, Key> = {
-				no_panorama: 'err_no_panorama',
-				daily_cap: 'err_daily_cap',
-				network: 'err_network',
-				banned: 'bannedText',
-				too_many_rooms: 'err_too_many_rooms'
-			};
-			showToast(t(keys[c] ?? 'err_other'), 3500);
-		}
-	}
-
-	function joinRoom(e: SubmitEvent) {
-		e.preventDefault();
+	function joinRoom(e?: SubmitEvent) {
+		e?.preventDefault();
 		if (codeOk) goto(`/room/${code.trim().toUpperCase()}`);
 	}
+	// five letters typed: in you go, no button needed
+	$effect(() => {
+		if (codeOk) joinRoom();
+	});
 </script>
 
-<svelte:window onkeydown={onKey} />
 <svelte:head><title>Shafaq Geo — {t('heroTitle')}</title></svelte:head>
 
 <TopBar />
@@ -153,16 +141,74 @@
 				{t(greeting())}{#if me}, <a href="/me">{me.user.name}</a>{/if}
 			</p>
 			<h1>{t('homeTitle')}</h1>
-			<p class="sub">
-				{#if !loaded}&nbsp;
-				{:else if newPlayer}{t('homeFirst')}
-				{:else if history[0]}{t('homeLast', {
-						score: fmtNum(history[0].total),
-						map: tx(history[0].map.name)
-					})}
-				{:else}{t('homeBack')}{/if}
-			</p>
+			{#if loaded && history[0] && !newPlayer}
+				<p class="last">
+					{t('homeLast', { score: fmtNum(history[0].total), map: tx(history[0].map.name) })}
+				</p>
+			{/if}
 		</section>
+
+		<div class="controls">
+			<div class="mode" role="radiogroup" aria-label={t('modeLabel')}>
+				<button role="radio" aria-checked={mode === 'solo'} onclick={() => (mode = 'solo')}>
+					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+						><circle cx="12" cy="8" r="3.6" /><path d="M5 20c.7-3.8 3.5-6 7-6s6.3 2.2 7 6" /></svg
+					>
+					{t('modeSolo')}
+				</button>
+				<button role="radio" aria-checked={mode === 'friends'} onclick={() => (mode = 'friends')}>
+					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+						><circle cx="9" cy="8" r="3.2" /><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5" /><circle
+							cx="17"
+							cy="9"
+							r="2.5"
+						/><path d="M16.5 14c2.4.2 4 1.7 4.5 4.5" /></svg
+					>
+					{t('modeFriends')}
+				</button>
+			</div>
+
+			<button class="rules" onclick={() => (settingsOpen = true)} aria-label={t('setup')}>
+				<RulesFacts {choice} />
+				<span class="change" title={t('change')}>
+					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+						><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle
+							cx="10"
+							cy="17"
+							r="2"
+						/></svg
+					>
+				</span>
+			</button>
+		</div>
+
+		{#if mode === 'friends'}
+			<section class="how" aria-label={t('openRoom')}>
+				<h2>{t('roomHowTitle')}</h2>
+				<ol>
+					<li>
+						<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+							><rect x="3" y="6" width="18" height="11" rx="2" /><path d="M7 11.5h10" /></svg
+						>
+						<span>{t('roomStep1')}</span>
+					</li>
+					<li>
+						<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+							><path
+								d="M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5"
+							/></svg
+						>
+						<span>{t('roomStep2')}</span>
+					</li>
+					<li>
+						<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+							><path d="M7 4.5v15l12-7.5z" /></svg
+						>
+						<span>{t('roomStep3')}</span>
+					</li>
+				</ol>
+			</section>
+		{/if}
 
 		{#if offline}
 			<div class="offline">
@@ -171,10 +217,23 @@
 			</div>
 		{/if}
 
-		<section class="maps" aria-label={t('map')}>
-			{#each allMaps as m (m.slug)}
-				{@const on = m.slug === selected?.slug}
-				<button class="map" aria-pressed={on} onclick={() => (choice.map = m.slug)}>
+		{#if banned}
+			<div class="banned">
+				<b>{t('bannedTitle')}</b>
+				<p>{t('bannedText')}</p>
+			</div>
+		{/if}
+
+		<section class="maps" class:friends={mode === 'friends'} aria-label={t('map')}>
+			{#each allMaps as m, i (m.slug)}
+				<button
+					class="map"
+					class:busy={busy === m.slug}
+					disabled={!!busy || banned}
+					onclick={() => go(m)}
+					style:animation-delay={`${i * 60}ms`}
+				>
+					{#if newPlayer && i === 0}<span class="start-here">{t('startHere')}</span>{/if}
 					<MapSign slug={m.slug} name={tx(m.name)} top={tx(m.description)} outline={m.outline} />
 					<span class="meta">
 						{#if m.progress && m.progress.unit !== 'spot'}
@@ -182,12 +241,18 @@
 						{:else}
 							<span>{t('nSpots', { n: m.panoramas })}</span>
 						{/if}
-						{#if on}
-							<span class="picked">
-								<svg viewBox="0 0 24 24" class="icon"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
-								{t('chosen')}
-							</span>
-						{/if}
+						<span class="play-tag">
+							{#if busy === m.slug}
+								<span class="spinner"></span>
+							{:else if mode === 'solo'}
+								<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" /></svg>
+							{:else}
+								<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+									><path d="M12 5v14M5 12h14" /></svg
+								>
+							{/if}
+							{mode === 'solo' ? t('play') : t('openRoom')}
+						</span>
 					</span>
 				</button>
 			{:else}
@@ -216,117 +281,27 @@
 				</a>
 			{/if}
 		</section>
-
-		{#if newPlayer}
-			<section class="howto">
-				<h2 class="section-title">{t('howTo')}</h2>
-				<ol>
-					<li>
-						<svg viewBox="0 0 64 44" aria-hidden="true" class="pic"
-							><path d="M6 38V16l8-6 8 6v22M26 38V8h14v30M44 38V20h14v18M2 38h60" /><path
-								class="accent"
-								d="M14 26h0M33 16h0M33 24h0M51 28h0"
-							/></svg
-						>
-						<p>{t('howTo1')}</p>
-					</li>
-					<li>
-						<svg viewBox="0 0 64 44" aria-hidden="true" class="pic"
-							><rect x="8" y="10" width="48" height="20" rx="3" class="plate" /><rect
-								x="11"
-								y="13"
-								width="42"
-								height="14"
-								rx="2"
-								class="plate-line"
-							/><path d="M17 20h22" class="plate-line" /><path d="M32 30v10" /></svg
-						>
-						<p>{t('howTo2')}</p>
-					</li>
-					<li>
-						<svg viewBox="0 0 64 44" aria-hidden="true" class="pic"
-							><path d="M6 34 22 28l18 6 18-6" /><path
-								class="pin"
-								d="M32 26s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11z"
-							/><circle cx="32" cy="15" r="2.4" /></svg
-						>
-						<p>{t('howTo3')}</p>
-					</li>
-				</ol>
-			</section>
-		{/if}
 	</div>
 
 	<div class="col side">
-		<section class="panel">
-			{#if banned}
-				<div class="banned">
-					<b>{t('bannedTitle')}</b>
-					<p>{t('bannedText')}</p>
-				</div>
-			{/if}
-			<button
-				class="summary"
-				aria-expanded={settingsOpen}
-				onclick={() => (settingsOpen = !settingsOpen)}
-			>
-				<svg viewBox="0 0 24 24" class="icon"
-					><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle
-						cx="10"
-						cy="17"
-						r="2"
-					/></svg
-				>
-				<span class="summary-text">
-					<span class="summary-label">{t('setup')}</span>
-					<span>{summary}</span>
-				</span>
-				<svg viewBox="0 0 24 24" class="icon chev"><path d="m6 9 6 6 6-6" /></svg>
-			</button>
-			<div class="settings" class:open={settingsOpen}>
-				<RulesForm bind:choice {canMove} />
-			</div>
-
-			<button class="btn btn-play" onclick={play} disabled={!selected || starting || banned}>
-				<span class="play-text">
-					<span>{starting ? t('starting') : t('play')}</span>
-					{#if selected}<small>{tx(selected.name)}</small>{/if}
-				</span>
-				<svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" /></svg>
-			</button>
-
-			<div class="friends">
-				<button class="friends-open" onclick={openRoom} disabled={!selected || opening || banned}>
-					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
-						><circle cx="9" cy="8" r="3.2" /><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5" /><circle
-							cx="17"
-							cy="9"
-							r="2.5"
-						/><path d="M16.5 14c2.4.2 4 1.7 4.5 4.5" /></svg
-					>
-					<span class="friends-text">
-						<b>{opening ? t('starting') : t('friends')}</b>
-						<span>{t('friendsText')}</span>
-					</span>
-					<svg viewBox="0 0 24 24" class="icon chev-r" aria-hidden="true"
-						><path d="m9 6 6 6-6 6" /></svg
-					>
-				</button>
-				<form class="join" onsubmit={joinRoom}>
+		{#if mode === 'friends'}
+			<form class="join" onsubmit={joinRoom}>
+				<label for="code" class="join-label">{t('haveCode')}</label>
+				<div class="plate-input">
 					<input
+						id="code"
 						bind:value={code}
-						placeholder={t('roomCode')}
-						aria-label={t('roomCode')}
+						placeholder="·····"
 						maxlength="5"
 						autocomplete="off"
 						autocapitalize="characters"
 						spellcheck="false"
+						enterkeyhint="go"
 					/>
-					<button class="btn btn-ghost" disabled={!codeOk}>{t('join')}</button>
-				</form>
-			</div>
-		</section>
-
+					<span class="uz" aria-hidden="true"><i></i><b>UZ</b></span>
+				</div>
+			</form>
+		{/if}
 		{#if me?.user.guest && (me?.stats.games ?? 0) > 0 && !nudgeHidden}
 			<section class="nudge">
 				<button class="nudge-x" onclick={hideNudge} aria-label={t('close')}>
@@ -354,33 +329,37 @@
 
 <footer class="foot">
 	<span>{t('credits')}</span>
-	<span class="keys">{t('keys')}</span>
 </footer>
+
+<Sheet open={settingsOpen} onclose={() => (settingsOpen = false)} title={t('setup')}>
+	<RulesForm bind:choice {canMove} />
+	<button class="btn btn-primary done" onclick={() => (settingsOpen = false)}>{t('ready')}</button>
+</Sheet>
 
 <style>
 	.home {
-		max-width: 1200px;
+		max-width: 1160px;
 		margin: 0 auto;
-		padding: 12px 24px 40px;
+		padding: 8px 24px 40px;
 		display: grid;
-		grid-template-columns: minmax(0, 1fr) 380px;
-		gap: 28px;
+		grid-template-columns: minmax(0, 1fr) 360px;
+		gap: 40px;
 		align-items: start;
 	}
 	.col {
 		display: flex;
 		flex-direction: column;
-		gap: 26px;
+		gap: 22px;
 		min-width: 0;
 	}
 	.side {
 		position: sticky;
 		top: 16px;
+		padding-top: 8px;
 	}
 
-	/* hello */
 	.hello {
-		font-size: 15px;
+		font-size: 16px;
 		color: var(--muted);
 	}
 	.hello a {
@@ -389,60 +368,152 @@
 		text-decoration: none;
 	}
 	h1 {
-		margin-top: 4px;
+		margin-top: 2px;
 		font-family: var(--display);
 		font-weight: 800;
-		font-size: clamp(30px, 4.4vw, 46px);
-		line-height: 1.05;
-		letter-spacing: -0.03em;
+		font-size: clamp(34px, 5vw, 52px);
+		line-height: 1.02;
+		letter-spacing: -0.035em;
 	}
-	.sub {
-		margin-top: 10px;
-		font-size: 15.5px;
+	.last {
+		margin-top: 8px;
 		color: var(--muted);
-		max-width: 560px;
 	}
-	.offline {
+
+	/* alone or with friends; then the three facts of the game */
+	.controls {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px;
+		align-items: center;
+	}
+	.mode {
+		display: flex;
+		padding: 5px;
+		gap: 4px;
+		border-radius: 18px;
+		background: var(--surface-2);
+	}
+	.mode button {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		height: 46px;
+		padding: 0 18px 0 14px;
+		border: none;
+		border-radius: 14px;
+		background: transparent;
+		color: var(--muted);
+		font-family: var(--display);
+		font-weight: 700;
+		font-size: 14px;
+		transition:
+			background 0.15s,
+			color 0.15s,
+			transform 0.1s;
+	}
+	.mode button:active {
+		transform: scale(0.96);
+	}
+	.mode button[aria-checked='true'] {
+		background: var(--surface);
+		color: var(--text);
+		box-shadow: 0 3px 0 var(--edge);
+	}
+	.mode button[aria-checked='true'] .icon {
+		color: var(--sky);
+	}
+	.rules {
+		display: flex;
+		align-items: center;
+		gap: 6px 14px;
+		min-height: 56px;
+		padding: 8px 16px;
+		border: 2px solid var(--border);
+		border-radius: 18px;
+		background: var(--surface);
+		color: var(--text);
+		font-weight: 600;
+		font-size: 14.5px;
+		text-align: left;
+		transition: border-color 0.15s;
+	}
+	.rules:hover {
+		border-color: var(--sky);
+	}
+	.change {
+		display: grid;
+		place-items: center;
+		width: 36px;
+		height: 36px;
+		margin-left: auto;
+		border-radius: 12px;
+		background: var(--surface-2);
+		color: var(--sky-ink);
+	}
+	:global(:root[data-theme='dark']) .change {
+		color: var(--sky);
+	}
+
+	.offline,
+	.banned {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
+		flex-wrap: wrap;
 		gap: 12px;
 		padding: 12px 14px;
-		border-radius: 12px;
+		border-radius: 14px;
 		background: color-mix(in srgb, var(--red) 12%, transparent);
 	}
 	.offline .btn {
-		height: 40px;
+		height: 42px;
+	}
+	.banned {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 2px;
+		font-size: 14px;
 	}
 
-	/* the maps, as road signs */
+	/* the maps, as road signs: each one is a button */
 	.maps {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 18px 16px;
+		gap: 22px 18px;
 	}
 	.map {
+		position: relative;
 		border: none;
 		background: none;
 		text-align: left;
 		padding: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 9px;
+		gap: 10px;
 		border-radius: 14px;
-		transition: transform 0.15s;
+		color: var(--text);
+		animation: rise 0.4s var(--settle) both;
+	}
+	.map:disabled {
+		cursor: default;
 	}
 	.map :global(.sign) {
 		transition:
-			transform 0.15s,
-			box-shadow 0.15s;
+			transform 0.12s,
+			box-shadow 0.12s;
 	}
-	.map:hover :global(.sign) {
-		transform: translateY(-2px);
+	.map:not(:disabled):hover :global(.sign) {
+		transform: translateY(-3px) rotate(-0.4deg);
 	}
-	.map[aria-pressed='true'] :global(.sign) {
-		outline: 3px solid var(--green);
-		outline-offset: 3px;
+	.map:not(:disabled):active :global(.sign) {
+		transform: translateY(2px) scale(0.98);
+	}
+	.map.busy :global(.sign) {
+		animation: boing 0.5s var(--pop);
+	}
+	.map:disabled:not(.busy) {
+		opacity: 0.6;
 	}
 	.map:focus-visible {
 		outline: none;
@@ -456,25 +527,87 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 10px;
-		min-height: 22px;
-		padding: 0 4px;
+		min-height: 34px;
+		padding: 0 2px 0 4px;
 		font-size: 13px;
 		color: var(--muted);
 	}
+	.play-tag {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 34px;
+		padding: 0 14px 0 11px;
+		border-radius: 12px;
+		background: var(--green);
+		color: #fff;
+		font-family: var(--display);
+		font-weight: 700;
+		font-size: 13px;
+		box-shadow: 0 3px 0 var(--green-edge);
+		flex: none;
+		transition: transform 0.1s;
+	}
+	.friends .play-tag {
+		background: var(--sky);
+		box-shadow: 0 3px 0 var(--sky-edge);
+	}
+	.play-tag svg {
+		width: 14px;
+		height: 14px;
+		fill: currentColor;
+	}
+	.play-tag .icon {
+		fill: none;
+		stroke-width: 3;
+	}
+	.play-tag .spinner {
+		width: 14px;
+		height: 14px;
+		border-width: 2px;
+	}
+	.map:not(:disabled):active .play-tag {
+		transform: translateY(2px);
+		box-shadow: none;
+	}
+	/* the first game: one sign says "start here" */
+	.start-here {
+		position: absolute;
+		z-index: 2;
+		top: -14px;
+		right: 14px;
+		padding: 4px 12px;
+		border-radius: 10px;
+		background: var(--star);
+		color: #3a2600;
+		font-weight: 800;
+		font-size: 13px;
+		box-shadow: 0 3px 0 #c98a00;
+		animation: hop 1.6s ease-in-out infinite;
+	}
+	@keyframes hop {
+		0%,
+		60%,
+		100% {
+			transform: translateY(0);
+		}
+		75% {
+			transform: translateY(-5px);
+		}
+	}
+
 	/* the way to the place picker: a blank plate waiting for a name */
 	.other {
 		text-decoration: none;
-		color: var(--text);
 	}
 	.other-plate {
 		display: flex;
 		align-items: center;
 		gap: 12px;
-		min-height: 82px;
+		min-height: 84px;
 		padding: 12px 16px;
-		border-radius: 10px;
-		border: 2px dashed color-mix(in srgb, var(--muted) 55%, transparent);
-		background: color-mix(in srgb, var(--surface) 60%, transparent);
+		border-radius: 12px;
+		border: 2.5px dashed color-mix(in srgb, var(--muted) 50%, transparent);
 		transition:
 			border-color 0.15s,
 			transform 0.15s;
@@ -487,7 +620,6 @@
 		width: 30px;
 		height: 30px;
 		color: var(--sky);
-		flex: none;
 	}
 	.other-plate .text {
 		flex: 1;
@@ -506,24 +638,9 @@
 	.chev-r {
 		color: var(--muted);
 	}
-	.picked {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		color: var(--green-ink);
-		font-weight: 600;
-	}
-	:global(:root[data-theme='dark']) .picked {
-		color: var(--green);
-	}
-	.picked .icon {
-		width: 16px;
-		height: 16px;
-		stroke-width: 2.6;
-	}
 	.skeleton {
-		height: 112px;
-		border-radius: 10px;
+		height: 128px;
+		border-radius: 12px;
 		background: var(--surface-2);
 		animation: breathe 1.4s ease-in-out infinite;
 	}
@@ -533,232 +650,129 @@
 		}
 	}
 
-	/* how to play: only until the first game */
-	.howto ol {
-		margin-top: 14px;
+	/* a friend's code, typed onto a number plate */
+	.join {
+		padding: 18px;
+		border-radius: 22px;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		animation: rise 0.3s var(--settle);
+	}
+	.join-label {
+		display: block;
+		font-weight: 700;
+		font-size: 15px;
+		margin-bottom: 10px;
+	}
+	.plate-input {
+		display: flex;
+		align-items: stretch;
+		height: 62px;
+		border-radius: 10px;
+		background: #fff;
+		color: #111;
+		border: 3px solid #111;
+		box-shadow: 0 4px 0 rgba(0, 0, 0, 0.18);
+		overflow: hidden;
+	}
+	.plate-input input {
+		flex: 1;
+		min-width: 0;
+		border: none;
+		background: transparent;
+		color: #111;
+		padding: 0 12px;
+		font-family: var(--display);
+		font-weight: 800;
+		font-size: 30px;
+		letter-spacing: 0.16em;
+		text-transform: uppercase;
+		text-align: center;
+		outline: none;
+	}
+	.plate-input input::placeholder {
+		color: #c9c4b8;
+	}
+	.plate-input:focus-within {
+		box-shadow:
+			0 4px 0 rgba(0, 0, 0, 0.18),
+			0 0 0 4px color-mix(in srgb, var(--sky) 45%, transparent);
+	}
+	.uz {
+		width: 50px;
+		border-left: 3px solid #111;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 4px;
+	}
+	.uz i {
+		width: 30px;
+		height: 18px;
+		background: linear-gradient(
+			to bottom,
+			#0099b5 0 33%,
+			#ce1126 33% 37%,
+			#fff 37% 63%,
+			#ce1126 63% 67%,
+			#1eb53a 67%
+		);
+		box-shadow: 0 0 0 1px #111;
+	}
+	.uz b {
+		font-family: var(--display);
+		font-size: 12px;
+	}
+	/* friends: how a room starts, in three steps, right above the signs */
+	.how {
+		padding: 16px 18px;
+		border-radius: 20px;
+		background: color-mix(in srgb, var(--sky) 12%, var(--surface));
+		border: 2px solid color-mix(in srgb, var(--sky) 35%, transparent);
+		animation: rise 0.3s var(--settle);
+	}
+	.how h2 {
+		font-family: var(--display);
+		font-weight: 800;
+		font-size: 18px;
+	}
+	.how ol {
+		margin-top: 12px;
 		list-style: none;
 		display: grid;
-		grid-template-columns: repeat(3, 1fr);
-		gap: 14px;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 10px;
+		counter-reset: step;
 	}
-	.howto li {
-		padding: 14px 14px 16px;
-		border-radius: 16px;
-		background: var(--surface);
-		border: 1px solid var(--border);
-	}
-	.howto p {
-		margin-top: 8px;
-		font-size: 14px;
-		line-height: 1.45;
-	}
-	.pic {
-		width: 64px;
-		height: 44px;
-		fill: none;
-		stroke: var(--text);
-		stroke-width: 2;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-	}
-	.pic .accent {
-		stroke: var(--gold);
-		stroke-width: 4;
-	}
-	.pic .plate {
-		fill: var(--sign-blue);
-		stroke: none;
-	}
-	.pic .plate-line {
-		stroke: #fff;
-		stroke-width: 1.6;
-	}
-	.pic .pin {
-		fill: var(--green);
-		stroke: var(--green);
-	}
-
-	/* the panel: settings and Play */
-	.panel {
-		background: var(--surface);
-		border: 1px solid var(--border);
-		border-radius: 20px;
-		padding: 8px 8px 16px;
+	.how li {
+		counter-increment: step;
 		display: flex;
 		flex-direction: column;
-		gap: 12px;
-		box-shadow: 0 1px 0 var(--border);
-	}
-	.banned {
-		margin: 8px 8px 0;
-		padding: 12px 14px;
-		border-radius: 12px;
-		background: color-mix(in srgb, var(--red) 12%, transparent);
+		gap: 6px;
 		font-size: 14px;
-	}
-	.summary {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		width: 100%;
-		border: none;
-		background: none;
-		text-align: left;
-		padding: 10px 10px;
-		border-radius: 14px;
-	}
-	.summary:hover {
-		background: var(--bg);
-	}
-	.summary > .icon {
-		color: var(--muted);
-	}
-	.summary-text {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		font-size: 14.5px;
 		font-weight: 600;
-		min-width: 0;
+		line-height: 1.3;
 	}
-	.summary-label {
-		font-size: 12px;
-		font-weight: 500;
-		color: var(--muted);
-	}
-	.chev {
-		transition: transform 0.2s;
-		color: var(--muted);
-	}
-	.summary[aria-expanded='true'] .chev {
-		transform: rotate(180deg);
-	}
-	.settings {
-		display: none;
-		flex-direction: column;
-		gap: 16px;
-		padding: 2px 10px 6px;
-	}
-	.settings.open {
-		display: flex;
-	}
-	.btn-play {
-		margin: 0 8px;
-		height: 68px;
-		justify-content: space-between;
-		padding: 0 22px 0 24px;
-		background: var(--green);
-		color: #fff;
-		box-shadow:
-			0 4px 0 var(--green-ink),
-			0 10px 24px color-mix(in srgb, var(--green) 30%, transparent);
-		border-radius: 18px;
-	}
-	.btn-play:hover:not(:disabled) {
-		filter: brightness(1.05);
-	}
-	.btn-play:active:not(:disabled) {
-		transform: translateY(3px);
-		box-shadow: 0 1px 0 var(--green-ink);
-	}
-	.play-text {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		min-width: 0;
-		font-size: 20px;
-		line-height: 1.1;
-	}
-	.play-text small {
-		font-family: var(--body);
-		font-weight: 500;
-		font-size: 13px;
-		opacity: 0.9;
-		letter-spacing: 0;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		max-width: 100%;
-	}
-	.btn-play svg {
-		width: 26px;
-		height: 26px;
-		fill: currentColor;
-		stroke: none;
-	}
-	.friends {
-		margin: 4px 8px 0;
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-	.friends-open {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		width: 100%;
-		padding: 12px 14px;
-		border: 1px solid var(--border);
-		border-radius: 16px;
-		background: var(--surface);
-		color: var(--text);
-		text-align: left;
-	}
-	.friends-open:hover:not(:disabled) {
-		background: var(--bg);
-	}
-	.friends-open > .icon:first-child {
-		width: 26px;
-		height: 26px;
-		color: var(--sky);
-	}
-	.friends-text {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		min-width: 0;
-	}
-	.friends-text b {
-		font-size: 15px;
-	}
-	.friends-text span {
-		font-size: 12.5px;
-		color: var(--muted);
-	}
-	.join {
-		display: flex;
-		gap: 8px;
-	}
-	.join input {
-		flex: 1;
-		min-width: 0;
-		height: 46px;
-		padding: 0 14px;
-		border: 1px solid var(--border);
+	.how li .icon {
+		width: 34px;
+		height: 34px;
+		padding: 7px;
 		border-radius: 12px;
-		background: var(--surface);
-		color: var(--text);
-		font-family: var(--display);
-		font-size: 16px;
-		letter-spacing: 0.18em;
-		text-transform: uppercase;
+		background: var(--sky);
+		color: #fff;
+		box-shadow: 0 3px 0 var(--sky-edge);
 	}
-	.join input::placeholder {
-		font-family: var(--body);
-		letter-spacing: 0;
-		text-transform: none;
-		color: var(--muted);
-	}
-	.join .btn {
-		height: 46px;
+	.how li span::before {
+		content: counter(step) '. ';
+		color: var(--sky-ink);
 	}
 
 	/* "keep your games" */
 	.nudge {
 		position: relative;
-		padding: 18px 18px 18px;
-		border-radius: 20px;
+		padding: 18px;
+		border-radius: 22px;
 		background: color-mix(in srgb, var(--telegram) 10%, var(--surface));
 		border: 1px solid color-mix(in srgb, var(--telegram) 30%, transparent);
 	}
@@ -774,15 +788,15 @@
 		color: var(--muted);
 	}
 	.nudge .btn {
-		height: 46px;
+		height: 48px;
 		width: 100%;
 	}
 	.nudge-x {
 		position: absolute;
 		top: 10px;
 		right: 10px;
-		width: 32px;
-		height: 32px;
+		width: 36px;
+		height: 36px;
 		border: none;
 		background: none;
 		color: var(--muted);
@@ -809,15 +823,16 @@
 		border-top: 1px solid var(--border);
 	}
 
+	.done {
+		width: 100%;
+		margin-top: 22px;
+	}
+
 	.foot {
-		max-width: 1200px;
+		max-width: 1160px;
 		margin: 0 auto;
 		padding: 18px 24px 28px;
 		border-top: 1px solid var(--border);
-		display: flex;
-		justify-content: space-between;
-		flex-wrap: wrap;
-		gap: 8px 20px;
 		font-size: 13px;
 		color: var(--muted);
 	}
@@ -825,51 +840,11 @@
 	@media (max-width: 960px) {
 		.home {
 			grid-template-columns: minmax(0, 1fr);
-			gap: 22px;
-			padding-bottom: 110px; /* room for the Play bar */
+			gap: 26px;
 		}
-		/* one column, in the order a player needs: hello, maps, settings, the rest */
-		.col {
-			display: contents;
-		}
-		.intro {
-			order: 1;
-		}
-		.offline {
-			order: 2;
-		}
-		.maps {
-			order: 3;
-		}
-		.panel {
-			order: 4;
-		}
-		.nudge {
-			order: 5;
-		}
-		.recent {
-			order: 6;
-		}
-		.howto {
-			order: 7;
-		}
-		.panel {
-			padding-bottom: 8px;
-		}
-		.friends {
-			margin-bottom: 8px;
-		}
-		/* Play stays under the thumb */
-		.btn-play {
-			position: fixed;
-			left: 16px;
-			right: 16px;
-			bottom: max(14px, env(safe-area-inset-bottom));
-			margin: 0;
-			z-index: 100;
-		}
-		.foot {
-			padding-bottom: 110px;
+		.side {
+			position: static;
+			padding-top: 0;
 		}
 	}
 	@media (max-width: 640px) {
@@ -878,26 +853,21 @@
 			padding-left: 16px;
 			padding-right: 16px;
 		}
+		.controls {
+			flex-direction: column;
+			align-items: stretch;
+		}
+		.mode button {
+			flex: 1;
+			justify-content: center;
+			padding: 0 10px;
+		}
+		.rules {
+			justify-content: flex-start;
+		}
 		.maps {
 			grid-template-columns: minmax(0, 1fr);
-			gap: 14px;
-		}
-		.howto ol {
-			grid-template-columns: 1fr;
-		}
-		.howto li {
-			display: flex;
-			align-items: center;
-			gap: 14px;
-		}
-		.howto p {
-			margin-top: 0;
-		}
-		.pic {
-			flex: none;
-		}
-		.keys {
-			display: none;
+			gap: 22px;
 		}
 	}
 </style>

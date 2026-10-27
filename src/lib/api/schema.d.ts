@@ -92,6 +92,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/streets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The Tashkent streets the player has been on, learned ones marked, closest guess first. */
+        get: operations["listMyStreets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/config": {
         parameters: {
             query?: never;
@@ -956,6 +973,24 @@ export interface components {
             /** @description Streets in the game. */
             total: number;
         };
+        MyStreets: {
+            streets: components["schemas"]["MyStreet"][];
+            /** @description Streets in the game. */
+            total: number;
+        };
+        MyStreet: {
+            name: components["schemas"]["Text"];
+            place?: components["schemas"]["Text"];
+            /** @description Rounds played on this street. */
+            rounds: number;
+            /**
+             * Format: double
+             * @description The closest guess; none when no pin was placed.
+             */
+            bestKm?: number;
+            /** @description Guessed within 500 m at least once. */
+            learned: boolean;
+        };
         MapBest: {
             map: components["schemas"]["MapRef"];
             games: number;
@@ -1269,6 +1304,8 @@ export interface components {
         GamePage: {
             games: components["schemas"]["GameListItem"][];
             next?: string;
+            /** @description All the player's finished games. */
+            total?: number;
         };
         GameListItem: {
             /** Format: uuid */
@@ -1515,6 +1552,8 @@ export interface operations {
                 /** @description Cursor; the `next` value of the previous page. */
                 before?: string;
                 limit?: number;
+                /** @description A numbered page (1 is the newest), instead of the cursor. */
+                page?: number;
             };
             header?: never;
             path?: never;
@@ -1529,6 +1568,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GamePage"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    listMyStreets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The streets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyStreets"];
                 };
             };
             401: components["responses"]["Error"];

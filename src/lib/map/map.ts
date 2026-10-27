@@ -139,6 +139,44 @@ function pinSvg(color: string, label = ''): string {
 	return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 }
 
+/** The real place: a small Uzbekistan flag on a pole, planted on the spot (the pole's foot is
+ *  the point). No player's pin looks like it: theirs are drops of one colour. A number (the
+ *  round, on the final map) sits on a disc at the top of the pole. */
+const FLAG_W = 40;
+const FLAG_H = 50;
+const FLAG_FOOT: [number, number] = [9, 47];
+export function flagSvg(label = ''): string {
+	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${FLAG_W}" height="${FLAG_H}" viewBox="0 0 40 50">
+<ellipse cx="9" cy="47" rx="5" ry="2" fill="#000" opacity=".28"/>
+<path d="M11 6c6-2.6 10 2.4 16 0s8-1.5 11-.5v18c-3-1-5-1.9-11 .5s-10-2.6-16 0z" fill="#fff" stroke="#fff" stroke-width="3" stroke-linejoin="round"/>
+<clipPath id="f"><path d="M11 6c6-2.6 10 2.4 16 0s8-1.5 11-.5v18c-3-1-5-1.9-11 .5s-10-2.6-16 0z"/></clipPath>
+<g clip-path="url(#f)"><rect x="10" y="0" width="30" height="12.2" fill="#0099b5"/><rect x="10" y="12.2" width="30" height="1" fill="#ce1126"/><rect x="10" y="13.2" width="30" height="4.4" fill="#fff"/><rect x="10" y="17.6" width="30" height="1" fill="#ce1126"/><rect x="10" y="18.6" width="30" height="12" fill="#1eb53a"/>
+<circle cx="16" cy="8.6" r="2.4" fill="#fff"/><circle cx="17" cy="8.3" r="2.1" fill="#0099b5"/></g>
+<rect x="7.6" y="4" width="2.8" height="43" rx="1.4" fill="#13233f" stroke="#fff" stroke-width="1.2"/>
+${
+	label
+		? `<circle cx="9" cy="6" r="7" fill="#13233f" stroke="#fff" stroke-width="2"/><text x="9" y="9.6" text-anchor="middle" font-family="Onest,sans-serif" font-size="10" font-weight="800" fill="#fff">${label}</text>`
+		: '<circle cx="9" cy="4" r="3" fill="#f5b81c" stroke="#fff" stroke-width="1.2"/>'
+}</svg>`;
+	return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+
+export async function flagMarker(at: LatLon, label = ''): Promise<any> {
+	const ymaps = await loadYmaps('uz');
+	return new ymaps.Placemark(
+		pt(at),
+		{},
+		{
+			iconLayout: 'default#image',
+			iconImageHref: flagSvg(label),
+			iconImageSize: [FLAG_W, FLAG_H],
+			iconImageOffset: [-FLAG_FOOT[0], -FLAG_FOOT[1]],
+			zIndex: 1000,
+			interactivityModel: 'default#transparent'
+		}
+	);
+}
+
 export async function marker(color: string, at: LatLon, label = ''): Promise<any> {
 	const ymaps = await loadYmaps('uz');
 	return new ymaps.Placemark(
@@ -149,6 +187,31 @@ export async function marker(color: string, at: LatLon, label = ''): Promise<any
 			iconImageHref: pinSvg(color, label),
 			iconImageSize: [28, 36],
 			iconImageOffset: [-14, -36],
+			interactivityModel: 'default#transparent'
+		}
+	);
+}
+
+/** The real place's flag for the reveal: it is planted with a bounce and a ring around its
+ *  foot (the look is in app.css, .sg-drop). */
+export async function dropMarker(at: LatLon): Promise<any> {
+	const ymaps = await loadYmaps('uz');
+	const Layout = ymaps.templateLayoutFactory.createClass(
+		`<div class="sg-drop"><i class="sg-drop-ring"></i><img src="${flagSvg()}" width="${FLAG_W}" height="${FLAG_H}" alt=""></div>`
+	);
+	return new ymaps.Placemark(
+		pt(at),
+		{},
+		{
+			iconLayout: Layout,
+			iconShape: {
+				type: 'Rectangle',
+				coordinates: [
+					[-FLAG_FOOT[0], -FLAG_FOOT[1]],
+					[FLAG_W - FLAG_FOOT[0], FLAG_H - FLAG_FOOT[1]]
+				]
+			},
+			zIndex: 1000,
 			interactivityModel: 'default#transparent'
 		}
 	);
@@ -202,6 +265,23 @@ export async function guessLine(a: LatLon, b: LatLon): Promise<any> {
 			strokeStyle: 'dash'
 		}
 	);
+}
+
+/** Draws a guess line from a towards b over ms, then resolves (the reveal). */
+export function growLine(line: any, a: LatLon, b: LatLon, ms: number): Promise<void> {
+	return new Promise((done) => {
+		const start = performance.now();
+		requestAnimationFrame(function step(now) {
+			const k = Math.min((now - start) / ms, 1);
+			const e = 1 - Math.pow(1 - k, 3);
+			line.geometry.setCoordinates([
+				pt(a),
+				[a.lat + (b.lat - a.lat) * e, a.lon + (b.lon - a.lon) * e]
+			]);
+			if (k < 1) requestAnimationFrame(step);
+			else done();
+		});
+	});
 }
 
 /** The smallest box around the points, for fitting the map to them. */

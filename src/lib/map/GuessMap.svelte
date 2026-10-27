@@ -37,6 +37,7 @@
 	/* eslint-disable @typescript-eslint/no-explicit-any */
 	let pinMark: any = null;
 	let circles: any[] = [];
+	let moved = false; // the player panned or zoomed since the round began
 
 	onMount(() => {
 		let gone = false;
@@ -56,8 +57,15 @@
 			},
 			() => {} // no Yandex: the round itself shows the error
 		);
-		// the box grows on hover and with the size button: the map follows it, centre kept
-		const seen = new ResizeObserver(() => map?.container.fitToViewport(true));
+		// the box grows on hover and with the size button: the map follows it, the centre
+		// kept once the player has moved it, the whole area shown while not
+		const touch = () => (moved = true);
+		el.addEventListener('pointerdown', touch);
+		el.addEventListener('wheel', touch, { passive: true });
+		const seen = new ResizeObserver(() => {
+			map?.container.fitToViewport(true);
+			if (map && !moved && !guess && !hints.length) map.setBounds(bounds(bbox));
+		});
 		seen.observe(el);
 		return () => {
 			gone = true;
@@ -126,6 +134,8 @@
 
 	/** Back to the whole map, e.g. at the start of a round. */
 	export function fitArea() {
+		moved = false;
+		map?.container.fitToViewport();
 		map?.setBounds(bounds(bbox));
 	}
 </script>
