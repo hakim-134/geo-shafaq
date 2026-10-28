@@ -26,14 +26,15 @@ Or the built game in Docker: `npm run lcl` builds it and serves `build/` with ng
 `http://localhost:8130` (`docker-compose.lcl.yml`), next to the API's `make lcl`. A phone on the
 same network opens the laptop's address on port 8130.
 
-| Command                   | What                                                                                |
-| ------------------------- | ----------------------------------------------------------------------------------- |
-| `npm run dev`             | dev server                                                                          |
-| `npm run check`           | types (svelte-check)                                                                |
-| `npm test`                | unit tests (vitest)                                                                 |
-| `npm run lint` / `format` | prettier                                                                            |
-| `npm run build`           | the static site in `build/`                                                         |
-| `npm run gen`             | the API types (`src/lib/api/schema.d.ts`) from `../api-geo-shafaq/api/openapi.yaml` |
+| Command                   | What                                                                                                                                                                     |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `npm run dev`             | dev server                                                                                                                                                               |
+| `npm run check`           | types (svelte-check)                                                                                                                                                     |
+| `npm test`                | unit tests (vitest)                                                                                                                                                      |
+| `npm run lint` / `format` | prettier                                                                                                                                                                 |
+| `npm run build`           | the static site in `build/`                                                                                                                                              |
+| `npm run gen`             | the API types (`src/lib/api/schema.d.ts`) from `../api-geo-shafaq/api/openapi.yaml`                                                                                      |
+| `npm run playtest`        | plays the journeys on demo panoramas in a throwaway headless Chrome and saves screenshots (phone light and dark, laptop) to `scripts/playtest/out/` for the taste review |
 
 ## How it fits together
 

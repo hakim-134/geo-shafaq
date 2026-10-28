@@ -15,7 +15,8 @@
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run",
 		"gen": "npx -y openapi-typescript@7 ../api-geo-shafaq/api/openapi.yaml -o src/lib/api/schema.d.ts",
-		"lcl": "npm run build && docker compose -f docker-compose.lcl.yml up -d"
+		"lcl": "npm run build && docker compose -f docker-compose.lcl.yml up -d",
+		"playtest": "node scripts/playtest/playtest.ts"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-static": "^4.0.0",
@@ -24,6 +25,7 @@
 		"@types/geojson": "^7946.0.16",
 		"prettier": "^3.8.3",
 		"prettier-plugin-svelte": "^4.1.0",
+		"puppeteer-core": "^25.16.0",
 		"svelte": "^5.57.1",
 		"svelte-check": "^4.6.0",
 		"typescript": "^6.0.3",
