@@ -12,11 +12,12 @@
 		children: Snippet;
 		legend?: boolean;
 		tall?: boolean; // more to read than to see (the final table): a smaller map on phones
+		stage?: boolean; // the panel is the show (a room's podium): on phones it comes first, the map under it
 	}
-	let { map, actions, children, legend = true, tall = false }: Props = $props();
+	let { map, actions, children, legend = true, tall = false, stage = false }: Props = $props();
 </script>
 
-<div class="result" class:tall>
+<div class="result" class:tall class:stage>
 	<div class="map-side">
 		{@render map()}
 		{#if legend}
@@ -95,6 +96,10 @@
 		overflow-y: auto;
 		padding: 28px 26px 16px;
 	}
+	/* a room's podium is the show: a wider panel on a laptop */
+	.stage {
+		grid-template-columns: min(540px, 40vw) minmax(0, 1fr);
+	}
 	.actions {
 		padding: 12px 26px max(18px, env(safe-area-inset-bottom));
 		display: flex;
@@ -164,6 +169,35 @@
 		.actions {
 			padding: 10px 16px max(12px, env(safe-area-inset-bottom));
 			gap: 8px;
+		}
+		/* the stage: one scroll, the panel's story first, the map under it, the buttons fixed */
+		.stage {
+			overflow-y: auto;
+		}
+		.stage .panel {
+			display: contents;
+		}
+		.stage .body {
+			order: 1;
+			flex: none;
+			overflow: visible;
+		}
+		.stage .map-side {
+			order: 2;
+			flex: none;
+			height: 55vh;
+			min-height: 0;
+		}
+		.stage .actions {
+			order: 3;
+			position: sticky;
+			bottom: 0;
+			z-index: 2;
+			background: var(--surface);
+		}
+		.stage .body,
+		.stage .map-side {
+			background: var(--surface);
 		}
 		@keyframes rise-up {
 			from {

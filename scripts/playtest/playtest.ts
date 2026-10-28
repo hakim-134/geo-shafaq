@@ -353,34 +353,41 @@ async function room(browser: Browser, view: View, dir: string) {
 	const J = 'room';
 	const host = new Player(view, 'host', dir);
 	const friend = new Player(view, 'friend', dir);
+	const friend2 = new Player(view, 'friend2', dir);
 	await host.open(browser, { sg_choice: JSON.stringify(ROOM_CHOICE), sg_coach_done: '1' });
 	await friend.open(browser);
+	await friend2.open(browser);
+	const all = [host, friend, friend2];
 
 	host.begin();
 	await host.go('/');
 	await sleep(1500);
 	// one quiet button opens a room at once (before 2026-10-28: a switch, then a sign)
 	await host.tap(await host.findText(/Do‘stlar bilan/));
-	await sleep(800);
-	if (!host.page.url().includes('/room/')) {
-		await host.shot(J, 'home-friends-mode');
-		await host.tap(await host.find('.maps .map:not(.other)'));
-	}
 	await host.page.waitForFunction(() => location.pathname.startsWith('/room/'), { timeout: 15000 });
 	await sleep(1500);
 	await host.shot(J, 'lobby-alone', 'the host, ready to invite: taps since the home');
+	// the invite: the phone's share sheet (none in a headless Chrome: our own sheet), or the
+	// laptop's copy
+	await host.tap(await host.findText(/Do‘stlarni chaqirish|Nusxa olindi/));
+	await sleep(700);
+	await host.shot(J, 'invite', 'after the big invite button: taps since the home');
+	await host.page.keyboard.press('Escape');
+	await sleep(400);
 	const code = host.page.url().split('/room/')[1].slice(0, 5);
 
 	friend.begin();
 	await friend.go(`/room/${code}`);
 	await sleep(2500);
-	await friend.shot(J, 'lobby', "a friend opens the room's link");
-	await sleep(500);
-	await host.shot(J, 'lobby-friend-in');
+	await friend.shot(J, 'lobby', "a friend opens the room's link: taps");
+	friend2.begin();
+	await friend2.go(`/room/${code}`);
+	await sleep(2000);
+	await host.shot(J, 'lobby-friends-in');
 
 	await host.tap(await host.find('.btn-play:not([disabled])'));
 	for (let n = 1; ; n++) {
-		await Promise.all([host.roundReady(), friend.roundReady()]);
+		await Promise.all(all.map((p) => p.roundReady()));
 		if (n === 1) {
 			await friend.shot(J, 'round-1');
 			if (await friend.has('.round-btn.hint:not([disabled])')) {
@@ -391,6 +398,7 @@ async function room(browser: Browser, view: View, dir: string) {
 		}
 		// the friend guesses closer to the middle, the host farther: the hint's cost shows
 		await friend.guess(5, 5);
+		await friend2.guess(30, 20);
 		if (n === 1) {
 			await sleep(1000);
 			await friend.shot(J, 'waiting-for-host');
@@ -404,17 +412,24 @@ async function room(browser: Browser, view: View, dir: string) {
 		}
 		const last = await host.page.$eval('.next', (b) => b.textContent ?? '');
 		await host.tap(await host.find('.next'));
-		if (await host.page.waitForSelector('.standings', { timeout: 5000 }).catch(() => null)) {
-			await sleep(3500);
+		if (await host.page.waitForSelector('.podium', { timeout: 5000 }).catch(() => null)) {
+			await sleep(1200);
+			await host.shot(J, 'end-rising', 'the podium rising');
+			await sleep(1800);
 			await host.shot(J, 'end', `after ${n} rounds; last button said "${last.trim()}"`);
-			await friend.find('.standings', 10000);
-			await friend.shot(J, 'end');
+			for (const f of [friend, friend2]) {
+				await f.find('.podium', 10000);
+				await f.shot(J, 'end');
+			}
 			break;
 		}
 		if (n > 12) throw new Error('the room does not end');
 	}
-	await host.page.close();
-	await friend.page.close();
+	// one tap of the host's takes everyone into the next game
+	await host.tap(await host.find('.again:not([disabled])'));
+	await Promise.all(all.map((p) => p.roundReady()));
+	await friend2.shot(J, 'again', 'a friend, taken into the new game by itself');
+	for (const p of all) await p.page.close();
 }
 
 const JOURNEYS = { solo, room, places } as const;
@@ -471,7 +486,7 @@ async function main() {
 	await writeFile(join(out, 'problems.txt'), problems.join('\n') + '\n');
 	console.log(`\n${steps.length} screens in ${out}/<view>/, the numbers in ${out}/steps.json`);
 	for (const s of steps.filter((s) =>
-		/-(solo-round-1|host-lobby-alone|round-in-district)\.png$/.test(s.file)
+		/-(solo-round-1|host-lobby-alone|host-invite|friend-lobby|round-in-district)\.png$/.test(s.file)
 	))
 		console.log(`  ${s.view} ${s.file}: ${s.taps} taps; ${s.note ?? ''}`);
 	if (problems.length) console.log(`\n${problems.length} problems: ${out}/problems.txt`);

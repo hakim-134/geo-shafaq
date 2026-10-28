@@ -21,6 +21,8 @@
 	import RulesFacts from '#lib/game/RulesFacts.svelte';
 	import Progress from '#lib/maps/Progress.svelte';
 	import { showToast } from '#lib/toast.svelte.js';
+	import { justMade } from '#lib/room.svelte.js';
+	import { unlockAudio } from '#lib/sfx.svelte.js';
 
 	type Mode = 'solo' | 'friends';
 
@@ -109,7 +111,10 @@
 				const game = await call(api().POST('/v1/games', { body }));
 				goto(`/game/${game.id}`);
 			} else {
+				unlockAudio(); // the lobby's join sounds
 				const room = await call(api().POST('/v1/rooms', { body }));
+				justMade.code = room.code;
+				justMade.at = Date.now();
 				goto(`/room/${room.code}`);
 			}
 		} catch (e) {

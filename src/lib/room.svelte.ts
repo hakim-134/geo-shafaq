@@ -8,6 +8,9 @@ import { apiUrl } from '#lib/config.js';
 /** Why the room is over for this page: kicked, left, closed, no_room, room_full. */
 export type Gone = 'kicked' | 'left' | 'closed' | 'no_room' | 'room_full';
 
+/** The room this page's player just opened with a tap: its lobby offers the invite at once. */
+export const justMade = { code: '', at: 0 };
+
 export class RoomLink {
 	state = $state<RoomState | null>(null);
 	/** The socket is open; false while reconnecting. */

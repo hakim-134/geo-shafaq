@@ -38,6 +38,8 @@
 				{t('copyLinkBtn')}
 			</button>
 			<a class="btn btn-telegram" href={telegramShare(share)} target="_blank" rel="noopener"
+				><svg viewBox="0 0 24 24"
+					><path d="M21 4 3 11l6 2.5M21 4l-4 16-8-6.5M21 4 9 13.5V19l3-3.5" /></svg
 				>Telegram</a
 			>
 		</div>

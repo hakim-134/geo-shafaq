@@ -80,6 +80,20 @@ export const sfxFanfare = () =>
 		tone(f, i === 3 ? 0.5 : 0.16, { gain: 0.09, type: 'triangle', delay: i * 0.09 })
 	);
 
+/** A friend comes into the room: a soft two-note pop. */
+export const sfxJoin = () => {
+	tone(587, 0.1, { gain: 0.08, type: 'triangle' });
+	tone(880, 0.16, { gain: 0.08, type: 'triangle', delay: 0.08 });
+};
+
+/** A podium step rises: lower for third, higher for first (i = 0, 1, 2). */
+export const sfxStep = (i: number) =>
+	tone([392, 494, 587][i] ?? 587, 0.3, {
+		to: [523, 659, 784][i] ?? 784,
+		gain: 0.07,
+		type: 'triangle'
+	});
+
 /** A miss far away: a soft falling note, not a buzzer. */
 export const sfxFar = () => tone(330, 0.3, { to: 220, gain: 0.07, type: 'sine' });
 

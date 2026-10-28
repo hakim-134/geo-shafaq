@@ -1,7 +1,8 @@
 <script lang="ts">
-	// A live room: friends on one map, the same panorama at the same time. The lobby (the
-	// code, the link, the QR code, the players), then the rounds, each round's result for
-	// everyone, and the game's table. The host starts, goes on, and changes the rules.
+	// A live room: friends on one map, the same panorama at the same time. The lobby has one
+	// job, bringing friends in (one big invite, the code as a number plate, a QR code, the
+	// players popping in); then the rounds, each round's result for everyone, and the podium.
+	// The host starts, goes on, and changes the rules.
 	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -17,7 +18,7 @@
 		type RoomResult,
 		type RoomState
 	} from '#lib/api/client.js';
-	import { RoomLink } from '#lib/room.svelte.js';
+	import { RoomLink, justMade } from '#lib/room.svelte.js';
 	import RoundView, { type Status } from '#lib/game/RoundView.svelte';
 	import ResultMap, { type Pair } from '#lib/map/ResultMap.svelte';
 	import { savedLayer, type BBox } from '#lib/map/map.js';
@@ -29,11 +30,12 @@
 	import ResultLayout from '#lib/game/ResultLayout.svelte';
 	import RoundReveal from '#lib/game/RoundReveal.svelte';
 	import StreetPlate from '#lib/game/StreetPlate.svelte';
-	import Confetti from '#lib/game/Confetti.svelte';
+	import Podium from '#lib/game/Podium.svelte';
 	import { extras } from '#lib/game/summary.js';
 	import RulesFacts from '#lib/game/RulesFacts.svelte';
 	import ShareSheet from '#lib/components/ShareSheet.svelte';
-	import { nativeShare, type Share } from '#lib/game/share.js';
+	import { copyText, nativeShare, type Share } from '#lib/game/share.js';
+	import { sfxJoin, unlockAudio, vibrate } from '#lib/sfx.svelte.js';
 	import { siteUrl } from '#lib/config.js';
 	import { playerColor } from '#lib/game/colors.js';
 	import { choiceFrom, rulesFor, testProviders, type Choice } from '#lib/rules.js';
@@ -76,7 +78,11 @@
 			await ensureSession();
 			const s = await l.load();
 			if (s.blocked) l.gone = s.blocked as typeof l.gone;
-			else l.connect();
+			else {
+				l.connect();
+				if (justMade.code === c && Date.now() - justMade.at < 5000) offerInvite();
+			}
+			justMade.code = '';
 		} catch (e) {
 			loadError = e instanceof ApiError && e.code === 'no_room' ? 'err_no_room' : 'err_network';
 		}
@@ -289,10 +295,10 @@
 	);
 	const gameOver = $derived(!!st && st.rules.rounds > 0 && st.results.length >= st.rules.rounds);
 
+	const hostP = $derived(players.find((p) => p.id === st?.host));
 	const standings = $derived(
 		[...players].sort((a, b) => b.total - a.total || Number(a.left) - Number(b.left))
 	);
-	const winner = $derived(standings[0]);
 	let finalPick = $state<number | null>(null);
 	const finalPairs = $derived<Pair[]>(
 		(st?.results ?? [])
@@ -421,20 +427,56 @@
 	}
 
 	// ---------- inviting ----------
+	// A phone shares the link through its own sheet (Telegram first on most Uzbek phones); a
+	// laptop copies it and shows the QR code for the phones in the same room.
+	const phone = matchMedia('(pointer: coarse)').matches;
 	let qrOpen = $state(false);
-	const qr = $derived(
-		qrOpen ? renderSVG(roomUrl, { border: 1, blackColor: '#13233f', whiteColor: '#fff' }) : ''
-	);
+	const qr = $derived(renderSVG(roomUrl, { border: 1, blackColor: '#13233f', whiteColor: '#fff' }));
 	const inviteText = $derived(st ? t('invite', { map: tx(st.map.name), code }) : '');
-	const tgShare = $derived(
-		`https://t.me/share/url?url=${encodeURIComponent(roomUrl)}&text=${encodeURIComponent(inviteText)}`
-	);
 	// the phone's share sheet where there is one (https); our own sheet (copy, Telegram) anywhere else
 	let sharing = $state<{ share: Share; title: string } | null>(null);
-	async function shareLink() {
+	let copied = $state(false);
+	let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+	async function invite() {
 		const share = { url: roomUrl, text: inviteText };
-		if (!(await nativeShare(share))) sharing = { share, title: t('inviteTitle') };
+		if (phone) {
+			if (!(await nativeShare(share))) sharing = { share, title: t('inviteTitle') };
+		} else if (await copyText(`${inviteText}\n${roomUrl}`)) {
+			copied = true;
+			clearTimeout(copiedTimer);
+			copiedTimer = setTimeout(() => (copied = false), 2500);
+		} else sharing = { share, title: t('inviteTitle') };
 	}
+	// right after the tap that opened the room: the share sheet opens by itself where the phone
+	// still allows it (soon after a tap, over https); a laptop copies the link
+	async function offerInvite() {
+		const share = { url: roomUrl, text: inviteText };
+		if (!phone) {
+			if (await copyText(`${inviteText}\n${roomUrl}`)) {
+				copied = true;
+				copiedTimer = setTimeout(() => (copied = false), 4000);
+			}
+		} else if (navigator.share && window.isSecureContext) {
+			await navigator
+				.share({ title: 'Shafaq Geo', text: share.text, url: share.url })
+				.catch(() => {});
+		}
+	}
+
+	// friends pop in with a sound (not the ones already here when the page opened)
+	let known: Set<string> | null = null;
+	$effect(() => {
+		const ids = players.map((p) => p.id);
+		if (!st?.joined) return;
+		if (known && ids.some((id) => !known!.has(id) && id !== st?.you)) {
+			sfxJoin();
+			vibrate(30);
+		}
+		known = new Set(ids);
+	});
+
+	// the end: the next step, or the rest under ⋯
+	let moreOpen = $state(false);
 
 	// after a game: my game's page on the site, with everyone's table on it
 	async function shareResults() {
@@ -491,7 +533,7 @@
 	}
 </script>
 
-<svelte:window onkeydown={onKey} ononline={wake} />
+<svelte:window onkeydown={onKey} ononline={wake} onpointerdown={unlockAudio} />
 <svelte:document onvisibilitychange={wake} />
 <svelte:head><title>{t('room')} {code} — Shafaq Geo</title></svelte:head>
 
@@ -511,140 +553,133 @@
 	<Loader text={t('connecting')} />
 {:else if st.phase === 'lobby' || !st.joined}
 	<TopBar />
-	<main class="lobby">
-		<section class="head">
-			<p class="kicker">{t('roomCode')}</p>
-			<div class="plate" aria-label={`${t('roomCode')}: ${code}`}>
-				<b>{code}</b>
-				<span class="plate-end" aria-hidden="true">
-					<span class="plate-flag"><i></i><i></i><i></i></span>
-					<span class="plate-uz">UZ</span>
-				</span>
-			</div>
-			<p class="sub">{t('roomInviteText')}</p>
-			<div class="invite">
-				<button class="btn btn-sky" onclick={shareLink}>
+	<main class="lobby" class:guest={!isHost} class:host={isHost}>
+		<section class="invite">
+			<button
+				class="btn invite-btn"
+				class:btn-sky={isHost && players.length < 2}
+				class:btn-ghost={!isHost || players.length > 1}
+				class:quiet={!isHost || players.length > 1}
+				class:done={copied}
+				onclick={invite}
+			>
+				{#if copied}
 					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
-						><path d="M12 15V3M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" /></svg
+						><path d="m5 12.5 4.5 4.5L19 7" /></svg
 					>
-					{t('copyLink')}
-				</button>
-				<a class="btn btn-telegram" href={tgShare} target="_blank" rel="noopener">Telegram</a>
+					{t('copied')}
+				{:else}
+					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+						><circle cx="9" cy="8" r="3.4" /><path
+							d="M2.5 20c.6-3.6 3.2-5.6 6.5-5.6s5.9 2 6.5 5.6"
+						/><path d="M19 8v6M16 11h6" /></svg
+					>
+					{t('inviteTitle')}
+				{/if}
+			</button>
+			<div class="plate-row">
+				<div class="plate" role="img" aria-label={`${t('room')} ${code}`}>
+					<b>{code}</b>
+					<span class="plate-end" aria-hidden="true">
+						<span class="plate-flag"><i></i><i></i><i></i></span>
+						<span class="plate-uz">UZ</span>
+					</span>
+				</div>
 				<button
-					class="btn btn-ghost qr-btn"
-					aria-pressed={qrOpen}
-					onclick={() => (qrOpen = !qrOpen)}>QR</button
+					class="icon-btn qr-btn"
+					onclick={() => (qrOpen = true)}
+					aria-label={t('qrCode')}
+					title={t('qrCode')}
 				>
-			</div>
-			{#if qrOpen}
-				<!-- eslint-disable-next-line svelte/no-at-html-tags -- our own SVG from uqr -->
-				<div class="qr">{@html qr}</div>
-			{/if}
-		</section>
-
-		<section class="setup">
-			<div class="setup-map">
-				<MapSign
-					slug={st.map.slug}
-					name={tx(st.map.name)}
-					top={tx(st.map.description)}
-					outline={st.map.outline}
-				/>
-			</div>
-			<p class="setup-rules">
-				<RulesFacts choice={choiceFrom(st.rules, st.map.slug)} />
-			</p>
-			<p class="setup-more">
-				{extras(choiceFrom(st.rules, st.map.slug), st.map.canMove ?? true)}
-			</p>
-			{#if isHost}
-				<button class="btn setup-btn" onclick={openSettings}>
 					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
-						><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle
-							cx="10"
-							cy="17"
-							r="2"
+						><rect x="3.5" y="3.5" width="7" height="7" rx="1" /><rect
+							x="13.5"
+							y="3.5"
+							width="7"
+							height="7"
+							rx="1"
+						/><rect x="3.5" y="13.5" width="7" height="7" rx="1" /><path
+							d="M14 14h2.5v2.5H14zM18 18h2.5v2.5H18zM18 14h2.5M14 18v2.5"
 						/></svg
 					>
-					{t('changeMapRules')}
 				</button>
-			{:else}
-				<p class="setup-host">
-					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
-						><rect x="5" y="10.5" width="14" height="10" rx="2" /><path
-							d="M8 10.5V8a4 4 0 0 1 8 0v2.5"
-						/></svg
-					>
-					{t('onlyHostChanges')}
-				</p>
-			{/if}
+			</div>
+			<!-- a laptop shows it at once, for the phones in the same room -->
+			<!-- eslint-disable-next-line svelte/no-at-html-tags -- our own SVG from uqr -->
+			<div class="qr qr-wide" aria-label={t('qrCode')}>{@html qr}</div>
 		</section>
 
-		<section class="players">
-			<h2 class="section-title">
-				{t('players')} <span class="count">{players.length} / {st.maxPlayers}</span>
-			</h2>
+		<section class="players" aria-label={t('players')}>
 			<ul>
 				{#each players as p, i (p.id)}
-					<li class:off={!p.online}>
-						<span class="avatar ring" style:--ring={playerColor(i)}>{p.avatar}</span>
-						<span class="who">
-							<b>{p.name}</b>
-							<span class="tags">
-								{#if p.id === st.host}<span class="tag host">{t('hostTag')}</span>{/if}
-								{#if p.id === st.you}<span class="tag">{t('youTag')}</span>{/if}
-								{#if !p.online}<span class="tag">{t('offline')}</span>{/if}
+					<li class:off={!p.online} class:me={p.id === st.you}>
+						<button
+							class="player"
+							disabled={!(p.id === st.you && st.joined) && !isHost}
+							onclick={() => (p.id === st.you ? startNaming() : (target = p))}
+							aria-label={p.id === st.you ? t('changeName') : `${p.name}: ${t('playerMenu')}`}
+						>
+							<span class="avatar ring" style:--ring={playerColor(i)}>
+								{p.avatar}
+								{#if p.id === st.host}<span class="crown" aria-hidden="true">👑</span>{/if}
 							</span>
-						</span>
-						{#if p.id === st.you && st.joined}
-							<button
-								class="icon-btn"
-								onclick={startNaming}
-								aria-label={t('changeName')}
-								title={t('changeName')}
-							>
-								<svg viewBox="0 0 24 24" class="icon"
-									><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4" /></svg
-								>
-							</button>
-						{:else if isHost}
-							<button
-								class="icon-btn"
-								onclick={() => (target = p)}
-								aria-label={t('playerMenu')}
-								title={t('playerMenu')}
-							>
-								<svg viewBox="0 0 24 24" class="icon"
-									><circle cx="5" cy="12" r="1.3" /><circle cx="12" cy="12" r="1.3" /><circle
-										cx="19"
-										cy="12"
-										r="1.3"
-									/></svg
-								>
-							</button>
-						{/if}
+							<span class="name">{p.name}</span>
+							{#if p.id === st.you}<span class="tag">{t('youTag')}</span>{/if}
+						</button>
 					</li>
 				{/each}
+				{#if players.length < st.maxPlayers}
+					<li class="slot">
+						<button class="player" onclick={invite} aria-label={t('inviteTitle')}>
+							<span class="avatar empty" aria-hidden="true">+</span>
+						</button>
+					</li>
+				{/if}
 			</ul>
 		</section>
 
+		{#if isHost}
+			<button class="setup" onclick={openSettings} aria-label={t('changeMapRules')}>
+				<MapSign slug={st.map.slug} name={tx(st.map.name)} size="small" />
+				<RulesFacts choice={choiceFrom(st.rules, st.map.slug)} />
+				<svg viewBox="0 0 24 24" class="icon change" aria-hidden="true"
+					><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle
+						cx="10"
+						cy="17"
+						r="2"
+					/></svg
+				>
+			</button>
+		{:else}
+			<div class="setup">
+				<MapSign slug={st.map.slug} name={tx(st.map.name)} size="small" />
+				<RulesFacts choice={choiceFrom(st.rules, st.map.slug)} />
+			</div>
+		{/if}
+
+		<button class="link-btn leave" onclick={leave}>{t('leave')}</button>
 		<div class="go">
 			{#if !st.joined}
-				<p class="wait">{t('connecting')}</p>
+				<p class="wait"><span class="spinner"></span>{t('connecting')}</p>
 			{:else if isHost}
 				<button
-					class="btn btn-primary btn-play"
+					class="btn btn-play"
+					class:btn-primary={players.length > 1}
+					class:btn-ghost={players.length < 2}
 					onclick={() => hostAct('/v1/rooms/{code}/start')}
 					disabled={busy}
 				>
-					<span>{busy ? t('starting') : t('start')}</span>
+					<span>{busy ? t('starting') : `${t('start')} · ${players.length}`}</span>
 					<svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" /></svg>
 				</button>
-				{#if players.length < 2}<p class="wait">{t('roomAlone')}</p>{/if}
 			{:else}
-				<p class="wait">{t('waitHost')}</p>
+				<p class="wait">
+					{#if hostP}<span class="avatar host-face" style:--ring={colorOf(hostP.id)}
+							>{hostP.avatar}<i aria-hidden="true">👑</i></span
+						>{/if}
+					{t('waitHost')}
+				</p>
 			{/if}
-			<button class="link-btn leave" onclick={leave}>{t('leave')}</button>
 		</div>
 	</main>
 {:else}
@@ -751,36 +786,12 @@
 		{/if}
 
 		{#if st.phase === 'final'}
-			<ResultLayout tall legend={false}>
+			<ResultLayout tall stage legend={false}>
 				{#snippet map()}
 					<ResultMap bbox={st.map.bbox as BBox} layer={savedLayer()} pairs={finalPairs} />
 				{/snippet}
 				<div class="final">
-					<div class="final-head">
-						<MapSign slug={st.map.slug} name={tx(st.map.name)} size="small" />
-						<h1>
-							{#if winner && winner.total > 0}
-								{winner.id === st.you ? t('youWin') : t('wins', { name: winner.name })}
-							{:else}
-								{t('gameOver')}
-							{/if}
-						</h1>
-					</div>
-					<ol class="table standings">
-						{#each standings as p, i (p.id)}
-							<li
-								class:me={p.id === st.you}
-								class:off={p.left}
-								class:first={i === 0 && p.total > 0}
-								style:animation-delay={`${200 + i * 90}ms`}
-							>
-								<span class="medal">{i < 3 && p.total > 0 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span>
-								<span class="avatar ring" style:--ring={colorOf(p.id)}>{p.avatar}</span>
-								<span class="name">{p.name}</span>
-								<b>{fmtNum(p.total)}</b>
-							</li>
-						{/each}
-					</ol>
+					<Podium {standings} you={st.you ?? ''} {colorOf} />
 					<div class="trip">
 						<h2 class="section-title">{t('streetsThisGame')}</h2>
 						<div class="rounds">
@@ -799,40 +810,51 @@
 				{#snippet actions()}
 					{#if isHost}
 						<button
-							class="btn btn-primary"
+							class="btn btn-primary again"
 							onclick={() => hostAct('/v1/rooms/{code}/start')}
 							disabled={busy}
 						>
 							<svg viewBox="0 0 24 24"
 								><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3L3.5 8.3M3.5 3.5v4.8h4.8" /></svg
 							>
-							{t('playAgain')}
+							{busy ? t('starting') : t('playAgain')}
 						</button>
 					{:else}
-						<p class="wait"><span class="spinner"></span>{t('waitHostNext')}</p>
-					{/if}
-					{#if st.yourGame}
-						<button class="btn btn-sky" onclick={shareResults}>
-							<svg viewBox="0 0 24 24"
-								><path
-									d="M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5"
-								/></svg
-							>
-							{t('shareResults')}
-						</button>
+						<p class="wait">
+							{#if hostP}<span class="avatar host-face" style:--ring={colorOf(hostP.id)}
+									>{hostP.avatar}<i aria-hidden="true">👑</i></span
+								>{/if}
+							{t('waitHostAgain')}
+						</p>
 					{/if}
 					<div class="row">
-						{#if isHost}
-							<button class="btn btn-ghost" onclick={openSettings}>{t('roomSettings')}</button>
-						{/if}
 						{#if st.yourGame}
-							<a class="btn btn-ghost" href={`/game/${st.yourGame}`}>{t('myGame')}</a>
+							<button class="btn btn-ghost" onclick={shareResults}>
+								<svg viewBox="0 0 24 24"
+									><path
+										d="M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5"
+									/></svg
+								>
+								{t('shareResults')}
+							</button>
 						{/if}
+						<button
+							class="btn btn-ghost more-btn"
+							onclick={() => (moreOpen = true)}
+							aria-label={t('more')}
+							title={t('more')}
+						>
+							<svg viewBox="0 0 24 24"
+								><circle cx="5" cy="12" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle
+									cx="19"
+									cy="12"
+									r="1.4"
+								/></svg
+							>
+						</button>
 					</div>
-					<button class="link-btn leave" onclick={leave}>{t('leave')}</button>
 				{/snippet}
 			</ResultLayout>
-			{#if winner && winner.id === st.you && winner.total > 0}<Confetti />{/if}
 		{/if}
 	</div>
 {/if}
@@ -873,6 +895,29 @@
 	{/if}
 </Sheet>
 
+<Sheet open={qrOpen} onclose={() => (qrOpen = false)} title={code}>
+	<!-- eslint-disable-next-line svelte/no-at-html-tags -- our own SVG from uqr -->
+	<div class="qr qr-big">{@html qr}</div>
+</Sheet>
+
+<Sheet open={moreOpen} onclose={() => (moreOpen = false)}>
+	<div class="sheet-body">
+		{#if isHost}
+			<button
+				class="btn btn-ghost"
+				onclick={() => {
+					moreOpen = false;
+					openSettings();
+				}}>{t('changeMapRules')}</button
+			>
+		{/if}
+		{#if st?.yourGame}
+			<a class="btn btn-ghost" href={`/game/${st.yourGame}`}>{t('myGame')}</a>
+		{/if}
+		<button class="btn btn-ghost" onclick={leave}>{t('leave')}</button>
+	</div>
+</Sheet>
+
 <Sheet open={!!target} onclose={() => (target = null)} title={target?.name}>
 	<div class="sheet-body">
 		<button class="btn btn-sky" onclick={() => onPlayer('/v1/rooms/{code}/host')}
@@ -894,43 +939,75 @@
 
 <style>
 	/* ---------- the lobby ---------- */
+	/* one job: bring friends in. The host meets the invite first; a friend, the players */
 	.lobby {
 		max-width: 560px;
 		margin: 0 auto;
-		padding: 8px 16px 40px;
+		padding: 8px 16px 24px;
 		display: flex;
 		flex-direction: column;
-		gap: 22px;
+		gap: 18px;
 	}
-	.head {
+	.invite {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		text-align: center;
+		gap: 14px;
+	}
+	.invite-btn {
+		width: 100%;
+		height: 68px;
+		border-radius: 20px;
+		font-size: 20px;
 		gap: 12px;
 	}
-	.kicker {
-		font-size: 15px;
-		font-weight: 600;
-		color: var(--muted);
+	.invite-btn .icon {
+		width: 28px;
+		height: 28px;
+	}
+	.invite-btn.done {
+		background: var(--green);
+		color: #fff;
+	}
+	.invite-btn.quiet {
+		height: 52px;
+		font-size: 16px;
+		border-radius: 16px;
+	}
+	.invite-btn.quiet .icon {
+		width: 22px;
+		height: 22px;
+	}
+	.plate-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+	.qr-btn {
+		width: 48px;
+		height: 48px;
+	}
+	.qr-btn .icon {
+		width: 26px;
+		height: 26px;
 	}
 	/* the code as an Uzbek number plate: white, a black rim, the flag and UZ at the right end */
 	.plate {
 		display: inline-flex;
 		align-items: stretch;
-		border: 3px solid #13151a;
-		border-radius: 10px;
+		border: 2.5px solid #13151a;
+		border-radius: 8px;
 		background: #fff;
 		color: #13151a;
 		box-shadow:
 			0 2px 0 rgba(0, 0, 0, 0.25),
-			0 10px 26px rgba(0, 0, 0, 0.12);
+			0 8px 20px rgba(0, 0, 0, 0.1);
 		overflow: hidden;
 	}
 	.plate b {
-		padding: 6px 14px 4px 20px;
+		padding: 4px 10px 2px 14px;
 		font-family: var(--display);
-		font-size: clamp(34px, 11vw, 48px);
+		font-size: 28px;
 		font-weight: 800;
 		letter-spacing: 0.14em;
 		line-height: 1.1;
@@ -940,15 +1017,15 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 4px;
-		padding: 0 10px;
+		gap: 3px;
+		padding: 0 8px;
 		border-left: 2px solid #13151a;
 	}
 	.plate-flag {
 		display: flex;
 		flex-direction: column;
-		width: 24px;
-		height: 15px;
+		width: 20px;
+		height: 12px;
 		border: 1px solid #13151a;
 	}
 	.plate-flag i {
@@ -965,149 +1042,124 @@
 		background: #1eb53a;
 	}
 	.plate-uz {
-		font-size: 13px;
+		font-size: 11px;
 		font-weight: 800;
 		letter-spacing: 0.06em;
 		line-height: 1;
 	}
-	.sub {
-		color: var(--muted);
-		font-size: 14.5px;
-		max-width: 380px;
-	}
-	.invite {
-		display: flex;
-		gap: 8px;
-		flex-wrap: wrap;
-		justify-content: center;
-	}
-	.invite .btn {
-		height: 46px;
-	}
-	.qr-btn[aria-pressed='true'] {
-		background: var(--surface-2);
-	}
 	.qr {
-		width: min(240px, 70vw);
 		padding: 10px;
 		border-radius: 16px;
 		background: #fff;
-		box-shadow: var(--shadow);
 	}
 	.qr :global(svg) {
 		display: block;
 		width: 100%;
 		height: auto;
 	}
-	.setup {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 8px;
-		padding: 16px;
-		border-radius: 18px;
-		background: var(--surface);
-		border: 1px solid var(--border);
-		text-align: center;
+	.qr-wide {
+		display: none;
 	}
-	.setup-map {
-		width: min(340px, 100%);
+	.qr-big {
+		width: min(300px, 80vw);
+		margin: 0 auto 8px;
 	}
-	.setup-btn {
-		width: 100%;
-		margin-top: 8px;
-		height: auto;
-		min-height: 52px;
-		padding: 10px 16px;
-		font-size: 14.5px;
-		line-height: 1.25;
-		text-align: center;
-	}
-	.setup-host {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 13.5px;
-		color: var(--muted);
-	}
-	.setup-host .icon {
-		width: 16px;
-		height: 16px;
-	}
-	.setup-rules {
-		font-size: 14px;
-		font-weight: 600;
-	}
-	.players h2 {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-	}
-	.setup-more {
-		font-size: 13px;
-		color: var(--muted);
-	}
-	.count {
-		font-family: var(--body);
-		font-size: 13px;
-		color: var(--muted);
-		font-weight: 500;
-	}
+
+	/* the players: faces popping in */
 	.players ul {
 		list-style: none;
-		margin-top: 10px;
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+		gap: 12px 6px;
+	}
+	.player {
+		width: 100%;
 		display: flex;
 		flex-direction: column;
-		gap: 6px;
+		align-items: center;
+		gap: 4px;
+		padding: 4px 0;
+		border: none;
+		background: none;
+		color: var(--text);
+		cursor: pointer;
+	}
+	.player:disabled {
+		opacity: 1;
+		cursor: default;
 	}
 	.players li {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		padding: 8px 10px;
-		border-radius: 14px;
-		background: var(--surface);
-		border: 1px solid var(--border);
+		animation: pop-in 0.45s var(--pop) both;
 	}
 	.players li.off {
-		opacity: 0.55;
-	}
-	.avatar.ring {
-		box-shadow: 0 0 0 2.5px var(--ring);
+		opacity: 0.5;
 	}
 	.players .avatar {
-		width: 38px;
-		height: 38px;
+		position: relative;
+		width: 58px;
+		height: 58px;
+		font-size: 32px;
+		background: var(--surface);
+	}
+	.avatar.ring {
+		box-shadow: 0 0 0 3px var(--ring);
+	}
+	.crown {
+		position: absolute;
+		top: -14px;
+		right: -8px;
 		font-size: 20px;
-		background: var(--bg);
+		transform: rotate(18deg);
 	}
-	.who {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
+	.avatar.empty {
+		border: 2.5px dashed var(--border);
+		background: none;
+		color: var(--muted);
+		font-size: 30px;
+		font-weight: 300;
+		transition: border-color 0.15s;
 	}
-	.who b {
+	.slot .player:hover .avatar.empty {
+		border-color: var(--sky);
+		color: var(--sky);
+	}
+	.players .name {
+		max-width: 100%;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-	.tags {
-		display: flex;
-		gap: 6px;
-	}
-	.tag {
-		font-size: 11px;
+		font-size: 13.5px;
 		font-weight: 600;
+	}
+	.players .tag {
+		margin-top: -3px;
+		font-size: 11.5px;
 		color: var(--muted);
 	}
-	.tag.host {
-		color: var(--gold-ink, #9a6b00);
+
+	/* the place and the rules: one line; the host's opens the settings */
+	.setup {
+		display: flex;
+		align-items: center;
+		flex-wrap: wrap;
+		gap: 8px 14px;
+		min-height: 56px;
+		padding: 8px 14px;
+		border: none;
+		border-radius: 16px;
+		background: var(--surface-2);
+		color: var(--text);
+		font-size: 14px;
+		text-align: left;
 	}
-	.tag.host::before {
-		content: '👑 ';
+	button.setup:hover {
+		filter: brightness(0.97);
 	}
+	.setup .change {
+		margin-left: auto;
+		color: var(--muted);
+	}
+
 	.go {
 		display: flex;
 		flex-direction: column;
@@ -1132,8 +1184,10 @@
 		color: var(--muted);
 		font-size: 14.5px;
 		text-align: center;
+		min-height: 52px;
 	}
 	.leave {
+		align-self: center;
 		color: var(--muted);
 	}
 
@@ -1206,8 +1260,9 @@
 		}
 	}
 
-	/* results and the final table */
-	.next {
+	/* results and the podium */
+	.next,
+	.again {
 		height: 60px;
 		font-size: 17px;
 	}
@@ -1222,95 +1277,28 @@
 		flex-direction: column;
 		gap: 22px;
 	}
-	.final-head {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 10px;
-	}
-	.final h1 {
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 30px;
-		line-height: 1.08;
-		letter-spacing: -0.02em;
-		animation: pop-in 0.5s var(--pop) both;
-	}
-	.table {
-		list-style: none;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		margin-top: 4px;
-	}
-	.table li {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 8px;
-		border-radius: 12px;
-		font-size: 14px;
-		animation: rise 0.35s var(--settle) both;
-	}
-	.table li.me {
-		background: color-mix(in srgb, var(--sky) 12%, transparent);
-	}
-	.table li.off {
-		opacity: 0.5;
-	}
-	.table .pos {
-		width: 18px;
-		text-align: center;
-		color: var(--muted);
-		font-weight: 700;
-	}
-	.table .avatar {
+	.host-face {
+		position: relative;
 		width: 30px;
 		height: 30px;
 		font-size: 17px;
 		background: var(--bg);
+		box-shadow: 0 0 0 2.5px var(--ring);
 		flex: none;
 	}
-	.table .name {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		font-weight: 600;
-	}
-	.table .km {
-		color: var(--muted);
+	.host-face i {
+		position: absolute;
+		top: -12px;
+		right: -8px;
 		font-size: 13px;
+		font-style: normal;
+		transform: rotate(18deg);
 	}
-	.table b {
-		font-family: var(--display);
-		min-width: 56px;
-		text-align: right;
-	}
-	/* the winner's row stands out like a podium's top step */
-	.standings li {
-		padding: 10px 10px;
-		font-size: 15px;
-	}
-	.standings li.first {
-		background: color-mix(in srgb, var(--star) 20%, var(--surface));
-		box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--star) 60%, transparent);
-	}
-	.standings .medal {
-		width: 26px;
-		text-align: center;
-		font-size: 20px;
-		color: var(--muted);
-		font-weight: 700;
-	}
-	.standings .avatar {
-		width: 36px;
-		height: 36px;
-		font-size: 20px;
-	}
-	.standings b {
-		font-size: 18px;
+	/* ResultLayout stretches the row's buttons; ⋯ stays a square */
+	.more-btn {
+		flex: none !important;
+		width: 56px !important;
+		padding: 0 !important;
 	}
 	.trip .rounds {
 		margin-top: 10px;
@@ -1343,9 +1331,6 @@
 		display: grid;
 		place-items: center;
 		flex: none;
-	}
-	.leave {
-		align-self: center;
 	}
 	.game :global(.players-chip .icon) {
 		width: 20px;
@@ -1390,36 +1375,91 @@
 		.lobby {
 			max-width: 980px;
 			display: grid;
-			grid-template-columns: minmax(0, 1fr) 400px;
+			grid-template-columns: 380px minmax(0, 1fr);
 			grid-template-areas:
-				'head players'
-				'setup players'
-				'. go';
+				'invite players'
+				'invite setup'
+				'invite go'
+				'leave .';
+			grid-template-rows: auto auto 1fr auto;
 			align-items: start;
-			column-gap: 40px;
-			padding-top: 24px;
+			gap: 18px 48px;
+			padding-top: 28px;
 		}
-		.head {
-			grid-area: head;
+		.invite {
+			grid-area: invite;
+		}
+		.players {
+			grid-area: players;
+			min-height: 110px;
 		}
 		.setup {
 			grid-area: setup;
 		}
-		.players {
-			grid-area: players;
-		}
 		.go {
 			grid-area: go;
 		}
+		.leave {
+			grid-area: leave;
+			justify-self: start;
+		}
+		.qr-wide {
+			display: block;
+			width: 220px;
+		}
+		.qr-btn {
+			display: none;
+		}
+		/* a friend: the faces first, the invite quiet under them, as on a phone */
+		.guest {
+			max-width: 560px;
+			grid-template-columns: minmax(0, 1fr);
+			grid-template-areas: 'players' 'setup' 'invite' 'go' 'leave';
+			grid-template-rows: none;
+			justify-items: stretch;
+		}
+		.guest .leave {
+			justify-self: center;
+		}
+		.guest .qr-wide {
+			display: none;
+		}
+		.guest .qr-btn {
+			display: grid;
+		}
+	}
+	@media (max-width: 899px) {
+		/* a friend meets the players first; the invite is the quiet second button */
+		.guest .invite {
+			order: 3;
+		}
+		.guest .players {
+			order: 1;
+		}
+		.guest .setup {
+			order: 2;
+		}
+		.guest .go {
+			order: 4;
+		}
+		.guest .leave {
+			order: 5;
+		}
 	}
 	@media (max-width: 760px) {
-		/* Start stays under the thumb */
-		.go {
-			position: sticky;
+		/* the host's Start: a bar at the bottom, under the thumb */
+		.host {
+			padding-bottom: 110px;
+		}
+		.host .go {
+			position: fixed;
+			left: 0;
+			right: 0;
 			bottom: 0;
-			margin: 0 -16px;
+			z-index: 10;
 			padding: 12px 16px max(12px, env(safe-area-inset-bottom));
 			background: var(--bg);
+			border-top: 1px solid var(--border);
 		}
 	}
 </style>
