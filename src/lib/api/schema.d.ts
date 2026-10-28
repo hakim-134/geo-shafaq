@@ -667,6 +667,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/rooms/{code}/hold": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The host stops the ring of a round's result; the room waits for their `next`. */
+        post: operations["holdRoomRound"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/rooms/{code}/kick": {
         parameters: {
             query?: never;
@@ -1170,7 +1187,8 @@ export interface components {
         };
         /**
          * @description lobby: waiting for the host to start; playing: a round is on; result: a round's
-         *     result, the host goes on; final: the game's table, the host starts again.
+         *     result, the room goes on by itself (`nextMs`) or when the host says; final: the
+         *     game's table, the host starts again.
          * @enum {string}
          */
         RoomPhase: "lobby" | "playing" | "result" | "final";
@@ -1209,6 +1227,12 @@ export interface components {
             round?: components["schemas"]["RoomRound"];
             /** @description The finished rounds of the current game, oldest first. */
             results: components["schemas"]["RoomResult"][];
+            /**
+             * @description A result: milliseconds until the next round (or, after the last, the table) starts
+             *     by itself. The result's reveal takes the first 3 s, then a 10 s ring. Absent once
+             *     the host holds it.
+             */
+            nextMs?: number;
             /** @description The best possible total so far. */
             max: number;
             maxPlayers: number;
@@ -1256,6 +1280,8 @@ export interface components {
             /** Format: double */
             km?: number;
             score: number;
+            /** @description The score before hints, when they took points (absent when they took none). */
+            base?: number;
             hintsUsed: number;
         };
         /** @description What the room's WebSocket sends. */
@@ -1279,6 +1305,8 @@ export interface components {
             game: string;
             total: number;
             rounds: number;
+            /** @description Hints taken in the game, when hints cost points (absent otherwise). */
+            hints?: number;
         };
         /** @enum {string} */
         GameStatus: "playing" | "finished" | "abandoned";
@@ -1321,6 +1349,8 @@ export interface components {
             rounds: number;
             /** @description A room game: how many played it. */
             players?: number;
+            /** @description Hints taken in the game, when hints cost points (absent otherwise). */
+            hintsUsed?: number;
         };
         MapRef: {
             slug: string;
@@ -1400,6 +1430,8 @@ export interface components {
             /** Format: double */
             km?: number;
             score: number;
+            /** @description The score before hints, when they took points (absent when they took none). */
+            base?: number;
             hintsUsed: number;
             /** @description The guess came after the deadline and scored 0. */
             late: boolean;
@@ -2369,6 +2401,24 @@ export interface operations {
                 "application/json": components["schemas"]["RoomNext"];
             };
         };
+        responses: {
+            200: components["responses"]["RoomState"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    holdRoomRound: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["RoomCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             200: components["responses"]["RoomState"];
             403: components["responses"]["Error"];

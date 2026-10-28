@@ -16,6 +16,9 @@
 		n: number;
 		rounds: number; // 0 = endless
 		score: number;
+		base?: number; // the score before hints, when they took points
+		hints?: number;
+		cost?: number; // each hint's share of the score
 		km: number | null | undefined;
 		guessed: boolean;
 		late?: boolean;
@@ -28,6 +31,9 @@
 		n,
 		rounds,
 		score,
+		base,
+		hints = 0,
+		cost = 0,
 		km,
 		guessed,
 		late = false,
@@ -62,7 +68,7 @@
 		<Stars n={stars} {go} delay={200} />
 	</div>
 
-	<ScoreCount {score} max={5000} {go} delay={350} />
+	<ScoreCount {score} {base} {hints} {cost} max={5000} {go} delay={350} />
 	<p class="far">
 		{#if guessed && km != null}
 			<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
@@ -75,7 +81,6 @@
 	</p>
 
 	<div class="where">
-		<div class="where-label">{t('youWereIn')}</div>
 		<StreetPlate {place} at={actual} land={go} delay={450} />
 	</div>
 
@@ -140,15 +145,13 @@
 	.where {
 		padding-top: 4px;
 	}
-	.where-label {
-		font-size: 14px;
-		font-weight: 600;
-		color: var(--muted);
-		margin-bottom: 8px;
-	}
 	@media (max-width: 760px) {
 		.reveal {
 			gap: 12px;
+		}
+		/* the stars say how good it was: the room's table gets the height */
+		.reveal :global(.score .bar) {
+			display: none;
 		}
 		.verdict {
 			font-size: 24px;

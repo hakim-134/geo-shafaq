@@ -12,8 +12,9 @@
 		standings: RoomPlayer[]; // best first
 		you: string;
 		colorOf: (id: string) => string;
+		costOf?: (id: string) => number; // the points a player's hints took, shown under the total
 	}
-	let { standings, you, colorOf }: Props = $props();
+	let { standings, you, colorOf, costOf = () => 0 }: Props = $props();
 
 	// when each step rises (ms): third, second, first
 	const AT = [300, 1000, 1700];
@@ -60,6 +61,7 @@
 					<span class="avatar ring" style:--ring={colorOf(p.id)}>{p.avatar}</span>
 					<span class="name">{p.name}</span>
 					<b>{fmtNum(p.total)}</b>
+					{#if costOf(p.id)}<span class="pill">💡 −{fmtNum(costOf(p.id))}</span>{/if}
 				</span>
 				<span class="block"><span>{placeOf(p)}</span></span>
 			</li>
@@ -73,6 +75,7 @@
 					<span class="pos">{placeOf(p)}</span>
 					<span class="avatar ring" style:--ring={colorOf(p.id)}>{p.avatar}</span>
 					<span class="name">{p.name}</span>
+					{#if costOf(p.id)}<span class="pill">💡 −{fmtNum(costOf(p.id))}</span>{/if}
 					<b>{fmtNum(p.total)}</b>
 				</li>
 			{/each}
@@ -83,6 +86,17 @@
 {#if party && anyScore}<Confetti />{/if}
 
 <style>
+	/* the hints' cost: the same gold pill as the result's "−20% 💡" */
+	.pill {
+		padding: 2px 9px;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--gold) 24%, transparent);
+		color: var(--text);
+		font-size: 13.5px;
+		font-weight: 700;
+		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
+	}
 	.podium-wrap {
 		display: flex;
 		flex-direction: column;

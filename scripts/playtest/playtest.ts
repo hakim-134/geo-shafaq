@@ -7,7 +7,7 @@
 //
 // Journeys: solo (first visit → a game with a hint → the end → home again → share), room (a
 // host and a friend, each in their own browser, play a room on "O‘rta" to its end; the friend
-// takes a hint), places (the place picker → a district → a game there).
+// takes a hint; the rounds go on by the ring, "Hozir", and a hold), places (the place picker → a district → a game there).
 //
 // Chrome runs headless with --disable-gpu (local.md §3) and a throwaway profile deleted at the
 // end, so the demo switch never reaches the owner's own Chrome. Screenshots, steps.json (the
@@ -404,14 +404,27 @@ async function room(browser: Browser, view: View, dir: string) {
 			await friend.shot(J, 'waiting-for-host');
 		}
 		await host.guess(80, -60);
-		await host.find('.next', 20000);
+		await host.find('.ring-row', 20000);
 		await sleep(4000);
+		// round 1 goes on by itself after its ring; round 2 by the host's "Hozir"; the last one
+		// the host holds, then goes on
+		let last = '';
 		if (n === 1) {
 			await host.shot(J, 'result-1');
-			await friend.shot(J, 'result-1');
+			await friend.shot(J, 'result-1', 'the friend took a hint: its cost by the score');
+			await sleep(3500);
+			await friend2.shot(J, 'result-1-ring', 'the ring counts down on every phone');
+			continue;
+		} else if (n === 2) {
+			await host.tap(await host.find('.now-btn'));
+		} else {
+			await host.tap(await host.find('.hold-btn'));
+			await sleep(1000);
+			await host.shot(J, `result-${n}-held`, 'the host held the ring');
+			await friend.shot(J, `result-${n}-held`);
+			last = await host.page.$eval('.next', (b) => b.textContent ?? '');
+			await host.tap(await host.find('.next'));
 		}
-		const last = await host.page.$eval('.next', (b) => b.textContent ?? '');
-		await host.tap(await host.find('.next'));
 		if (await host.page.waitForSelector('.podium', { timeout: 5000 }).catch(() => null)) {
 			await sleep(1200);
 			await host.shot(J, 'end-rising', 'the podium rising');

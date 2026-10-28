@@ -404,6 +404,9 @@
 				n={round?.n ?? done.length}
 				rounds={endless ? 0 : game.rules.rounds}
 				score={result.score}
+				base={result.base}
+				hints={result.hintsUsed}
+				cost={game.rules.hints.cost}
 				km={result.km}
 				guessed={!!result.guess}
 				late={result.late}
@@ -477,6 +480,11 @@
 										>
 										<span class="stop-score">
 											<Stars n={starsFor(r.result!.score)} size={13} quiet />
+											{#if r.result!.base}
+												<span class="stop-cut" title={t('hintsTaken', { n: r.result!.hintsUsed })}
+													>💡 <s>{fmtNum(r.result!.base)}</s></span
+												>
+											{/if}
 											<b>{fmtNum(r.result!.score)}</b>
 										</span>
 									</button>
@@ -494,6 +502,9 @@
 								<span class="place">{i + 1}</span>
 								<span class="avatar">{row.player.avatar}</span>
 								<span class="name">{row.player.name}</span>
+								{#if row.hints}<span class="hints" title={t('hintsTaken', { n: row.hints })}
+										>💡 {row.hints}</span
+									>{/if}
 								<b>{fmtNum(row.total)}</b>
 							</a>
 						{/each}
@@ -672,6 +683,13 @@
 		font-size: 15px;
 		font-variant-numeric: tabular-nums;
 	}
+	/* a hint took points: the score before it, small and struck */
+	.stop-cut {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--muted);
+		font-variant-numeric: tabular-nums;
+	}
 
 	/* a room game: everyone's total */
 	.room-table {
@@ -715,6 +733,11 @@
 	}
 	.room-row b {
 		font-family: var(--display);
+	}
+	.room-row .hints {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--muted);
 	}
 
 	/* go wider */

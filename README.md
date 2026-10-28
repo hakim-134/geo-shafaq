@@ -61,8 +61,9 @@ same network opens the laptop's address on port 8130.
 | `src/env.ts`                                           | the settings read from `.env.local`                                                                                                                                                                                                                                  |
 | `src/service-worker/`                                  | the PWA shell cache                                                                                                                                                                                                                                                  |
 
-The game never scores anything: the server sends the result. In a room the server also keeps
-the clock for everyone and says when a round ends. Game state lives on the server,
+The game never scores anything: the server sends the result, with the score before a hint
+that cost points (`base`), which `ScoreCount` counts down from. In a room the server also keeps
+the clock for everyone and says when a round ends and when the next one starts (`NextRing`). Game state lives on the server,
 so a reload continues the round, clock included.
 
 ## Deploy

@@ -12,7 +12,8 @@
 		[
 			day ? fmtDay(game.startedAt) : '',
 			t('nRounds', { n: game.rounds }),
-			game.players ? t('withPlayers', { n: game.players }) : ''
+			game.players ? t('withPlayers', { n: game.players }) : '',
+			game.hintsUsed ? `💡 ${game.hintsUsed}` : ''
 		]
 			.filter(Boolean)
 			.join(' · ')

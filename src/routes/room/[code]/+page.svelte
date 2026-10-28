@@ -2,7 +2,8 @@
 	// A live room: friends on one map, the same panorama at the same time. The lobby has one
 	// job, bringing friends in (one big invite, the code as a number plate, a QR code, the
 	// players popping in); then the rounds, each round's result for everyone, and the podium.
-	// The host starts, goes on, and changes the rules.
+	// After a result a ten-second ring runs on every phone and the next round starts by itself;
+	// the host can say "Hozir" or hold it. The host starts, and changes the rules.
 	import { tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -31,6 +32,7 @@
 	import RoundReveal from '#lib/game/RoundReveal.svelte';
 	import StreetPlate from '#lib/game/StreetPlate.svelte';
 	import Podium from '#lib/game/Podium.svelte';
+	import NextRing from '#lib/game/NextRing.svelte';
 	import { extras } from '#lib/game/summary.js';
 	import RulesFacts from '#lib/game/RulesFacts.svelte';
 	import ShareSheet from '#lib/components/ShareSheet.svelte';
@@ -294,6 +296,12 @@
 			: []
 	);
 	const gameOver = $derived(!!st && st.rules.rounds > 0 && st.results.length >= st.rules.rounds);
+	// the points a player's hints took in this game (free hints take none)
+	const hintCostOf = (id: string) =>
+		(st?.results ?? []).reduce((n, r) => {
+			const s = r.scores.find((x) => x.player === id);
+			return n + (s?.base ? s.base - s.score : 0);
+		}, 0);
 
 	const hostP = $derived(players.find((p) => p.id === st?.host));
 	const standings = $derived(
@@ -341,6 +349,18 @@
 			showToast(t(errorKey(e)), 3500);
 		} finally {
 			busy = false;
+		}
+	}
+
+	// the host stops the ring: the room waits for their "Keyingi raund"
+	async function hold() {
+		if (!link || busy) return;
+		try {
+			await link.act(() =>
+				call(api().POST('/v1/rooms/{code}/hold', { params: { path: { code } } }))
+			);
+		} catch (e) {
+			showToast(t(errorKey(e)));
 		}
 	}
 
@@ -742,6 +762,9 @@
 					n={last.n}
 					rounds={st.rules.rounds}
 					score={myLast?.score ?? 0}
+					base={myLast?.base}
+					hints={myLast?.hintsUsed}
+					cost={st.rules.hints.cost}
 					km={myLast?.km}
 					guessed={!!myLast?.guess}
 					place={last.place}
@@ -756,13 +779,43 @@
 								<span class="avatar ring" style:--ring={colorOf(s.player)}>{p?.avatar}</span>
 								<span class="name">{p?.name ?? '—'}</span>
 								<span class="km">{s.km != null ? fmtDistance(s.km) : '—'}</span>
+								{#if s.base}
+									<span class="cut pill" title={t('hintsTaken', { n: s.hintsUsed })}
+										>💡 <s>{fmtNum(s.base)}</s></span
+									>
+								{/if}
 								<b>+{fmtNum(s.score)}</b>
 							</li>
 						{/each}
 					</ol>
 				</RoundReveal>
 				{#snippet actions()}
-					{#if isHost}
+					{#if st.nextMs != null}
+						<div class="row ring-row">
+							<NextRing
+								ms={st.nextMs}
+								label={gameOver ? t('finish') : isHost ? t('nextShort') : t('next')}
+							/>
+							{#if isHost}
+								<button
+									class="btn btn-ghost hold-btn"
+									onclick={hold}
+									aria-label={t('hold')}
+									title={t('hold')}
+								>
+									<svg viewBox="0 0 24 24"><path d="M9 5.5v13M15 5.5v13" /></svg>
+								</button>
+								<button
+									class="btn btn-primary now-btn"
+									onclick={() => hostAct('/v1/rooms/{code}/next')}
+									disabled={busy}
+								>
+									{t('now')}
+									<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></svg>
+								</button>
+							{/if}
+						</div>
+					{:else if isHost}
 						<button
 							class="btn btn-primary next"
 							onclick={() => hostAct('/v1/rooms/{code}/next')}
@@ -771,15 +824,15 @@
 							{gameOver ? t('finish') : t('next')}
 							<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></svg>
 						</button>
-						{#if !st.rules.rounds}
-							<button
-								class="btn btn-ghost"
-								onclick={() => hostAct('/v1/rooms/{code}/next', true)}
-								disabled={busy}>{t('finishGame')}</button
-							>
-						{/if}
 					{:else}
 						<p class="wait"><span class="spinner"></span>{t('waitHostNext')}</p>
+					{/if}
+					{#if isHost && !st.rules.rounds}
+						<button
+							class="btn btn-ghost"
+							onclick={() => hostAct('/v1/rooms/{code}/next', true)}
+							disabled={busy}>{t('finishGame')}</button
+						>
 					{/if}
 				{/snippet}
 			</ResultLayout>
@@ -791,7 +844,7 @@
 					<ResultMap bbox={st.map.bbox as BBox} layer={savedLayer()} pairs={finalPairs} />
 				{/snippet}
 				<div class="final">
-					<Podium {standings} you={st.you ?? ''} {colorOf} />
+					<Podium {standings} you={st.you ?? ''} {colorOf} costOf={hintCostOf} />
 					<div class="trip">
 						<h2 class="section-title">{t('streetsThisGame')}</h2>
 						<div class="rounds">
@@ -1258,6 +1311,94 @@
 		50% {
 			transform: translateY(-8px);
 		}
+	}
+
+	/* a round's table: everyone's guess, best first */
+	.table {
+		list-style: none;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		margin-top: 4px;
+	}
+	.table li {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px;
+		border-radius: 12px;
+		font-size: 14px;
+		animation: rise 0.35s var(--settle) both;
+	}
+	.table li.me {
+		background: color-mix(in srgb, var(--sky) 12%, transparent);
+	}
+	.table .pos {
+		width: 18px;
+		text-align: center;
+		color: var(--muted);
+		font-weight: 700;
+	}
+	.table .avatar {
+		width: 30px;
+		height: 30px;
+		font-size: 17px;
+		background: var(--bg);
+		flex: none;
+	}
+	.table .name {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font-weight: 600;
+	}
+	.table .km {
+		color: var(--muted);
+		font-size: 13px;
+		white-space: nowrap;
+	}
+	/* the hint's cost, the same gold pill as the result's "−20% 💡" */
+	.table .pill {
+		padding: 2px 8px;
+		border-radius: 999px;
+		background: color-mix(in srgb, var(--gold) 24%, transparent);
+		color: var(--text);
+		font-size: 13px;
+		font-weight: 700;
+		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
+	}
+	.table .pill s {
+		text-decoration-thickness: 2px;
+	}
+	.table b {
+		font-family: var(--display);
+		min-width: 56px;
+		text-align: right;
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* the ring before the next round; the host's hold and "Hozir" beside it */
+	.ring-row {
+		align-items: center;
+		min-height: 60px;
+	}
+	.ring-row :global(.next-ring) {
+		flex: 1;
+	}
+	.hold-btn {
+		flex: none !important;
+		width: 56px !important;
+		padding: 0 !important;
+	}
+	.now-btn {
+		flex: none !important;
+		width: auto !important;
+		padding: 0 22px !important;
+		height: 56px;
+		font-size: 17px;
 	}
 
 	/* results and the podium */

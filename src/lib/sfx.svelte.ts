@@ -95,6 +95,8 @@ export const sfxStep = (i: number) =>
 	});
 
 /** A miss far away: a soft falling note, not a buzzer. */
+// a hint's cost lands on the score: a soft step down
+export const sfxCost = () => tone(560, 0.22, { to: 400, gain: 0.06, type: 'sine' });
 export const sfxFar = () => tone(330, 0.3, { to: 220, gain: 0.07, type: 'sine' });
 
 export function vibrate(ms: number | number[]) {
