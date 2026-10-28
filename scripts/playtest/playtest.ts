@@ -1,7 +1,7 @@
 // The playtest: plays the game the way a stranger does, on demo panoramas, and saves a
 // screenshot of every screen for the steve-jobs review (_geoshafaq_claude/skills/steve-jobs).
 //
-//   npm run playtest                                  all journeys, phone light + dark, laptop
+//   npm run playtest                                  all journeys, phone and laptop, light + dark
 //   npm run playtest -- --views phone-light --only solo
 //   npm run playtest -- --url http://10.42.0.1:8130 --out /tmp/pt
 //
@@ -16,6 +16,7 @@
 // When a screen changes, keep the journey working: the steps find things by what a player
 // sees first (text, role), by class only where there is no text.
 
+import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -26,7 +27,7 @@ const { values: args } = parseArgs({
 	options: {
 		url: { type: 'string', default: 'http://localhost:8130' },
 		out: { type: 'string', default: 'scripts/playtest/out' },
-		views: { type: 'string', default: 'phone-light,phone-dark,laptop' },
+		views: { type: 'string', default: 'phone-light,phone-dark,laptop,laptop-dark' },
 		only: { type: 'string', default: 'solo,room,places' },
 		chrome: { type: 'string', default: process.env.CHROME ?? '/usr/bin/google-chrome' }
 	}
@@ -43,7 +44,8 @@ interface View {
 const VIEWS: Record<string, View> = {
 	'phone-light': { name: 'phone-light', width: 390, height: 844, phone: true, dark: false },
 	'phone-dark': { name: 'phone-dark', width: 390, height: 844, phone: true, dark: true },
-	laptop: { name: 'laptop', width: 1366, height: 800, phone: false, dark: false }
+	laptop: { name: 'laptop', width: 1366, height: 800, phone: false, dark: false },
+	'laptop-dark': { name: 'laptop-dark', width: 1366, height: 800, phone: false, dark: true }
 };
 
 const PHONE_UA =
@@ -265,8 +267,8 @@ async function solo(browser: Browser, view: View, dir: string) {
 	await sleep(1500);
 	await p.shot(J, 'home-first-visit', 'a stranger opens the site');
 
-	// the first map sign (or, after the redesign, the one Play button)
-	const play = (await p.page.$('.maps .map:not(.other)')) ?? (await p.findText(/^\s*O‘ynash/));
+	// the one Play button
+	const play = await p.find('.go .play');
 	await p.tap(play);
 	const wait = await p.roundReady();
 	await p.shot(J, 'round-1', `the first street, playable ${wait} s after the tap`);
@@ -339,7 +341,7 @@ async function places(browser: Browser, view: View, dir: string) {
 	await sleep(1500);
 	if (!(await p.has('.rail button, .btn-guess'))) {
 		await p.shot(J, 'after-picking', 'where the picker leaves the player');
-		const sign = await p.page.$('.maps .map:not(.other)');
+		const sign = await p.page.$('.go .play');
 		if (sign) await p.tap(sign);
 	}
 	const wait = await p.roundReady();
@@ -357,7 +359,7 @@ async function room(browser: Browser, view: View, dir: string) {
 	host.begin();
 	await host.go('/');
 	await sleep(1500);
-	// today: the "Do‘stlar bilan" switch, then a sign; after the redesign, one button opens a room
+	// one quiet button opens a room at once (before 2026-10-28: a switch, then a sign)
 	await host.tap(await host.findText(/Do‘stlar bilan/));
 	await sleep(800);
 	if (!host.page.url().includes('/room/')) {
@@ -417,8 +419,22 @@ async function room(browser: Browser, view: View, dir: string) {
 
 const JOURNEYS = { solo, room, places } as const;
 
+// Every journey makes new guests, and the API allows 30 an hour per address: a full run makes
+// more. On this laptop the limit is cleared first (Redis database 1, local.md §3).
+function clearGuestLimit() {
+	try {
+		const redis = (...a: string[]) =>
+			execFileSync('docker', ['exec', 'redis', 'redis-cli', '-n', '1', ...a], { encoding: 'utf8' });
+		const keys = redis('--scan', '--pattern', 'rl:guest:*').split('\n').filter(Boolean);
+		if (keys.length) redis('del', ...keys);
+	} catch {
+		console.warn('could not clear the guest limit; a long run may meet 429s');
+	}
+}
+
 async function main() {
 	const out = args.out!;
+	if (new URL(args.url!).hostname === 'localhost') clearGuestLimit();
 	const profile = await mkdtemp(join(tmpdir(), 'shafaq-playtest-'));
 	const browser = await puppeteer.launch({
 		executablePath: args.chrome,

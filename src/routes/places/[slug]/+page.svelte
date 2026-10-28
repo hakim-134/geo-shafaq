@@ -1,12 +1,14 @@
 <script lang="ts">
 	// The place picker: a place as its entry sign, how much there is to play and how much the
 	// player has seen and learned, and the places inside it. "Choose" makes it the home's map.
+	// The country's page is the ready-made maps (Tarixiy shaharlar, …) as signs, then the
+	// regions: "Butun O‘zbekiston" is already the whole country, so it has no "choose" of its own.
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import TopBar from '#lib/components/TopBar.svelte';
 	import MapSign from '#lib/maps/MapSign.svelte';
 	import Progress from '#lib/maps/Progress.svelte';
-	import { api, call, ApiError, type Schemas } from '#lib/api/client.js';
+	import { api, call, ApiError, type MapSummary, type Schemas } from '#lib/api/client.js';
 	import { ensureSession, session } from '#lib/session.svelte.js';
 	import { t, tx, type Key } from '#lib/i18n/index.svelte.js';
 	import { fmtNum } from '#lib/format.js';
@@ -16,6 +18,7 @@
 
 	let detail = $state<Detail | null>(null);
 	let failed = $state<'' | 'network' | 'not_found'>('');
+	let maps = $state<MapSummary[]>([]);
 
 	$effect(() => {
 		const slug = page.params.slug;
@@ -27,7 +30,12 @@
 		failed = '';
 		try {
 			await ensureSession();
-			detail = await call(api().GET('/v1/places/{slug}', { params: { path: { slug } } }));
+			const [d, m] = await Promise.all([
+				call(api().GET('/v1/places/{slug}', { params: { path: { slug } } })),
+				maps.length ? maps : call(api().GET('/v1/maps')).catch(() => [])
+			]);
+			maps = m;
+			detail = d;
 		} catch (e) {
 			failed = e instanceof ApiError && e.code === 'not_found' ? 'not_found' : 'network';
 		}
@@ -41,9 +49,9 @@
 		(place ? `placesInside_${place.kind}` : 'placesInside_district') as Key
 	);
 
-	function choose() {
-		if (!place) return;
-		saveChoice({ ...loadChoice(), map: place.map });
+	function choose(map = place?.map) {
+		if (!map) return;
+		saveChoice({ ...loadChoice(), map });
 		goto('/');
 	}
 </script>
@@ -73,34 +81,62 @@
 	{:else if !place}
 		<div class="hero skeleton"></div>
 	{:else}
-		{#if place.kind === 'country'}<h1>{t('placesTitle')}</h1>{/if}
-		<section class="hero">
-			<div class="hero-sign">
-				<MapSign
-					slug={place.map}
-					name={tx(place.name)}
-					top={parent ? tx(parent.name) : ''}
-					outline={place.outline}
-				/>
-			</div>
-			<div class="facts">
-				<p class="count">{t('nPanoramas', { n: place.panoramas })}</p>
-				{#if place.panoramas > 0}
-					<Progress progress={place.progress} wide />
-					<p class="legend">
-						<span class="seen">{t('seenLabel')} {fmtNum(place.progress.seen)}</span>
-						<span class="learned">{t('learnedLabel')} {fmtNum(place.progress.learned)}</span>
-					</p>
-					<p class="note">{t('learnedNote')}</p>
-				{:else}
-					<p class="note">{t('placeEmpty')}</p>
-				{/if}
-			</div>
-			<button class="btn btn-play" onclick={choose} disabled={place.panoramas === 0}>
-				<span>{t('choosePlace')}</span>
-				<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
-			</button>
-		</section>
+		{#if place.kind === 'country'}
+			<h1>{t('placesTitle')}</h1>
+			{#if maps.length}
+				<section class="ready">
+					<h2 class="section-title">{t('readyMaps')}</h2>
+					<div class="grid">
+						{#each maps as m (m.slug)}
+							<button class="place" onclick={() => choose(m.slug)}>
+								<MapSign
+									slug={m.slug}
+									name={tx(m.name)}
+									top={tx(m.description)}
+									outline={m.outline}
+								/>
+								<span class="meta">
+									{#if m.progress && m.progress.unit !== 'spot'}
+										<Progress progress={m.progress} />
+									{:else}
+										<span>{t('nSpots', { n: m.panoramas })}</span>
+									{/if}
+								</span>
+							</button>
+						{/each}
+					</div>
+				</section>
+			{/if}
+		{/if}
+		{#if place.kind !== 'country' || !maps.length}
+			<section class="hero">
+				<div class="hero-sign">
+					<MapSign
+						slug={place.map}
+						name={tx(place.name)}
+						top={parent ? tx(parent.name) : ''}
+						outline={place.outline}
+					/>
+				</div>
+				<div class="facts">
+					<p class="count">{t('nPanoramas', { n: place.panoramas })}</p>
+					{#if place.panoramas > 0}
+						<Progress progress={place.progress} wide />
+						<p class="legend">
+							<span class="seen">{t('seenLabel')} {fmtNum(place.progress.seen)}</span>
+							<span class="learned">{t('learnedLabel')} {fmtNum(place.progress.learned)}</span>
+						</p>
+						<p class="note">{t('learnedNote')}</p>
+					{:else}
+						<p class="note">{t('placeEmpty')}</p>
+					{/if}
+				</div>
+				<button class="btn btn-play" onclick={() => choose()} disabled={place.panoramas === 0}>
+					<span>{t('choosePlace')}</span>
+					<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
+				</button>
+			</section>
+		{/if}
 
 		{#if playable.length}
 			<section class="inside">
@@ -260,6 +296,13 @@
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
 		gap: 18px 16px;
+	}
+	button.place {
+		padding: 0;
+		border: none;
+		background: none;
+		text-align: left;
+		border-radius: 14px;
 	}
 	.place {
 		display: flex;

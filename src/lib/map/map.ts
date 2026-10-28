@@ -80,9 +80,15 @@ export const countryShape = () => placeShape('uzbekistan');
 const polygons = (g: GeoJSON.Geometry): GeoJSON.Position[][][] =>
 	g.type === 'MultiPolygon' ? g.coordinates : g.type === 'Polygon' ? [g.coordinates] : [];
 
-/** The box around a shape, for zooming to a hint. */
+/** The box around a shape's biggest piece, for zooming to a hint: a district's far-off
+ * exclave (Mirzo Ulug‘bek's, out past Qibray) is drawn but would zoom the map out of town. */
 export function shapeBox(g: GeoJSON.Geometry): BBox {
-	const pts = polygons(g).flatMap((p) => p[0]);
+	const area = (r: GeoJSON.Position[]) =>
+		Math.abs(
+			r.reduce((s, [x, y], i) => s + x * r[(i + 1) % r.length][1] - r[(i + 1) % r.length][0] * y, 0)
+		);
+	const outer = polygons(g).map((p) => p[0]);
+	const pts = outer.reduce((a, b) => (area(b) > area(a) ? b : a), outer[0] ?? []);
 	return boxOf(pts.map(([lon, lat]) => ({ lat, lon })));
 }
 
