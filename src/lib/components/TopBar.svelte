@@ -67,10 +67,8 @@
 		{#if session.me}
 			<a class="me" href="/me" title={t('profile')}>
 				<span class="avatar">{session.me.user.avatar}</span>
-				<!-- a guest's name is its emoji and two digits: say "guest" instead of the emoji twice -->
-				<span class="me-name" class:guest={session.me.user.guest}
-					>{session.me.user.guest ? t('guestBadge') : session.me.user.name}</span
-				>
+				<!-- the name the greeting says, a guest's too ("Ukki 42") -->
+				<span class="me-name">{session.me.user.name}</span>
 			</a>
 		{/if}
 	</div>
@@ -182,10 +180,6 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-	.me-name.guest {
-		color: var(--muted);
-		font-weight: 500;
 	}
 	@media (max-width: 640px) {
 		.topbar {

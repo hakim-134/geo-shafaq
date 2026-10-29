@@ -3,7 +3,7 @@
 	// place played or picked; a tap opens the place picker), one quiet line says how, and
 	// "O‘ynash" puts you on a street. Under it, quietly: a room with friends, opened at once,
 	// and a friend's code on a number plate. On a laptop the right half is the player's
-	// Tashkent. What a player hasn't earned stays out of sight: the button breathes only before
+	// Tashkent, where a click on a district makes it the sign. What a player hasn't earned stays out of sight: the button breathes only before
 	// the first game; the count under the sign, the last game and "keep your results" show only
 	// after one.
 	import { goto } from '$app/navigation';
@@ -40,14 +40,17 @@
 	const me = $derived(session.me);
 	const banned = $derived(!!me?.user.banned);
 	const newPlayer = $derived(loaded && (me?.stats.games ?? 0) === 0);
-	// a guest's made-up name ("🐼_42") reads like a password: greet without it
-	const machineName = $derived(
-		!!me && me.user.name === `${me.user.avatar}_${me.user.name.slice(-2)}`
-	);
 	const current = $derived(
 		placeMap?.slug === choice.map ? placeMap : (maps.find((m) => m.slug === choice.map) ?? maps[0])
 	);
 	const canMove = $derived(current?.canMove ?? true);
+	// the sign opens the place map where the player is: a place's own level (a district opens
+	// its city with it picked), the country for a ready map ("Toshkent ko‘chalari" too)
+	const placesHref = $derived(
+		current?.slug.startsWith('place-') && current.place
+			? `/places/${current.place.slug}`
+			: '/places'
+	);
 
 	$effect(() => saveChoice($state.snapshot(choice)));
 
@@ -91,6 +94,16 @@
 			offline = true;
 		}
 		loaded = true;
+	}
+
+	// a district clicked on the laptop's city map: the sign changes, the page stays
+	async function pickPlace(map: string) {
+		try {
+			placeMap = await call(api().GET('/v1/maps/{slug}', { params: { path: { slug: map } } }));
+			choice.map = map;
+		} catch {
+			showToast(t('err_network'));
+		}
 	}
 
 	const errorKeys: Record<string, Key> = {
@@ -154,7 +167,7 @@
 	<div class="lobby">
 		<section class="intro">
 			<p class="hello">
-				{t(greeting())}{#if me && !machineName}, <a href="/me">{me.user.name}</a>{:else}!{/if}
+				{t(greeting())}{#if me}, <a href="/me">{me.user.name}</a>{:else}!{/if}
 			</p>
 			<h1>{t('homeTitle')}</h1>
 		</section>
@@ -175,7 +188,7 @@
 
 		<!-- where you'll play: the sign; a tap picks another place -->
 		{#if current}
-			<a class="where" href="/places" aria-label={`${tx(current.name)}. ${t('otherPlace')}`}>
+			<a class="where" href={placesHref} aria-label={`${tx(current.name)}. ${t('otherPlace')}`}>
 				<MapSign
 					slug={current.slug}
 					name={tx(current.name)}
@@ -294,7 +307,7 @@
 
 	{#if wide}
 		<div class="side girih">
-			<CityMap glow={newPlayer} chosen={current?.slug} />
+			<CityMap glow={newPlayer} chosen={current?.slug} onpick={pickPlace} />
 		</div>
 	{/if}
 </main>

@@ -38,7 +38,7 @@
 	<span class="plate {kind}" class:land style:animation-delay={`${delay}ms`}>
 		<span class="inner">
 			{#if top}<span class="top">{top}</span>{/if}
-			<span class="name">{name}</span>
+			<span class="name" style:--len={name.length}>{name}</span>
 		</span>
 		<i class="bolt l" aria-hidden="true"></i><i class="bolt r" aria-hidden="true"></i>
 	</span>
@@ -194,9 +194,11 @@
 	a:hover {
 		text-decoration: underline;
 	}
+	/* on a phone a long name gets smaller to stay on one line, as on a real plate: a second line
+	   would push a room's table under its buttons ("Yangi O‘zbekiston ko‘chasi": 17 px) */
 	@media (max-width: 760px) {
 		.name {
-			font-size: 20px;
+			font-size: clamp(15px, calc(440px / var(--len, 12)), 20px);
 		}
 	}
 </style>

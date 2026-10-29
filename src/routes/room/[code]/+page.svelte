@@ -4,7 +4,7 @@
 	// players popping in); then the rounds, each round's result for everyone, and the podium.
 	// After a result a ten-second ring runs on every phone and the next round starts by itself;
 	// the host can say "Hozir" or hold it. The host starts, and changes the rules.
-	import { tick } from 'svelte';
+	import { tick, type Snippet } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { renderSVG } from 'uqr';
@@ -129,7 +129,7 @@
 	});
 
 	// the clock follows the server: it starts when the first viewer opens the panorama, and
-	// is cut to 45 s after the first guess
+	// is cut to 45 s after the first guess (so a room with no limit shows one then too)
 	$effect(() => {
 		const ms = round?.remainingMs;
 		if (!rv || local === 'opening') return;
@@ -162,6 +162,7 @@
 		local = 'opening';
 		blind = false;
 		guess = rd.pin ?? null;
+		deadline = 0; // open() clears the clock: once it is open, the server's time left starts it again
 		await tick();
 		try {
 			const { pos } = await rv!.open(rd.view);
@@ -587,7 +588,7 @@
 					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
 						><path d="m5 12.5 4.5 4.5L19 7" /></svg
 					>
-					{t('copied')}
+					{t('linkCopied')}
 				{:else}
 					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
 						><circle cx="9" cy="8" r="3.4" /><path
@@ -661,7 +662,7 @@
 		{#if isHost}
 			<button class="setup" onclick={openSettings} aria-label={t('changeMapRules')}>
 				<MapSign slug={st.map.slug} name={tx(st.map.name)} size="small" />
-				<RulesFacts choice={choiceFrom(st.rules, st.map.slug)} />
+				<RulesFacts choice={choiceFrom(st.rules, st.map.slug)} compact />
 				<svg viewBox="0 0 24 24" class="icon change" aria-hidden="true"
 					><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle
 						cx="10"
@@ -673,7 +674,7 @@
 		{:else}
 			<div class="setup">
 				<MapSign slug={st.map.slug} name={tx(st.map.name)} size="small" />
-				<RulesFacts choice={choiceFrom(st.rules, st.map.slug)} />
+				<RulesFacts choice={choiceFrom(st.rules, st.map.slug)} compact />
 			</div>
 		{/if}
 
@@ -689,7 +690,7 @@
 					onclick={() => hostAct('/v1/rooms/{code}/start')}
 					disabled={busy}
 				>
-					<span>{busy ? t('starting') : `${t('start')} · ${players.length}`}</span>
+					<span>{busy ? t('starting') : t('start')}</span>
 					<svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" /></svg>
 				</button>
 			{:else}
@@ -723,8 +724,9 @@
 			onguess={submit}
 			onhint={useHint}
 			ontimeup={submit}
+			onleave={leave}
 		>
-			{#snippet hud()}
+			{#snippet hud(clock: Snippet | null)}
 				{#if round}
 					<div class="chip players-chip" title={t('players')}>
 						<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
@@ -735,6 +737,7 @@
 							/><path d="M16.5 14c2.4.2 4 1.7 4.5 4.5" /></svg
 						>
 						<span class="chip-value">{round.answered}/{round.players}</span>
+						{@render clock?.()}
 					</div>
 				{/if}
 			{/snippet}
@@ -1176,11 +1179,12 @@
 		border-color: var(--sky);
 		color: var(--sky);
 	}
+	/* "Qisqichbaqa 42": a long name takes two lines, its number never cut */
 	.players .name {
 		max-width: 100%;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		text-align: center;
+		overflow-wrap: anywhere;
+		line-height: 1.15;
 		font-size: 13.5px;
 		font-weight: 600;
 	}
@@ -1190,12 +1194,13 @@
 		color: var(--muted);
 	}
 
-	/* the place and the rules: one line; the host's opens the settings */
+	/* the place and the rules: one line (on a phone the rules are short: RulesFacts compact);
+	   the host's opens the settings */
 	.setup {
 		display: flex;
 		align-items: center;
 		flex-wrap: wrap;
-		gap: 8px 14px;
+		gap: 8px 12px;
 		min-height: 56px;
 		padding: 8px 14px;
 		border: none;
@@ -1363,8 +1368,8 @@
 	.table .pill {
 		padding: 2px 8px;
 		border-radius: 999px;
-		background: color-mix(in srgb, var(--gold) 24%, transparent);
-		color: var(--text);
+		background: var(--star); /* the bulb's gold, in both themes */
+		color: #3a2600;
 		font-size: 13px;
 		font-weight: 700;
 		white-space: nowrap;
@@ -1473,7 +1478,7 @@
 		place-items: center;
 		flex: none;
 	}
-	.game :global(.players-chip .icon) {
+	.game :global(.players-chip > .icon) {
 		width: 20px;
 		height: 20px;
 		opacity: 0.8;
@@ -1525,7 +1530,8 @@
 			grid-template-rows: auto auto 1fr auto;
 			align-items: start;
 			gap: 18px 48px;
-			padding-top: 28px;
+			/* about the middle of the screen, not its top half */
+			padding-top: clamp(28px, calc(50dvh - 300px), 160px);
 		}
 		.invite {
 			grid-area: invite;

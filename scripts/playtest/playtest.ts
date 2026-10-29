@@ -6,8 +6,10 @@
 //   npm run playtest -- --url http://10.42.0.1:8130 --out /tmp/pt
 //
 // Journeys: solo (first visit → a game with a hint → the end → home again → share), room (a
-// host and a friend, each in their own browser, play a room on "O‘rta" to its end; the friend
-// takes a hint; the rounds go on by the ring, "Hozir", and a hold), places (the place picker → a district → a game there).
+// host and two friends, each in their own browser, play a room on "O‘rta" to its end: one
+// friend comes by the link, the other types the code after "Kodim bor"; the first takes a
+// hint; the rounds go on by the ring, "Hozir", and a hold; the host's "Yana o‘ynash" takes
+// everyone into the next game), places (the map of Uzbekistan → Tashkent → Chilonzor picked → a game there).
 //
 // Chrome runs headless with --disable-gpu (local.md §3) and a throwaway profile deleted at the
 // end, so the demo switch never reaches the owner's own Chrome. Screenshots, steps.json (the
@@ -323,27 +325,55 @@ async function places(browser: Browser, view: View, dir: string) {
 	p.begin();
 	await p.go('/');
 	await sleep(1500);
-	await p.tap(await p.find('a[href="/places"]'));
-	await p.page.waitForFunction(() => location.pathname.startsWith('/places/'));
-	await sleep(1500);
-	await p.shot(J, 'picker-country');
-	await p.page.screenshot({ path: join(dir, `${p.who}-picker-country-full.png`), fullPage: true });
-
-	// into Tashkent, then its first district
-	await p.tap(await p.findText(/^\s*Toshkent( shahri)?\s*$/m));
-	await sleep(1500);
-	await p.shot(J, 'picker-tashkent');
-	await p.tap(await p.find('a.place'));
-	await sleep(1500);
-	await p.shot(J, 'picker-district');
-
-	await p.tap(await p.find('.btn-play:not([disabled])'));
-	await sleep(1500);
-	if (!(await p.has('.rail button, .btn-guess'))) {
-		await p.shot(J, 'after-picking', 'where the picker leaves the player');
-		const sign = await p.page.$('.go .play');
-		if (sign) await p.tap(sign);
+	// a laptop: a click on a district of the city map makes it the sign; the page stays
+	if (!view.phone) {
+		const label = await p.find('figure.city text::-p-text(Yashnobod)', 8000);
+		const box = await label.boundingBox();
+		if (box) await p.tapAt(box.x + box.width / 2, box.y + box.height / 2);
+		await sleep(1200);
+		const where = await p.page.evaluate(() => location.pathname);
+		const sign = await p.page.$eval('.where', (a) => (a as HTMLElement).innerText);
+		if (where !== '/' || !/Yashnobod/.test(sign))
+			problems.push(`${view.name} places: the city map's click went to ${where}, sign "${sign}"`);
+		await p.shot(J, 'home-district-picked', 'a click on Yashnobod in the city map: taps');
+		p.begin();
 	}
+	// the sign opens the map of Uzbekistan; Tashkent's badge flies into its tumanlar; a tap
+	// picks Chilonzor; "O‘ynash" plays it
+	await p.tap(await p.find('a.where'));
+	// once (2026-10-29) a laptop's tap on the sign right after a map click didn't go: say so
+	const opened = await p.page
+		.waitForFunction(() => location.pathname.startsWith('/places/'), { timeout: 5000 })
+		.catch(() => null);
+	if (!opened) {
+		problems.push(`${view.name} places: the sign's tap didn't open the place map; tapped again`);
+		await p.tap(await p.find('a.where'));
+		p.taps--;
+		await p.page.waitForFunction(() => location.pathname.startsWith('/places/'));
+	}
+	await p.find('.map path.shape'); // a district's own address goes on to its city's map first
+	await sleep(600);
+	if (!(await p.page.evaluate(() => location.pathname.endsWith('/uzbekistan')))) {
+		await p.tap(await p.find('a.back')); // a district picked on the city map opens its city
+		await p.page.waitForFunction(() => location.pathname.endsWith('/uzbekistan'));
+		p.taps--; // only the way the test came, not a player's tap
+	}
+	await p.find('.map path.shape');
+	await sleep(1200);
+	await p.shot(J, 'map-country');
+	await p.page.screenshot({ path: join(dir, `${p.who}-map-country-full.png`), fullPage: true });
+
+	// Tashkent: a badge on a phone, a shape on a laptop
+	await p.tap(await p.find('.map [aria-label="Toshkent"]'));
+	await p.page.waitForFunction(() => location.pathname.endsWith('/toshkent'));
+	await p.find('.map path.shape');
+	await sleep(1200);
+	await p.shot(J, 'map-tashkent');
+	await p.tap(await p.find('path.shape[aria-label="Chilonzor tumani"]'));
+	await sleep(700);
+	await p.shot(J, 'map-district', 'Chilonzor picked: the bar says what plays');
+
+	await p.tap(await p.find('.bar .play:not([disabled])'));
 	const wait = await p.roundReady();
 	await p.shot(J, 'round-in-district', `a street in a district, playable ${wait} s after the tap`);
 	await p.page.close();
@@ -380,9 +410,19 @@ async function room(browser: Browser, view: View, dir: string) {
 	await friend.go(`/room/${code}`);
 	await sleep(2500);
 	await friend.shot(J, 'lobby', "a friend opens the room's link: taps");
+	// the other friend was told the code: "Kodim bor" on the home, the code on the plate, and
+	// in by itself at five letters
 	friend2.begin();
-	await friend2.go(`/room/${code}`);
+	await friend2.go('/');
+	await sleep(1500);
+	await friend2.tap(await friend2.findText(/^\s*Kodim bor\s*$/));
+	await sleep(400);
+	await friend2.page.keyboard.type(code.toLowerCase(), { delay: 90 });
+	await friend2.page.waitForFunction(() => location.pathname.startsWith('/room/'), {
+		timeout: 15000
+	});
 	await sleep(2000);
+	await friend2.shot(J, 'lobby-by-code', 'the code typed after "Kodim bor": taps');
 	await host.shot(J, 'lobby-friends-in');
 
 	await host.tap(await host.find('.btn-play:not([disabled])'));
@@ -395,6 +435,12 @@ async function room(browser: Browser, view: View, dir: string) {
 				await sleep(1500);
 				await friend.shot(J, 'round-1-hint');
 			}
+		} else if (n === 2) {
+			await friend.tap(await friend.find('.round-btn.pause'));
+			await sleep(600);
+			await friend.shot(J, 'round-2-menu', "a room's menu: a room never pauses");
+			await friend.page.keyboard.press('Escape');
+			await sleep(400);
 		}
 		// the friend guesses closer to the middle, the host farther: the hint's cost shows
 		await friend.guess(5, 5);
@@ -402,6 +448,7 @@ async function room(browser: Browser, view: View, dir: string) {
 		if (n === 1) {
 			await sleep(1000);
 			await friend.shot(J, 'waiting-for-host');
+			await host.shot(J, 'round-1-clock', 'the others guessed: the clock in the players chip');
 		}
 		await host.guess(80, -60);
 		await host.find('.ring-row', 20000);
@@ -499,7 +546,9 @@ async function main() {
 	await writeFile(join(out, 'problems.txt'), problems.join('\n') + '\n');
 	console.log(`\n${steps.length} screens in ${out}/<view>/, the numbers in ${out}/steps.json`);
 	for (const s of steps.filter((s) =>
-		/-(solo-round-1|host-lobby-alone|host-invite|friend-lobby|round-in-district)\.png$/.test(s.file)
+		/-(solo-round-1|host-lobby-alone|host-invite|friend-lobby|friend2-lobby-by-code|round-in-district)\.png$/.test(
+			s.file
+		)
 	))
 		console.log(`  ${s.view} ${s.file}: ${s.taps} taps; ${s.note ?? ''}`);
 	if (problems.length) console.log(`\n${problems.length} problems: ${out}/problems.txt`);

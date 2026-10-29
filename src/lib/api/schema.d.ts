@@ -396,6 +396,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/places/{slug}/map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A place's children drawn in one frame, for the place map.
+         * @description Web Mercator, the longer side 1000 wide, y down. Names, progress and panorama counts are in `/v1/places/{slug}`; this is only the drawing, the same for everyone.
+         */
+        get: operations["getPlaceMap"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/games": {
         parameters: {
             query?: never;
@@ -1099,6 +1119,8 @@ export interface components {
             providers: string[];
             /** @description The place's outline as a small SVG (maps of one place only). */
             outline?: string;
+            /** @description The slugs of the places the map is made of (the place map marks them). */
+            places?: string[];
         };
         /** @description A place, by name. On a map, the map's one place (or its parent). */
         PlaceRef: {
@@ -1156,6 +1178,32 @@ export interface components {
             };
             /** @description The same shape as a small SVG. */
             outline: string;
+        };
+        PlaceMap: {
+            slug: string;
+            /** Format: double */
+            width: number;
+            /** Format: double */
+            height: number;
+            shapes: components["schemas"]["PlaceMapShape"][];
+            /** @description The places asked for with `mark`, as points. */
+            marks: components["schemas"]["PlaceMapPoint"][];
+        };
+        PlaceMapShape: {
+            slug: string;
+            /** @description The SVG path. */
+            d: string;
+            label: components["schemas"]["PlaceMapPoint"];
+        };
+        /** @description A point well inside a place (the centre of its largest inscribed circle). */
+        PlaceMapPoint: {
+            slug: string;
+            /** Format: double */
+            x: number;
+            /** Format: double */
+            y: number;
+            /** @description The place's name (marks only; a shape's name is in its card). */
+            name?: components["schemas"]["Text"];
         };
         CreateGame: {
             /** @description The map's slug. */
@@ -2048,6 +2096,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlaceShape"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    getPlaceMap: {
+        parameters: {
+            query?: {
+                /** @description Other places (any level) to mark in the same frame, by slug. */
+                mark?: string[];
+            };
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The drawing */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceMap"];
                 };
             };
             404: components["responses"]["Error"];

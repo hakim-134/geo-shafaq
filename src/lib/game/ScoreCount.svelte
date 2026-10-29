@@ -1,8 +1,10 @@
 <script lang="ts">
 	// The score, counted up with soft ticks, and a bar that fills towards the most there is.
 	// With a hint that cost points (base: the score before it), it counts up to the score the
-	// guess earned, the struck score and the hint's chip drop in beside it ("−20% 💡", one per hint), and the number ticks
-	// down to what the player got, with a soft note: the player sees why.
+	// guess earned, then that score and the hint's chip drop in small over it ("4 412 −20% 💡",
+	// one chip per hint), and the big number ticks down to what the player got, with a soft
+	// note: the player sees why. The small line's place is kept from the start, so nothing
+	// under the score moves when it drops in.
 	import { fmtNum } from '#lib/format.js';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import { sfxCost, sfxTick } from '#lib/sfx.svelte.js';
@@ -84,35 +86,30 @@
 </script>
 
 <div class="score" class:big>
+	{#if costly}
+		<div class="cost" class:cut aria-label={t('hintCostShown', { base: fmtNum(base!), n: hints })}>
+			<span class="before">{fmtNum(base!)}</span>
+			{#each { length: hints }, i (i)}
+				<span class="chip" style:animation-delay={`${i * 120}ms`}>−{pct}% <i>💡</i></span>
+			{/each}
+		</div>
+	{/if}
 	<div class="line">
 		<span class="value">{fmtNum(shown)}</span>
 		<span class="of">/ {fmtNum(max)} {t('points')}</span>
-		{#if costly}
-			<div
-				class="cost"
-				class:cut
-				aria-label={t('hintCostShown', { base: fmtNum(base!), n: hints })}
-			>
-				<s>{fmtNum(base!)}</s>
-				{#each { length: hints }, i (i)}
-					<span class="chip" style:animation-delay={`${i * 120}ms`}>−{pct}% <i>💡</i></span>
-				{/each}
-			</div>
-		{/if}
 	</div>
 	<div class="bar"><div style:width={`${bar}%`}></div></div>
 </div>
 
 <style>
-	/* small and grey at the end of the score's line: what the guess earned, and what the
-	   hints took */
+	/* small and grey over the big number: what the guess earned, and what the hints took */
 	.cost {
 		display: flex;
 		align-items: center;
-		flex-wrap: wrap;
 		gap: 6px;
-		margin-left: auto;
-		font-size: 15px;
+		height: 26px;
+		margin-bottom: 2px;
+		font-size: 16px;
 		font-weight: 700;
 		color: var(--muted);
 		font-variant-numeric: tabular-nums;
@@ -121,24 +118,20 @@
 	.cost.cut {
 		visibility: visible;
 	}
-	.cost s {
-		text-decoration-thickness: 2px;
-		text-decoration-color: color-mix(in srgb, var(--muted) 80%, transparent);
-	}
 	.chip {
 		display: inline-flex;
 		align-items: center;
 		gap: 3px;
 		padding: 2px 8px 2px 9px;
 		border-radius: 999px;
-		background: color-mix(in srgb, var(--gold) 24%, transparent);
-		color: var(--text);
+		background: var(--star); /* the bulb's gold, in both themes */
+		color: #3a2600;
 		font-size: 13.5px;
 	}
 	.chip i {
 		font-style: normal;
 	}
-	.cut s {
+	.cut .before {
 		animation: rise 0.3s var(--settle) both;
 	}
 	.cut .chip {

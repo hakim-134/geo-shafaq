@@ -271,6 +271,7 @@
 		if (!game || !map) return;
 		try {
 			const g = await call(api().POST('/v1/games', { body: { map, rules: game.rules } }));
+			saveChoice({ ...loadChoice(), map }); // the home's sign: the last place played
 			goto(`/game/${g.id}`);
 		} catch (e) {
 			showToast(t(e instanceof ApiError && e.code === 'banned' ? 'bannedText' : errorKey(e)), 3500);
@@ -288,10 +289,7 @@
 			: undefined
 	);
 	function goWider() {
-		if (!wider) return;
-		const c = loadChoice();
-		saveChoice({ ...c, map: wider.map }); // and the home picks it next time
-		playAgain(wider.map);
+		if (wider) playAgain(wider.map);
 	}
 
 	// an endless game ends when the player says so

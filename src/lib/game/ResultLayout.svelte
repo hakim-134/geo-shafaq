@@ -135,11 +135,13 @@
 			order: 0;
 			flex: 1;
 			min-height: 30vh;
+			min-height: 30dvh;
 		}
+		/* as tall as what it says, up to 70%: a room's table needs it, a solo result doesn't */
 		.panel {
 			flex: none;
-			max-height: 66vh;
-			max-height: 66dvh;
+			max-height: 70vh;
+			max-height: 70dvh;
 			z-index: 1;
 			border-right: none;
 			box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18);
@@ -159,9 +161,14 @@
 				var(--green) 5px 7px
 			);
 		}
+		/* the two add up to the screen, or the buttons at the bottom are cut off */
 		.tall .panel {
 			max-height: 72vh;
 			max-height: 72dvh;
+		}
+		.tall .map-side {
+			min-height: 28vh;
+			min-height: 28dvh;
 		}
 		.body {
 			padding: 20px 16px 12px;

@@ -1,8 +1,9 @@
 <script lang="ts">
 	// A round on screen, for solo games and rooms alike. The panorama is the playfield; on top
-	// of it only: one status pill (round and score), the clock when there is one, a pause
-	// button, the hint and "back to start" under the right thumb, and one big button at the
-	// bottom that opens the guess map. On a phone the map slides up as a sheet; on a computer
+	// of it only: one status pill (round and score), the clock when there is one (a room's
+	// rides in its players' chip), a pause button (a menu in a room: a room never pauses), the
+	// hint and "back to start" under the right thumb, and one big button at the bottom that
+	// opens the guess map. On a phone the map slides up as a sheet; on a computer
 	// it sits small in the corner and grows under the mouse. A first-time player is shown
 	// what to do (look around, open the map, tap it) instead of being told.
 	// The page drives it: it opens each round's panorama through open(), starts the clock
@@ -45,11 +46,12 @@
 		status: Status;
 		guess: LatLon | null;
 		guessLabel?: string; // the Guess button's words, when not the usual ones
-		hud?: Snippet; // more chips next to the status pill (a room's players)
+		hud?: Snippet<[Snippet | null]>; // more chips next to the status pill (a room's players), given the clock to carry
 		onpick: (p: LatLon) => void;
 		onguess: () => void;
 		onhint: () => Promise<boolean>;
 		ontimeup: () => void;
+		onleave?: () => void; // a room: the menu's way out, and no "pause" (a room never pauses)
 	}
 	let {
 		rules,
@@ -67,7 +69,8 @@
 		onpick,
 		onguess,
 		onhint,
-		ontimeup
+		ontimeup,
+		onleave
 	}: Props = $props();
 
 	let heading = $state(0);
@@ -145,6 +148,7 @@
 	export async function open(view: PanoView): Promise<{ pos: LatLon | null }> {
 		mapOpen = false;
 		menuOpen = false;
+		startTimer(undefined); // the last round's clock goes; the page starts this one's
 		guessMap?.fitArea();
 		const v = await viewerFor(view.provider);
 		return v.open(view);
@@ -187,10 +191,11 @@
 		if (coach === 'look' || coach === 'map') coach = 'pin';
 	}
 
-	/** Starts the clock with the server's time left (undefined = no limit). */
+	/** Starts the clock with the server's time left (undefined = no limit). A room with no
+	 *  limit still sends one after the first guess: the others' 45 s. */
 	export function startTimer(remainingMs: number | undefined) {
 		stopTimer();
-		if (!rules.timeSec || remainingMs === undefined) {
+		if (remainingMs === undefined) {
 			left = null;
 			return;
 		}
@@ -232,6 +237,9 @@
 		ticker = undefined;
 	}
 
+	const clockOn = $derived(left !== null && status !== 'off');
+	// a room's phone has no space for ten dots beside the players' chip: "3/10 raund" instead
+	const many = $derived(!!hud && rounds > 5 && rounds <= 20);
 	const danger = $derived(left !== null && playing && left <= WARN_AT[0]);
 	const dangerLevel = $derived(left === null ? 0 : Math.min(Math.max(1 - left / WARN_AT[0], 0), 1));
 
@@ -293,10 +301,11 @@
 	style:--danger={dangerLevel}
 ></div>
 
-<!-- top: status on the left, the clock in the middle, pause on the right -->
+<!-- top: status on the left, the clock in the middle (a room's in its players' chip), pause
+     (a room's menu) on the right -->
 <div class="hud" class:hide={status === 'off'}>
 	<div class="hud-left">
-		<div class="status">
+		<div class="status" class:many>
 			<div class="st-round">
 				<span class="st-n"
 					>{n ?? 0}{#if rounds}<small>/{rounds}</small>{/if}</span
@@ -305,8 +314,9 @@
 					<span class="dots" aria-hidden="true">
 						{#each dots as d, i (i)}<i class={d}></i>{/each}
 					</span>
-				{:else}
-					<span class="st-label">{t('round').toLowerCase()}</span>
+				{/if}
+				{#if !rounds || rounds > 20 || many}
+					<span class="st-label round-word">{t('round').toLowerCase()}</span>
 				{/if}
 			</div>
 			<div class="st-score">
@@ -314,10 +324,10 @@
 				<span class="st-label">{t('points')}</span>
 			</div>
 		</div>
-		{@render hud?.()}
+		{@render hud?.(clockOn ? chipClock : null)}
 	</div>
 
-	{#if left !== null && status !== 'off'}
+	{#if clockOn && left !== null && !hud}
 		<div
 			class="clock"
 			class:warn={playing && left <= 15 && left > 10}
@@ -331,10 +341,34 @@
 		</div>
 	{/if}
 
-	<button class="round-btn pause" onclick={() => (menuOpen = true)} aria-label={t('pause')}>
-		<svg viewBox="0 0 24 24" class="icon"><path d="M9 6v12M15 6v12" /></svg>
+	<button
+		class="round-btn pause"
+		onclick={() => (menuOpen = true)}
+		aria-label={onleave ? t('menu') : t('pause')}
+	>
+		<svg viewBox="0 0 24 24" class="icon"
+			>{#if onleave}<path d="M4.5 7h15M4.5 12h15M4.5 17h15" />{:else}<path
+					d="M9 6v12M15 6v12"
+				/>{/if}</svg
+		>
 	</button>
 </div>
+
+<!-- a room's clock, carried in its players' chip: "👥 1/2 · 0:45" -->
+{#snippet chipClock()}
+	{#if left !== null}
+		<span
+			class="chip-clock"
+			class:warn={playing && left <= 15 && left > 10}
+			class:low={playing && left <= 10}
+			role="timer"
+		>
+			<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+				><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2M9.5 2.5h5" /></svg
+			>{fmtClock(left)}
+		</span>
+	{/if}
+{/snippet}
 
 {#if intro !== null}
 	<div class="intro" aria-live="polite">
@@ -510,12 +544,14 @@
 	</button>
 </div>
 
-<Sheet open={menuOpen} onclose={() => (menuOpen = false)} title={t('pause')}>
+<Sheet open={menuOpen} onclose={() => (menuOpen = false)} title={onleave ? t('menu') : t('pause')}>
 	<div class="menu">
-		<button class="btn btn-primary" onclick={() => (menuOpen = false)}>
-			<svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" /></svg>
-			{t('resume')}
-		</button>
+		{#if !onleave}
+			<button class="btn btn-primary" onclick={() => (menuOpen = false)}>
+				<svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" /></svg>
+				{t('resume')}
+			</button>
+		{/if}
 		{#if rules.compass}
 			<div class="menu-row">
 				<span class="field-label">{t('compass')}</span>
@@ -535,8 +571,12 @@
 				<button aria-pressed={!sound.on} onclick={() => setSound(false)}>{t('soundOff')}</button>
 			</div>
 		</div>
-		<p class="keys">{t('keys')}</p>
-		<a class="btn btn-ghost" href="/">{t('leaveGame')}</a>
+		{#if onleave}
+			<button class="btn btn-ghost" onclick={onleave}>{t('leave')}</button>
+		{:else}
+			<p class="keys">{t('keys')}</p>
+			<a class="btn btn-ghost" href="/">{t('leaveGame')}</a>
+		{/if}
 	</div>
 </Sheet>
 
@@ -704,6 +744,9 @@
 	.dots i.lo {
 		background: #f04157;
 	}
+	.many .round-word {
+		display: none;
+	}
 	/* a room's chip, given through the hud snippet */
 	.hud-left :global(.chip) {
 		border-radius: 18px;
@@ -717,6 +760,42 @@
 		font-weight: 800;
 		font-size: 17px;
 		font-variant-numeric: tabular-nums;
+	}
+
+	/* in a room's chip the clock fills the chip's right end, so its gold and red are the clock's */
+	.chip-clock {
+		align-self: stretch;
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		margin: -6px -14px -6px 0;
+		padding: 0 14px 0 10px;
+		border-left: 1px solid rgba(255, 255, 255, 0.16);
+		border-radius: 0 18px 18px 0;
+		font-family: var(--display);
+		font-weight: 800;
+		font-size: 17px;
+		font-variant-numeric: tabular-nums;
+		transition: background 0.3s;
+	}
+	.chip-clock .icon {
+		width: 18px;
+		height: 18px;
+		opacity: 0.8;
+	}
+	.chip-clock.warn {
+		background: #b07a00;
+		border-color: transparent;
+	}
+	.chip-clock.low {
+		background: var(--red);
+		border-color: transparent;
+		animation: flash 0.5s ease-in-out infinite alternate;
+	}
+	@keyframes flash {
+		to {
+			filter: brightness(1.3);
+		}
 	}
 
 	.clock {
@@ -793,6 +872,7 @@
 		place-items: center;
 		box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
 	}
+	/* the hint's price: the gold of the result's "−20% 💡", not red ("wrong") */
 	.round-btn .cost {
 		position: absolute;
 		bottom: -7px;
@@ -800,10 +880,12 @@
 		transform: translateX(-50%);
 		padding: 1px 6px;
 		border-radius: 8px;
-		background: var(--red);
+		background: var(--star);
+		color: #3a2600;
 		font-size: 11px;
-		font-weight: 700;
+		font-weight: 800;
 		white-space: nowrap;
+		box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
 	}
 	.round-btn.hint:not(:disabled) .icon {
 		color: #ffd75e;
@@ -1193,11 +1275,55 @@
 			right: 10px;
 			top: max(10px, env(safe-area-inset-top));
 		}
+		/* a room's row holds the pill, the players' chip with the clock and the menu: snug */
 		.status > div {
-			padding: 0 10px;
+			padding: 0 8px;
 		}
 		.st-n {
 			font-size: 17px;
+		}
+		.dots {
+			gap: 3px;
+		}
+		.dots i {
+			width: 7px;
+			height: 7px;
+		}
+		.many .dots {
+			display: none;
+		}
+		.many .round-word {
+			display: block;
+		}
+		/* never a second row (it would cover the compass): a crowded room's chip lets its
+		   icon go first */
+		.hud-left {
+			gap: 6px;
+			flex-wrap: nowrap;
+			min-width: 0;
+		}
+		.status,
+		.pause {
+			flex-shrink: 0;
+		}
+		.hud-left :global(.chip) {
+			min-width: 0;
+			padding: 6px 10px;
+			gap: 6px;
+		}
+		.hud-left :global(.chip > *) {
+			flex-shrink: 0;
+		}
+		.hud-left :global(.chip > svg) {
+			flex-shrink: 1;
+			min-width: 0;
+		}
+		.chip-clock {
+			margin-right: -10px;
+			padding: 0 10px 0 8px;
+		}
+		.chip-clock .icon {
+			display: none;
 		}
 		.clock {
 			height: 46px;

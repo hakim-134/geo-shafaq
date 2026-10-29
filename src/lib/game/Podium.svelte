@@ -90,8 +90,8 @@
 	.pill {
 		padding: 2px 9px;
 		border-radius: 999px;
-		background: color-mix(in srgb, var(--gold) 24%, transparent);
-		color: var(--text);
+		background: var(--star); /* the bulb's gold, in both themes */
+		color: #3a2600;
 		font-size: 13.5px;
 		font-weight: 700;
 		white-space: nowrap;
