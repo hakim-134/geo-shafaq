@@ -17,13 +17,19 @@
 		if (!open) return;
 		const prev = document.activeElement as HTMLElement | null;
 		box?.focus();
-		const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onclose();
+		let byKey = false;
+		const onKey = (e: KeyboardEvent) => {
+			byKey = true;
+			if (e.key === 'Escape') onclose();
+		};
 		window.addEventListener('keydown', onKey);
 		document.body.style.overflow = 'hidden';
 		return () => {
 			window.removeEventListener('keydown', onKey);
 			document.body.style.overflow = '';
-			prev?.focus?.();
+			// focus goes back where it was; its ring only for the keyboard, or the button a
+			// finger tapped looks stuck "on"
+			prev?.focus?.({ focusVisible: byKey } as FocusOptions);
 		};
 	});
 </script>

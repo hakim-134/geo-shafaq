@@ -38,6 +38,7 @@
 	let pinMark: any = null;
 	let circles: any[] = [];
 	let moved = false; // the player panned or zoomed since the round began
+	let focus: BBox | null = null; // the last hint's area: the map keeps it in view as it grows
 
 	onMount(() => {
 		let gone = false;
@@ -58,13 +59,16 @@
 			() => {} // no Yandex: the round itself shows the error
 		);
 		// the box grows on hover and with the size button: the map follows it, the centre
-		// kept once the player has moved it, the whole area shown while not
+		// kept once the player has moved it; while not, the whole area or the hint's is shown
+		// a drag or the wheel moves it; a tap that places the pin (on a laptop, the same moment
+		// the box starts to grow) doesn't, or the hint's district would stay small in a corner
 		const touch = () => (moved = true);
-		el.addEventListener('pointerdown', touch);
+		const drag = (e: PointerEvent) => e.buttons && touch();
+		el.addEventListener('pointermove', drag);
 		el.addEventListener('wheel', touch, { passive: true });
 		const seen = new ResizeObserver(() => {
 			map?.container.fitToViewport(true);
-			if (map && !moved && !guess && !hints.length) map.setBounds(bounds(bbox));
+			if (map && !moved && (focus || !guess)) map.setBounds(bounds(focus ?? bbox));
 		});
 		seen.observe(el);
 		return () => {
@@ -93,13 +97,12 @@
 				const shape = await placeShape(h.place).catch(() => null);
 				if (shape) {
 					out.push(...(await hintArea(shape)));
-					if (h === list.at(-1)) m.setBounds(bounds(shapeBox(shape)), { duration: 400 });
+					if (h === list.at(-1)) zoomTo(m, shapeBox(shape));
 				}
 			}
 			if (h.circle) {
 				out.push(await hintCircle(h.circle.center, h.circle.radiusKm));
-				if (h === list.at(-1))
-					m.setBounds(bounds(circleBox(h.circle.center, h.circle.radiusKm)), { duration: 400 });
+				if (h === list.at(-1)) zoomTo(m, circleBox(h.circle.center, h.circle.radiusKm));
 			}
 			return out;
 		});
@@ -132,15 +135,21 @@
 		}
 	});
 
+	function zoomTo(m: YMap, box: BBox) {
+		focus = box;
+		m.setBounds(bounds(box), { duration: 400 });
+	}
+
 	/** Back to the whole map, e.g. at the start of a round. */
 	export function fitArea() {
 		moved = false;
+		focus = null;
 		map?.container.fitToViewport();
 		map?.setBounds(bounds(bbox));
 	}
 </script>
 
-<div class="guess-map" bind:this={el}></div>
+<div class="guess-map ymap" bind:this={el}></div>
 
 <style>
 	.guess-map {

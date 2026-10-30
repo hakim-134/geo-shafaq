@@ -4,26 +4,39 @@
 	// top and the panel rises under it, its buttons always under the thumb.
 	import type { Snippet } from 'svelte';
 	import { t } from '#lib/i18n/index.svelte.js';
-	import { COLORS, flagSvg } from '#lib/map/map.js';
+	import { COLORS, flagSvg, pinSvg } from '#lib/map/map.js';
 
 	interface Props {
 		map: Snippet;
 		actions: Snippet;
 		children: Snippet;
-		legend?: boolean;
+		legend?: boolean | 'actual'; // 'actual': the flag's key only (a room's pins are its players' faces)
 		tall?: boolean; // more to read than to see (the final table): a smaller map on phones
 		stage?: boolean; // the panel is the show (a room's podium): on phones it comes first, the map under it
+		scroll?: boolean; // a long story (the end of a game): on phones one page scrolls, the map on top
 	}
-	let { map, actions, children, legend = true, tall = false, stage = false }: Props = $props();
+	let {
+		map,
+		actions,
+		children,
+		legend = true,
+		tall = false,
+		stage = false,
+		scroll = false
+	}: Props = $props();
 </script>
 
-<div class="result" class:tall class:stage>
+<div class="result" class:tall class:stage class:scroll>
 	<div class="map-side">
 		{@render map()}
 		{#if legend}
 			<div class="legend" aria-hidden="true">
-				<span><img src={flagSvg()} alt="" width="16" height="20" />{t('actual')}</span>
-				<span><i style:background={COLORS.guess}></i>{t('yourGuess')}</span>
+				<span><img src={flagSvg()} alt="" width="20" height="24" />{t('actual')}</span>
+				{#if legend !== 'actual'}
+					<span
+						><img src={pinSvg(COLORS.guess)} alt="" width="14" height="18" />{t('yourGuess')}</span
+					>
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -53,11 +66,14 @@
 		position: absolute;
 		inset: 0;
 	}
+	/* bottom left, under each other: Yandex's own box has the top left, its logo the bottom right */
 	.legend {
 		position: absolute;
-		left: 12px;
-		top: 12px;
+		left: 10px;
+		bottom: 10px;
 		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
 		gap: 6px;
 		pointer-events: none;
 	}
@@ -76,11 +92,6 @@
 	.legend img {
 		display: block;
 		margin: -4px -2px -2px -4px;
-	}
-	.legend i {
-		width: 10px;
-		height: 10px;
-		border-radius: 50%;
 	}
 	.panel {
 		min-height: 0;
@@ -177,17 +188,37 @@
 			padding: 10px 16px max(12px, env(safe-area-inset-bottom));
 			gap: 8px;
 		}
-		/* the stage: one scroll, the panel's story first, the map under it, the buttons fixed */
-		.stage {
+		/* the stage: one scroll, the panel's story first, the map under it, the buttons fixed;
+		   scroll: the same, the map first */
+		.stage,
+		.scroll {
 			overflow-y: auto;
 		}
-		.stage .panel {
+		.stage .panel,
+		.scroll .panel {
 			display: contents;
 		}
-		.stage .body {
+		.stage .body,
+		.scroll .body {
 			order: 1;
 			flex: none;
 			overflow: visible;
+		}
+		.scroll .map-side {
+			flex: none;
+			height: 40vh;
+			height: 40dvh;
+			min-height: 0;
+		}
+		.scroll .actions {
+			order: 3;
+			position: sticky;
+			bottom: 0;
+			z-index: 2;
+			background: var(--surface);
+		}
+		.scroll .body {
+			background: var(--surface);
 		}
 		.stage .map-side {
 			order: 2;

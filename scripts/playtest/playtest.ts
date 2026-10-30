@@ -299,7 +299,12 @@ async function solo(browser: Browser, view: View, dir: string) {
 		if (n > 12) throw new Error('the game does not end');
 	}
 
-	await p.page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+	// to the bottom of whatever scrolls: the page, or the end screen itself on a phone
+	await p.page.evaluate(() => {
+		window.scrollTo(0, document.body.scrollHeight);
+		for (const el of document.querySelectorAll<HTMLElement>('.result, .body'))
+			if (el.scrollHeight > el.clientHeight) el.scrollTop = el.scrollHeight;
+	});
 	await sleep(800);
 	await p.shot(J, 'end-scrolled');
 

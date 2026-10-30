@@ -1,5 +1,6 @@
 <script lang="ts">
 	// Where the place really was and where the player guessed, joined by a dashed line (Yandex).
+	// Tapping the real place's badge opens its panorama on Yandex Maps.
 	// With reveal (one round's result): the map frames both points, the line runs from the
 	// guess to the real place, and the real pin drops there; onlanded says when it has.
 	import { onMount } from 'svelte';
@@ -22,9 +23,11 @@
 	} from './map.js';
 	import type { LatLon } from '#lib/api/client.js';
 	import { i18n } from '#lib/i18n/index.svelte.js';
+	import { load, save } from '#lib/storage.js';
 
 	export interface Pair {
 		actual: LatLon;
+		heading?: number; // the round's first heading: the badge opens the panorama facing it
 		guess?: LatLon;
 		label?: string;
 		guessColor?: string; // a room's player
@@ -44,6 +47,7 @@
 	let map = $state<YMap | null>(null);
 	/* eslint-disable @typescript-eslint/no-explicit-any */
 	let drawn: any[] = [];
+	let drawnKey = '';
 	let run = 0;
 
 	onMount(() => {
@@ -73,6 +77,11 @@
 		const m = map;
 		const list = pairs;
 		if (!m) return;
+		// the same points again (a room's state comes again on a pause, a ring tick): what is
+		// drawn stays, and a reveal under way plays on to its flag
+		const key = JSON.stringify(list) + reveal;
+		if (key === drawnKey) return;
+		drawnKey = key;
 		const mine = ++run;
 		for (const o of drawn) m.geoObjects.remove(o);
 		drawn = [];
@@ -86,7 +95,14 @@
 		m.container.fitToViewport();
 		if (points.length === 1) m.setCenter([points[0].lat, points[0].lon], 15);
 		else if (points.length)
-			m.setBounds(bounds(boxOf(points)), { zoomMargin: 70, checkZoomRange: true });
+			// any zoom, not only whole steps: the flags fill the map, on a phone too. The
+			// margins: Yandex's box and the flags' poles above the points, the key and the logo
+			// under them
+			m.setBounds(bounds(boxOf(points)), {
+				zoomMargin: [104, 56, 84, 56],
+				preciseZoom: true,
+				checkZoomRange: true
+			});
 
 		if (reveal && list.length) {
 			revealPairs(list, add, () => mine === run);
@@ -99,7 +115,7 @@
 			const at = `${p.actual.lat},${p.actual.lon},${p.label ?? ''}`;
 			if (!placed.has(at)) {
 				placed.add(at);
-				objects.push(flagMarker(p.actual, p.label));
+				objects.push(flagMarker(p.actual, p.label, { at: p.actual, heading: p.heading }));
 			}
 			if (p.guess)
 				objects.push(
@@ -109,6 +125,14 @@
 		}
 		Promise.all(objects).then((os) => os.forEach(add));
 	});
+
+	// the first badge that lands on this device keeps calling with its ring a while: motion, no
+	// words over the answer ("Panoramada ko‘rish ↗" under the plate says it; a laptop has a hint)
+	function firstTime(): boolean {
+		if (load('flag_tip', '')) return false;
+		save('flag_tip', '1');
+		return true;
+	}
 
 	// the guesses first, then every line runs to the real place, then its pin drops
 	async function revealPairs(list: Pair[], add: (o: any) => void, live: () => boolean) {
@@ -124,7 +148,13 @@
 				lines.map((l, i) => growLine(l, guesses[i].guess!, guesses[i].actual, 850))
 			);
 			if (!live()) return;
-			add(await dropMarker(list[0].actual));
+			add(
+				await dropMarker(
+					list[0].actual,
+					{ at: list[0].actual, heading: list[0].heading },
+					firstTime()
+				)
+			);
 		} catch {
 			/* drawn as far as it got */
 		}
@@ -132,7 +162,7 @@
 	}
 </script>
 
-<div class="result-map" bind:this={el}></div>
+<div class="result-map ymap" bind:this={el}></div>
 
 <style>
 	.result-map {

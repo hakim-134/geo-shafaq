@@ -103,6 +103,9 @@
 
 	const playing = $derived(status === 'playing');
 	const hintCost = $derived(rules.hints.cost ?? 0);
+	// the game has a compass; the player may still hide it for this game from the menu
+	let compassOff = $state(false);
+	const showCompass = $derived(rules.compass && !compassOff);
 	const guessed = $derived(status === 'sending' || status === 'waiting');
 
 	// ---------- the first game: show, don't tell ----------
@@ -381,17 +384,18 @@
 
 {#if hints.length && playing}
 	{@const h = hints.at(-1)!}
-	<div class="hint-banner" class:low={rules.compass && compass.style === 'modern'}>
+	<div class="hint-banner" class:low={showCompass && compass.style === 'modern'}>
 		<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
 			><path
 				d="M9 18h6M10 21.5h4M12 2.5a6.5 6.5 0 0 0-3.8 11.8V16.5h7.6v-2.2A6.5 6.5 0 0 0 12 2.5z"
 			/></svg
 		>
-		{h.kind === 'circle' ? t('hintCircle') : `${t(h.kind)}: ${tx(h.text)}`}
+		<!-- the place's own name says what it is: "Yashnobod tumani", not "Tuman: Yashnobod tumani" -->
+		{h.kind === 'circle' ? t('hintCircle') : tx(h.text)}
 	</div>
 {/if}
 
-{#if rules.compass && (playing || status === 'waiting')}
+{#if showCompass && (playing || status === 'waiting')}
 	<div class="compass-spot {compass.style}" aria-label={t('compass')}>
 		<Compass {heading} style={compass.style} />
 	</div>
@@ -557,10 +561,18 @@
 				<span class="field-label">{t('compass')}</span>
 				<div class="segmented">
 					{#each COMPASS_STYLES as c (c)}
-						<button aria-pressed={compass.style === c} onclick={() => setCompassStyle(c)}
-							>{t(`compass_${c}`)}</button
+						<button
+							aria-pressed={!compassOff && compass.style === c}
+							onclick={() => {
+								compassOff = false;
+								setCompassStyle(c);
+							}}>{t(`compass_${c}`)}</button
 						>
 					{/each}
+					<!-- the same four as the settings: "Yo‘q" hides it for this game -->
+					<button aria-pressed={compassOff} onclick={() => (compassOff = true)}
+						>{t('compassNone')}</button
+					>
 				</div>
 			</div>
 		{/if}
@@ -591,6 +603,11 @@
 	.pano :global([class*='panorama-control__name']),
 	.pano :global([class*='panorama-control__close']),
 	.pano :global([class*='panorama-control__fullscreen']) {
+		display: none !important;
+	}
+	/* the test panoramas' viewer (demo, never a player's) without its toolbar strip: the round
+	   looks as it does on Yandex */
+	.pano :global(.psv-navbar) {
 		display: none !important;
 	}
 	.freeze {
@@ -967,7 +984,7 @@
 		border-radius: 14px;
 		font-weight: 700;
 		box-shadow: 0 3px 0 var(--sky-edge);
-		z-index: 1000;
+		z-index: 1001; /* over the phone's scrim: the open guess map doesn't dim it */
 		white-space: nowrap;
 		animation: pop-in 0.35s var(--pop);
 	}
@@ -1265,8 +1282,7 @@
 
 	/* ---------- phones ---------- */
 	@media (max-width: 760px) {
-		/* pinch to zoom; the viewers' own zoom buttons would sit under the big button */
-		.pano :global(.psv-navbar),
+		/* pinch to zoom; Yandex's own zoom buttons would sit under the big button */
 		.pano :global([class*='panorama-control__zoom']) {
 			display: none !important;
 		}

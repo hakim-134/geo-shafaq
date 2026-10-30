@@ -1027,6 +1027,13 @@ export interface components {
             bestKm?: number;
             /** @description Guessed within 500 m at least once. */
             learned: boolean;
+            /** @description The real place of the player's closest round there. */
+            at?: components["schemas"]["LatLon"];
+            /**
+             * Format: double
+             * @description That round's first heading, degrees from north.
+             */
+            heading?: number;
         };
         MapBest: {
             map: components["schemas"]["MapRef"];
@@ -1318,6 +1325,11 @@ export interface components {
         RoomResult: {
             n: number;
             actual: components["schemas"]["LatLon"];
+            /**
+             * Format: double
+             * @description Where the round's viewer looked first
+             */
+            heading?: number;
             place: components["schemas"]["PlaceInfo"];
             scores: components["schemas"]["RoomScore"][];
         };
@@ -1484,6 +1496,11 @@ export interface components {
             /** @description The guess came after the deadline and scored 0. */
             late: boolean;
             place: components["schemas"]["PlaceInfo"];
+            /**
+             * Format: double
+             * @description Where the round's viewer looked first, degrees from north (to open the place's panorama facing the same way).
+             */
+            heading?: number;
             /** @description This was the last round. */
             gameOver?: boolean;
             /** @description The game's total after this round. */

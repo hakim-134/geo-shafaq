@@ -305,59 +305,6 @@ a {
 	box-shadow: 0 2px 0 var(--edge);
 }
 
-/* a slider: a thick track filled up to the thumb (--fill), a big thumb for the thumb */
-.range {
-	-webkit-appearance: none;
-	appearance: none;
-	width: 100%;
-	height: 32px;
-	background: transparent;
-	cursor: pointer;
-	touch-action: pan-y;
-}
-.range::-webkit-slider-runnable-track {
-	height: 10px;
-	border-radius: 5px;
-	background: linear-gradient(
-		to right,
-		var(--sky) var(--fill, 0%),
-		var(--surface-2) var(--fill, 0%)
-	);
-}
-.range::-moz-range-track {
-	height: 10px;
-	border-radius: 5px;
-	background: linear-gradient(
-		to right,
-		var(--sky) var(--fill, 0%),
-		var(--surface-2) var(--fill, 0%)
-	);
-}
-.range::-webkit-slider-thumb {
-	-webkit-appearance: none;
-	width: 30px;
-	height: 30px;
-	margin-top: -10px;
-	border-radius: 50%;
-	background: #fff;
-	border: 4px solid var(--sky);
-	box-shadow: 0 3px 0 var(--sky-edge);
-}
-.range::-moz-range-thumb {
-	width: 22px;
-	height: 22px;
-	border-radius: 50%;
-	background: #fff;
-	border: 4px solid var(--sky);
-	box-shadow: 0 3px 0 var(--sky-edge);
-}
-.range:focus-visible {
-	outline: none;
-}
-.range:focus-visible::-webkit-slider-thumb {
-	outline: 3px solid color-mix(in srgb, var(--sky) 40%, transparent);
-}
-
 /* the flag, as a thin band on top of the pages around the game */
 .flag-band {
 	height: 9px;
@@ -494,30 +441,34 @@ a {
 	}
 }
 
-/* ---------- the real place's pin on the result map (Yandex draws it from map.ts) ---------- */
+/* ---------- the real place's badge on the result map (Yandex draws it from map.ts) ---------- */
 .sg-drop {
 	position: absolute;
-	left: -9px;
-	top: -47px;
-	width: 40px;
-	height: 50px;
+	left: -20px;
+	top: -45px;
+	width: 44px;
+	height: 52px;
 }
 .sg-drop img {
 	display: block;
-	transform-origin: 9px 47px; /* the pole's foot */
+	transform-origin: 20px 45px; /* the point's tip */
 	animation: pin-drop 0.55s cubic-bezier(0.3, 1.4, 0.5, 1) both;
 	filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.35));
 }
 .sg-drop-ring {
 	position: absolute;
-	left: 9px;
-	top: 47px;
+	left: 20px;
+	top: 45px;
 	width: 28px;
 	height: 28px;
 	margin: -14px 0 0 -14px;
 	border-radius: 50%;
 	border: 3px solid #1eb53a;
 	animation: drop-ring 1.2s 0.35s ease-out 2 both;
+}
+/* the first badge on a device: its ring keeps calling a few times more, "tap me" */
+.sg-drop.calling .sg-drop-ring {
+	animation-iteration-count: 6;
 }
 @keyframes pin-drop {
 	0% {
@@ -544,4 +495,18 @@ a {
 		transform: scale(2.4);
 		opacity: 0;
 	}
+}
+
+/* ---------- Yandex's maps (the guess map, the result map: class ymap) ---------- */
+/* Yandex's free key shows its "open in Yandex Maps" box whatever suppressMapOpenBlock says
+   (the key loads with enterprise: false), bottom left: where the thumb places pins and the
+   result panel begins. The box stays, as the free terms ask, and moves to the top left. Its
+   pane is a zero-height strip along the map's bottom, so the map's height (cqh) lifts it. */
+.ymap {
+	container-type: size;
+}
+.ymap [class*='-map-copyrights-promo'] {
+	top: auto !important;
+	bottom: calc(100cqh - 42px) !important;
+	left: 10px !important;
 }

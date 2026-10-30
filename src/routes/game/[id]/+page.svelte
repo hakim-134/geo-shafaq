@@ -48,6 +48,7 @@
 		retry: null
 	});
 	let bestBefore = 0;
+	let gamesBefore = $state(0); // 0: this is the player's first game, and its score no record yet
 	let finalPick = $state<number | null>(null); // a round chosen in the final table
 	let landed = $state(false); // the real pin is on the result map: the result plays
 	let rv = $state<ReturnType<typeof RoundView>>();
@@ -89,6 +90,7 @@
 		try {
 			await ensureSession();
 			bestBefore = session.me?.stats.best ?? 0;
+			gamesBefore = session.me?.stats.games ?? 0;
 			game = await call(api().GET('/v1/games/{gameId}', { params: { path: { gameId: id } } }));
 		} catch (e) {
 			return fail(
@@ -264,7 +266,14 @@
 	const finalPairs = $derived<Pair[]>(
 		done
 			.filter((r, i) => finalPick === null || i === finalPick)
-			.map((r) => ({ actual: r.result!.actual, guess: r.result!.guess, label: String(r.n) }))
+			// the badge and its guess carry the same round number
+			.map((r) => ({
+				actual: r.result!.actual,
+				heading: r.result!.heading,
+				guess: r.result!.guess,
+				label: String(r.n),
+				guessLabel: String(r.n)
+			}))
 	);
 
 	async function playAgain(map = game?.map.slug) {
@@ -393,7 +402,7 @@
 				<ResultMap
 					{bbox}
 					layer={savedLayer()}
-					pairs={[{ actual: result!.actual, guess: result!.guess }]}
+					pairs={[{ actual: result!.actual, heading: result!.heading, guess: result!.guess }]}
 					reveal
 					onlanded={() => (landed = true)}
 				/>
@@ -410,6 +419,7 @@
 				late={result.late}
 				place={result.place}
 				actual={result.actual}
+				heading={result.heading}
 				go={landed}
 			/>
 			{#snippet actions()}
@@ -425,7 +435,7 @@
 	{/if}
 
 	{#if game && phase === 'final'}
-		<ResultLayout tall>
+		<ResultLayout scroll>
 			{#snippet map()}
 				<ResultMap {bbox} layer={savedLayer()} pairs={finalPairs} />
 			{/snippet}
@@ -434,7 +444,9 @@
 					<MapSign slug={game.map.slug} name={tx(game.map.name)} size="small" />
 					<h1 class:best={newBest}>
 						{newBest
-							? t('newBest')
+							? gamesBefore
+								? t('newBest')
+								: t('firstGame')
 							: mine
 								? t('gameOver')
 								: t('playerGame', { name: game.player.name })}
@@ -472,7 +484,6 @@
 										onclick={() => (finalPick = finalPick === i ? null : i)}
 										style:animation-delay={`${300 + i * 90}ms`}
 									>
-										<span class="stop-n">{r.n}</span>
 										<span class="stop-plate"
 											><StreetPlate place={r.result!.place} size="small" /></span
 										>
@@ -519,6 +530,22 @@
 						</button>
 					</div>
 				{/if}
+				<!-- after the last street: sharing, quiet, and the way home -->
+				<div class="after">
+					<button class="btn btn-ghost" onclick={share}>
+						<svg viewBox="0 0 24 24"
+							><path
+								d="M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5"
+							/></svg
+						>
+						{t('shareResults')}
+					</button>
+					<a class="btn btn-ghost home-btn" href="/" aria-label={t('home')} title={t('home')}
+						><svg viewBox="0 0 24 24"
+							><path d="M3.5 11 12 4l8.5 7M6 9.5V20h12V9.5M10 20v-5h4v5" /></svg
+						></a
+					>
+				</div>
 			</div>
 			{#snippet actions()}
 				<button class="btn btn-primary" onclick={() => playAgain()}>
@@ -527,17 +554,6 @@
 					>
 					{mine ? t('playAgain') : t('playThisMap')}
 				</button>
-				<div class="row">
-					<button class="btn btn-sky" onclick={share}>
-						<svg viewBox="0 0 24 24"
-							><path
-								d="M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5"
-							/></svg
-						>
-						{t('share')}
-					</button>
-					<a class="btn btn-ghost" href="/">{t('home')}</a>
-				</div>
 			{/snippet}
 		</ResultLayout>
 		{#if newBest}<Confetti />{/if}
@@ -650,17 +666,6 @@
 	.stop[aria-pressed='true'] {
 		background: color-mix(in srgb, var(--sky) 12%, transparent);
 	}
-	.stop-n {
-		width: 24px;
-		height: 24px;
-		border-radius: 50%;
-		background: var(--surface-2);
-		font-weight: 700;
-		font-size: 12.5px;
-		display: grid;
-		place-items: center;
-		flex: none;
-	}
 	.stop-plate {
 		flex: 1;
 		min-width: 0;
@@ -687,6 +692,22 @@
 		font-weight: 600;
 		color: var(--muted);
 		font-variant-numeric: tabular-nums;
+	}
+
+	/* after the last street: "Natijani ulashish" and the way home, a house as wide as it is tall */
+	.after {
+		display: flex;
+		gap: 10px;
+	}
+	.after .btn {
+		flex: 1;
+		min-width: 0;
+		padding: 0 14px;
+	}
+	.after .home-btn {
+		flex: none;
+		width: 56px;
+		padding: 0;
 	}
 
 	/* a room game: everyone's total */
@@ -778,7 +799,7 @@
 
 	@media (max-width: 760px) {
 		.final {
-			gap: 18px;
+			gap: 14px;
 		}
 		h1 {
 			font-size: 26px;

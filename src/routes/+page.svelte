@@ -32,6 +32,10 @@
 	let choice = $state(loadChoice());
 	let busy = $state<Mode | null>(null);
 	let offline = $state(false);
+	// the server asked to wait (too many new players from one address, e.g. friends behind one
+	// carrier): say so, and try again by itself
+	let waiting = $state(false);
+	let retryTimer: ReturnType<typeof setTimeout> | undefined;
 	let loaded = $state(false);
 	let settingsOpen = $state(false);
 	let codeOpen = $state(false);
@@ -66,6 +70,7 @@
 	$effect(() => {
 		void session.version;
 		load_();
+		return () => clearTimeout(retryTimer);
 	});
 
 	async function load_() {
@@ -78,6 +83,7 @@
 			maps = m;
 			last = h.games[0] ?? null;
 			offline = false;
+			waiting = false;
 			placeMap = null;
 			if (choice.map.startsWith('place-')) {
 				try {
@@ -90,8 +96,11 @@
 			}
 			// a map that left the home (a place gone, or "Toshkent"): back to the first one
 			if (!placeMap && !m.some((x) => x.slug === choice.map) && m.length) choice.map = m[0].slug;
-		} catch {
-			offline = true;
+		} catch (e) {
+			waiting = e instanceof ApiError && e.code === 'rate_limited';
+			offline = !waiting;
+			clearTimeout(retryTimer);
+			if (waiting) retryTimer = setTimeout(load_, 20_000);
 		}
 		loaded = true;
 	}
@@ -172,7 +181,12 @@
 			<h1>{t('homeTitle')}</h1>
 		</section>
 
-		{#if offline}
+		{#if waiting}
+			<div class="offline waiting">
+				<p>{t('waitABit')}</p>
+				<span class="spinner" aria-hidden="true"></span>
+			</div>
+		{:else if offline}
 			<div class="offline">
 				<p>{t('err_network')}</p>
 				<button class="btn btn-ghost" onclick={load_}>{t('retry')}</button>
@@ -628,6 +642,22 @@
 	}
 	.offline .btn {
 		height: 42px;
+	}
+	.offline.waiting {
+		background: color-mix(in srgb, var(--star) 16%, transparent);
+	}
+	.spinner {
+		width: 22px;
+		height: 22px;
+		border-radius: 50%;
+		border: 3px solid var(--border);
+		border-top-color: var(--sky);
+		animation: spin 0.9s linear infinite;
+	}
+	@keyframes spin {
+		to {
+			transform: rotate(1turn);
+		}
 	}
 	.banned {
 		flex-direction: column;

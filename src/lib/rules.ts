@@ -61,8 +61,8 @@ export function loadChoice(): Choice {
 	const s = suggested[c.preset];
 	c.hints = { ...s.hints, ...c.hints };
 	c.movement ??= s.movement;
-	c.rounds = clamp(Math.round(c.rounds), 0, MAX_ROUNDS);
-	c.timeSec = c.timeSec ? clamp(Math.round(c.timeSec), T_MIN, T_MAX) : 0;
+	c.rounds = nearest(Math.max(0, c.rounds || 0), ROUND_TILES);
+	c.timeSec = nearest(Math.max(0, c.timeSec || 0), TIME_TILES);
 	c.hints.count = clamp(Math.round(c.hints.count), 0, MAX_HINTS);
 	return c;
 }
@@ -111,37 +111,20 @@ export function choiceFrom(r: Rules, map: string): Choice {
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), hi);
 
-// ---------- the sliders ----------
+// ---------- the tiles ----------
 
-export const MAX_ROUNDS = 20;
 export const MAX_HINTS = 10;
 
-/** Rounds: 1…20, and one more step at the end for endless. */
-export const ROUNDS_END = MAX_ROUNDS + 1;
-export const roundsFromSlider = (v: number) => (v >= ROUNDS_END ? 0 : clamp(v, 1, MAX_ROUNDS));
-export const sliderFromRounds = (n: number) => (n === 0 ? ROUNDS_END : n);
+/** Rounds and round time are tiles, not sliders (P1028 2.4): 0 is endless, no limit. */
+export const ROUND_TILES = [3, 5, 10, 0];
+export const TIME_TILES = [0, 30, 60, 180];
 
-/** Time: 10 s … 10 min on a log scale (a second matters at 20 s, not at 8 min), settling on
- *  round values near the thumb; the last stretch of the track is "no limit". */
-export const T_MIN = 10;
-export const T_MAX = 600;
-export const TIME_END = 1000;
-const TIME_TOP = 940; // 600 s; past it, no limit
-const SNAPS = [15, 20, 30, 45, 60, 90, 120, 180, 300, 600];
-const SNAP_WIDTH = 16;
-
-const pos = (s: number) => (TIME_TOP * Math.log(s / T_MIN)) / Math.log(T_MAX / T_MIN);
-
-export function timeFromSlider(v: number): number {
-	if (v > TIME_TOP + 20) return 0;
-	if (v >= TIME_TOP) return T_MAX;
-	for (const s of SNAPS) if (Math.abs(v - pos(s)) <= SNAP_WIDTH) return s;
-	const raw = T_MIN * (T_MAX / T_MIN) ** (v / TIME_TOP);
-	const step = raw < 60 ? 5 : raw < 180 ? 10 : 30;
-	return clamp(Math.round(raw / step) * step, T_MIN, T_MAX);
+/** The tile nearest a value saved before the tiles (7 rounds, 0:45); 0 stays 0. */
+function nearest(v: number, tiles: number[]): number {
+	if (!v) return 0;
+	const on = tiles.filter(Boolean);
+	return on.reduce((a, b) => (Math.abs(Math.log(b / v)) < Math.abs(Math.log(a / v)) ? b : a));
 }
-
-export const sliderFromTime = (s: number) => (s === 0 ? TIME_END : Math.round(pos(s)));
 
 export const HINT_COSTS = [0, 0.1, 0.2, 0.5];
 export const HINT_KINDS: HintKind[] = ['region', 'district', 'circle'];

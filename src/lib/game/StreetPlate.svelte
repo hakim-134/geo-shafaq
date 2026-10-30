@@ -6,15 +6,17 @@
 	import type { LatLon, Schemas } from '#lib/api/client.js';
 	import { fmtDistance } from '#lib/format.js';
 	import { t, tx } from '#lib/i18n/index.svelte.js';
+	import { openPanorama, panoramaUrl } from '#lib/map/map.js';
 
 	interface Props {
 		place: Schemas['PlaceInfo'];
-		at?: LatLon; // for "open the map"
+		at?: LatLon; // the real place: "Panoramada ko‘rish ↗" opens it, as the map's badge does
+		heading?: number;
 		land?: boolean;
 		delay?: number;
 		size?: 'big' | 'small';
 	}
-	let { place, at, land = false, delay = 0, size = 'big' }: Props = $props();
+	let { place, at, heading, land = false, delay = 0, size = 'big' }: Props = $props();
 
 	const kind = $derived(place.street ? 'blue' : place.district || place.city ? 'white' : 'green');
 	const name = $derived(tx(place.street ?? place.district ?? place.city ?? place.region) || '—');
@@ -31,7 +33,6 @@
 		const s = tx(up);
 		return s && s !== name ? s : '';
 	});
-	const mapUrl = $derived(at ? `https://yandex.uz/maps/?pt=${at.lon},${at.lat}&z=17&l=map` : '');
 </script>
 
 <div class="where {size}">
@@ -42,7 +43,7 @@
 		</span>
 		<i class="bolt l" aria-hidden="true"></i><i class="bolt r" aria-hidden="true"></i>
 	</span>
-	{#if size === 'big' && (place.metro || mapUrl)}
+	{#if size === 'big' && (place.metro || at)}
 		<div class="under">
 			{#if place.metro}
 				<span class="metro"
@@ -50,8 +51,16 @@
 					<span class="km">{fmtDistance(place.metro.km)}</span></span
 				>
 			{/if}
-			{#if mapUrl}
-				<a href={mapUrl} target="_blank" rel="noopener">{t('openMap')}</a>
+			{#if at}
+				<a
+					href={panoramaUrl(at, heading)}
+					target="_blank"
+					rel="noopener"
+					onclick={(e) => {
+						e.preventDefault();
+						openPanorama(at, heading);
+					}}>{t('seePanorama')}</a
+				>
 			{/if}
 		</div>
 	{/if}
@@ -161,6 +170,14 @@
 		gap: 8px 14px;
 		font-size: 14px;
 	}
+	.under a {
+		font-weight: 600;
+		color: var(--sky-ink);
+		text-decoration: none;
+	}
+	:global(:root[data-theme='dark']) .under a {
+		color: var(--sky);
+	}
 	.metro {
 		display: inline-flex;
 		align-items: center;
@@ -182,17 +199,6 @@
 	.metro .km {
 		font-weight: 500;
 		color: var(--muted);
-	}
-	a {
-		font-weight: 600;
-		color: var(--sky-ink);
-		text-decoration: none;
-	}
-	:global(:root[data-theme='dark']) a {
-		color: var(--sky);
-	}
-	a:hover {
-		text-decoration: underline;
 	}
 	/* on a phone a long name gets smaller to stay on one line, as on a real plate: a second line
 	   would push a room's table under its buttons ("Yangi O‘zbekiston ko‘chasi": 17 px) */

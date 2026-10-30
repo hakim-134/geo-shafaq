@@ -24,6 +24,7 @@
 		late?: boolean;
 		place: Schemas['PlaceInfo'];
 		actual: LatLon;
+		heading?: number; // the round's first heading: the plate's panorama link faces it
 		go: boolean;
 		children?: Snippet;
 	}
@@ -39,6 +40,7 @@
 		late = false,
 		place,
 		actual,
+		heading,
 		go,
 		children
 	}: Props = $props();
@@ -81,7 +83,7 @@
 	</p>
 
 	<div class="where">
-		<StreetPlate {place} at={actual} land={go} delay={450} />
+		<StreetPlate {place} at={actual} {heading} land={go} delay={450} />
 	</div>
 
 	{@render children?.()}

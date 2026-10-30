@@ -1,13 +1,14 @@
 <script lang="ts">
 	// The Tashkent streets the player has been on, each as its own street plate: learned ones
 	// (guessed within 500 m) with a green tick, the others with the closest guess so far. What
-	// the game is for, in one list.
+	// the game is for, in one list. Each street's 🏁 badge opens its panorama on Yandex Maps.
 	import SubPage from '#lib/components/SubPage.svelte';
 	import StreetPlate from '#lib/game/StreetPlate.svelte';
 	import { api, call, type Schemas } from '#lib/api/client.js';
 	import { ensureSession, session } from '#lib/session.svelte.js';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import { fmtDistance, fmtNum } from '#lib/format.js';
+	import { flagSvg, openPanorama, panoramaUrl } from '#lib/map/map.js';
 
 	type Filter = 'all' | 'learned' | 'not';
 	let data = $state<Schemas['MyStreets'] | null>(null);
@@ -67,21 +68,40 @@
 			<ul>
 				{#each shown as s, i (i)}
 					<li>
-						<span class="plate"
-							><StreetPlate place={{ street: s.name, district: s.place }} size="small" /></span
+						<!-- the whole row is the street's panorama on Yandex Maps, its 🏁 badge first -->
+						<svelte:element
+							this={s.at ? 'a' : 'div'}
+							class="row"
+							href={s.at ? panoramaUrl(s.at, s.heading) : undefined}
+							target={s.at ? '_blank' : undefined}
+							rel={s.at ? 'noopener' : undefined}
+							title={s.at ? t('seePanorama') : undefined}
+							role={s.at ? 'link' : 'presentation'}
+							onclick={(e: MouseEvent) => {
+								if (!s.at) return;
+								e.preventDefault();
+								openPanorama(s.at, s.heading);
+							}}
 						>
-						<span class="how">
-							{#if s.learned}
-								<span class="tick" title={t('learnedLabel')}>
-									<svg viewBox="0 0 24 24" class="icon"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
-								</span>
-							{:else if s.bestKm != null}
-								<b>{fmtDistance(s.bestKm)}</b>
-							{:else}
-								<b>—</b>
+							{#if s.at}
+								<span class="pano"><img src={flagSvg()} alt="" width="34" height="40" /></span>
 							{/if}
-							<span>{t('nRounds', { n: s.rounds })}</span>
-						</span>
+							<span class="plate"
+								><StreetPlate place={{ street: s.name, district: s.place }} size="small" /></span
+							>
+							<span class="how">
+								{#if s.learned}
+									<span class="tick" title={t('learnedLabel')}>
+										<svg viewBox="0 0 24 24" class="icon"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
+									</span>
+								{:else if s.bestKm != null}
+									<b>{fmtDistance(s.bestKm)}</b>
+								{:else}
+									<b>—</b>
+								{/if}
+								<span>{t('nRounds', { n: s.rounds })}</span>
+							</span>
+						</svelte:element>
 					</li>
 				{/each}
 			</ul>
@@ -164,11 +184,26 @@
 		list-style: none;
 	}
 	li {
+		border-bottom: 1px solid var(--border);
+	}
+	.row {
 		display: flex;
 		align-items: center;
 		gap: 12px;
 		padding: 10px 0;
-		border-bottom: 1px solid var(--border);
+		color: inherit;
+		text-decoration: none;
+		transition: transform 0.12s;
+	}
+	a.row:active {
+		transform: scale(0.98);
+	}
+	.pano {
+		flex: none;
+		display: grid;
+		place-items: center;
+		width: 40px;
+		height: 44px;
 	}
 	.plate {
 		flex: 1;

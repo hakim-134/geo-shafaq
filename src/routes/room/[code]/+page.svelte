@@ -290,6 +290,7 @@
 		last
 			? last.scores.map((s) => ({
 					actual: last.actual,
+					heading: last.heading,
 					guess: s.guess,
 					guessColor: colorOf(s.player),
 					guessLabel: nameOf(s.player)?.avatar
@@ -317,6 +318,7 @@
 					.filter((s) => finalPick !== null || s.player === st?.you)
 					.map((s) => ({
 						actual: r.actual,
+						heading: r.heading,
 						label: String(r.n),
 						guess: s.guess,
 						guessColor: colorOf(s.player),
@@ -751,7 +753,7 @@
 		{/if}
 
 		{#if st.phase === 'result' && last}
-			<ResultLayout legend={false}>
+			<ResultLayout legend="actual">
 				{#snippet map()}
 					<ResultMap
 						bbox={st.map.bbox as BBox}
@@ -772,6 +774,7 @@
 					guessed={!!myLast?.guess}
 					place={last.place}
 					actual={last.actual}
+					heading={last.heading}
 					go={landed}
 				>
 					<ol class="table">
@@ -856,7 +859,6 @@
 									aria-pressed={finalPick === i}
 									onclick={() => (finalPick = finalPick === i ? null : i)}
 								>
-									<span class="stop-n">{r.n}</span>
 									<StreetPlate place={r.place} size="small" />
 								</button>
 							{/each}
@@ -1466,17 +1468,6 @@
 	.rounds button[aria-pressed='true'],
 	.rounds button:hover {
 		background: color-mix(in srgb, var(--sky) 12%, transparent);
-	}
-	.stop-n {
-		width: 24px;
-		height: 24px;
-		border-radius: 50%;
-		background: var(--surface-2);
-		font-weight: 700;
-		font-size: 12.5px;
-		display: grid;
-		place-items: center;
-		flex: none;
 	}
 	.game :global(.players-chip > .icon) {
 		width: 20px;
