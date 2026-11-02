@@ -4,15 +4,18 @@
 	// settings, ways to sign in, name and picture.
 	import TopBar from '#lib/components/TopBar.svelte';
 	import MenuRow from '#lib/components/MenuRow.svelte';
-	import MapSign from '#lib/maps/MapSign.svelte';
-	import { api, call, type Profile } from '#lib/api/client.js';
+	import CityMap from '#lib/maps/CityMap.svelte';
+	import DistrictSheet from '#lib/maps/DistrictSheet.svelte';
+	import { api, call, type Profile, type Schemas } from '#lib/api/client.js';
 	import { ensureSession, session } from '#lib/session.svelte.js';
 	import { openSignIn } from '#lib/account.svelte.js';
 	import { i18n, t } from '#lib/i18n/index.svelte.js';
 	import { fmtMonth, fmtNum } from '#lib/format.js';
+	import { fitWords } from '#lib/fit.js';
 
 	let profile = $state<Profile | null>(null);
 	let failed = $state(false);
+	let district = $state<Schemas['PlaceCard'] | null>(null); // tapped on the map
 
 	$effect(() => {
 		void session.version;
@@ -36,7 +39,6 @@
 		ids.length ? ids.map((i) => providerName[i.provider]).join(', ') : t('notLinked')
 	);
 	const streets = $derived(profile?.streets);
-	const pct = (n: number) => `${(n / Math.max(streets?.total ?? 1, 1)) * 100}%`;
 </script>
 
 <svelte:head><title>{me?.user.name ?? t('profile')} — Shafaq Geo</title></svelte:head>
@@ -48,7 +50,7 @@
 		<section class="who">
 			<a class="avatar big" href="/me/edit" aria-label={t('editNameAvatar')}>{me.user.avatar}</a>
 			<div class="who-text">
-				<h1>{me.user.name}</h1>
+				<h1 use:fitWords={me.user.name}>{me.user.name}</h1>
 				<p>
 					{#if me.user.guest}<span class="badge">{t('guestBadge')}</span>{/if}
 					<span>{t('joined', { date: fmtMonth(profile.user.joinedAt, i18n.lang) })}</span>
@@ -60,23 +62,10 @@
 			</a>
 		</section>
 
-		{#if streets && streets.total > 0}
-			<a class="streets" href="/me/streets">
-				<MapSign slug="tashkent-streets" name={t('streetsTitle')} size="small" />
-				<p class="learned">
-					<b>{fmtNum(streets.learned)}</b>
-					<span>{t('streetsLearnedMe', { n: streets.learned })}</span>
-				</p>
-				<div class="bar" aria-hidden="true">
-					<i class="seen" style:width={pct(streets.seen)}></i>
-					<i class="got" style:width={pct(streets.learned)}></i>
-				</div>
-				<p class="line">
-					{t('streetsLine', { seen: streets.seen, total: streets.total })}
-					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
-				</p>
-			</a>
-		{/if}
+		<!-- the big picture: the player's own Tashkent; a tap on a district shows its streets -->
+		<section class="my-map">
+			<CityMap glow={profile.stats.games === 0} onpick={(c) => (district = c)} />
+		</section>
 
 		<section class="numbers">
 			<div><b>{fmtNum(profile.stats.games)}</b><span>{t('games')}</span></div>
@@ -98,7 +87,7 @@
 			<MenuRow
 				href="/me/streets"
 				label={t('myStreets')}
-				fact={streets ? `${fmtNum(streets.learned)} / ${fmtNum(streets.total)}` : ''}
+				fact={streets?.learned ? `${fmtNum(streets.learned)} / ${fmtNum(streets.total)}` : ''}
 				color="var(--green)"
 			>
 				{#snippet icon()}<svg viewBox="0 0 24 24"
@@ -157,6 +146,8 @@
 	{/if}
 </main>
 
+<DistrictSheet place={district} onclose={() => (district = null)} />
+
 <style>
 	.me {
 		max-width: 640px;
@@ -199,7 +190,6 @@
 		font-size: 26px;
 		line-height: 1.1;
 		letter-spacing: -0.02em;
-		overflow-wrap: anywhere;
 	}
 	.who-text p {
 		margin-top: 6px;
@@ -219,74 +209,16 @@
 		color: var(--text);
 	}
 
-	/* the streets learned: the big number of this page */
-	.streets {
-		display: block;
-		padding: 18px 20px;
+	/* the big picture: my map (its empty caption takes no room under it) */
+	.my-map :global(.caption:not(:has(b))) {
+		display: none;
+	}
+	.my-map {
+		padding: 18px 20px 14px;
 		border-radius: 22px;
 		background: var(--surface);
 		border: 1px solid var(--border);
 		box-shadow: 0 4px 0 var(--edge);
-		text-decoration: none;
-		color: var(--text);
-		transition: transform 0.1s;
-	}
-	.streets:active {
-		transform: translateY(2px);
-	}
-	.learned {
-		margin-top: 12px;
-		display: flex;
-		align-items: baseline;
-		gap: 10px;
-		flex-wrap: wrap;
-	}
-	.learned b {
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 52px;
-		line-height: 1;
-		color: var(--green-ink);
-	}
-	:global(:root[data-theme='dark']) .learned b {
-		color: var(--green);
-	}
-	.learned span {
-		font-weight: 600;
-		font-size: 16px;
-	}
-	.bar {
-		position: relative;
-		margin-top: 14px;
-		height: 12px;
-		border-radius: 6px;
-		background: var(--surface-2);
-		overflow: hidden;
-	}
-	.bar i {
-		position: absolute;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		border-radius: inherit;
-	}
-	.bar .seen {
-		background: color-mix(in srgb, var(--gold) 45%, transparent);
-	}
-	.bar .got {
-		background: var(--green);
-	}
-	.line {
-		margin-top: 10px;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		font-size: 14px;
-		color: var(--muted);
-	}
-	.line .icon {
-		width: 18px;
-		height: 18px;
 	}
 
 	.numbers {
@@ -347,8 +279,12 @@
 		.me {
 			padding: 8px 16px 48px;
 		}
-		.learned b {
-			font-size: 44px;
+		/* the map from edge to edge of the card, its names as big as a phone allows */
+		.my-map {
+			padding: 14px 0 6px;
+		}
+		.my-map :global(.head) {
+			padding: 0 16px;
 		}
 	}
 </style>

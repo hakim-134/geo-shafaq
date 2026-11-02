@@ -1,11 +1,11 @@
-// How much gold a place gets on a map of places: the share of its streets seen tints it,
-// learned ones fill it; solid only when every street there is learned (one game of five
-// streets is a faint tint). Used as `--known` in a color-mix with the paper.
+// How much of the stars' gold a place gets on a map of places: a first street seen shows, and it
+// deepens with every street seen and learned; solid only when every street there is learned. Used
+// as `--known` in a color-mix with the paper. A map should say at a glance what the player knows.
 import type { Schemas } from '#lib/api/client.js';
 
 export function knownTint(p: Schemas['Progress']): string {
 	if (!p.total || !p.seen) return '0%';
-	return `${Math.round(24 + (56 * (0.35 * p.seen + 0.65 * p.learned)) / p.total)}%`;
+	return `${Math.round(22 + (78 * (p.seen + p.learned)) / (2 * p.total))}%`;
 }
 
 /** A place with fewer panoramas than the longest game: it plays, and its name in italics says

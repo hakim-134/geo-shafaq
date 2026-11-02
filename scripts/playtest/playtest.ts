@@ -5,11 +5,12 @@
 //   npm run playtest -- --views phone-light --only solo
 //   npm run playtest -- --url http://10.42.0.1:8130 --out /tmp/pt
 //
-// Journeys: solo (first visit → a game with a hint → the end → home again → share), room (a
+// Journeys: solo (first visit → a game with a hint → the end → home again → share → my map), room (a
 // host and two friends, each in their own browser, play a room on "O‘rta" to its end: one
 // friend comes by the link, the other types the code after "Kodim bor"; the first takes a
 // hint; the rounds go on by the ring, "Hozir", and a hold; the host's "Yana o‘ynash" takes
-// everyone into the next game), places (the map of Uzbekistan → Tashkent → Chilonzor picked → a game there).
+// everyone into the next game), places (the map of Uzbekistan → Tashkent → Chilonzor picked → a game
+// there), challenge (a finished game's link → two friends as guests play it → one leaderboard).
 //
 // Chrome runs headless with --disable-gpu (local.md §3) and a throwaway profile deleted at the
 // end, so the demo switch never reaches the owner's own Chrome. Screenshots, steps.json (the
@@ -30,7 +31,7 @@ const { values: args } = parseArgs({
 		url: { type: 'string', default: 'http://localhost:8130' },
 		out: { type: 'string', default: 'scripts/playtest/out' },
 		views: { type: 'string', default: 'phone-light,phone-dark,laptop,laptop-dark' },
-		only: { type: 'string', default: 'solo,room,places' },
+		only: { type: 'string', default: 'solo,room,places,challenge' },
 		chrome: { type: 'string', default: process.env.CHROME ?? '/usr/bin/google-chrome' }
 	}
 });
@@ -308,7 +309,7 @@ async function solo(browser: Browser, view: View, dir: string) {
 	await sleep(800);
 	await p.shot(J, 'end-scrolled');
 
-	const share = await p.findText(/ulash/i, 3000).catch(() => null);
+	const share = await p.findText(/Do‘stni chaqirish/, 3000).catch(() => null);
 	if (share) {
 		await p.tap(share);
 		await sleep(1200);
@@ -319,6 +320,16 @@ async function solo(browser: Browser, view: View, dir: string) {
 	await p.go('/');
 	await sleep(1500);
 	await p.shot(J, 'home-coming-back', 'the next visit, after one game');
+
+	// my map: the profile's big picture; a tap on a district shows its streets
+	await p.tap(await p.find('a[href="/me"]'));
+	await p.find('figure.city path.shape');
+	await sleep(1200);
+	await p.page.evaluate(() => scrollTo(0, 0));
+	await p.shot(J, 'my-map', 'the profile: the districts played are gold');
+	await p.tap(await p.find('figure.city path.shape[aria-label="Chilonzor tumani"]'));
+	await sleep(1000);
+	await p.shot(J, 'my-map-district', 'a tap on Chilonzor: its streets, and play there');
 	await p.page.close();
 }
 
@@ -517,6 +528,21 @@ async function room(browser: Browser, view: View, dir: string) {
 		}
 		if (n > 12) throw new Error('the room does not end');
 	}
+	// "Do‘stni chaqirish" from the room's end: its link's board has everyone who played here
+	await friend.tap(await friend.findText(/Do‘stni chaqirish/));
+	await sleep(1500);
+	await friend.shot(J, 'challenge', "a room's end: the link for friends who weren't here");
+	const link = await friend.page.$eval('input.link', (i) => (i as HTMLInputElement).value);
+	await friend.page.keyboard.press('Escape');
+	const board = await friend.page.evaluate(async (path: string) => {
+		const api = `${location.protocol}//${location.hostname}:8131`;
+		const r = await fetch(`${api}/v1/challenges/${path.split('/c/')[1]}`, {
+			credentials: 'include'
+		});
+		return ((await r.json()) as { players: number }).players;
+	}, new URL(link).pathname);
+	if (board !== 3) problems.push(`${view.name} room: ${board} on the challenge's board, want 3`);
+
 	// one tap of the host's takes everyone into the next game
 	await host.tap(await host.find('.again:not([disabled])'));
 	await Promise.all(all.map((p) => p.roundReady()));
@@ -524,7 +550,109 @@ async function room(browser: Browser, view: View, dir: string) {
 	for (const p of all) await p.page.close();
 }
 
-const JOURNEYS = { solo, room, places } as const;
+// A challenge: the first player's finished game → "Do‘stni chaqirish" → the link. Two friends,
+// guests in their own browsers, open it, play the same streets and land on one leaderboard; the
+// second one's result has the crowd's ring from the challenge's players.
+async function challenge(browser: Browser, view: View, dir: string) {
+	const J = 'challenge';
+	const QUICK = JSON.stringify({
+		...ROOM_CHOICE,
+		preset: 'easy',
+		hints: { count: 0, per: 'round', kind: 'district', cost: 0 }
+	});
+	const host = new Player(view, 'host', dir);
+	const friend = new Player(view, 'friend', dir);
+	const friend2 = new Player(view, 'friend2', dir);
+	await host.open(browser, { sg_choice: QUICK, sg_coach_done: '1' });
+	await friend.open(browser, { sg_coach_done: '1' });
+	await friend2.open(browser, { sg_coach_done: '1' });
+
+	async function play(p: Player, n: number, off: number, ring = false) {
+		for (let i = 1; i <= n; i++) {
+			await p.roundReady();
+			await p.guess(i * 20 + off, -i * 15 + off);
+			await p.find('.next', 20000);
+			await sleep(3500);
+			if (ring) {
+				const [label, line] = await p.page.evaluate(() => [
+					document.querySelector('.sg-crowd-label')?.textContent ?? '',
+					document.querySelector('.reveal .crowd')?.textContent?.trim() ?? ''
+				]);
+				if (!label || !line)
+					problems.push(`${view.name} ${p.who} round ${i}: crowd ring "${label}", line "${line}"`);
+			}
+			if (i === 1) {
+				await p.shot(J, 'result-1');
+				if (p === friend2 && !(await p.has('.learned-line')))
+					problems.push(`${view.name} friend2: a guess on the spot, no "Ko‘cha o‘rganildi"`);
+			}
+			await p.tap(await p.find('.next'));
+		}
+		await p.find('.final', 15000);
+		await sleep(2500);
+	}
+
+	host.begin();
+	await host.go('/');
+	await sleep(1500);
+	await host.tap(await host.find('.go .play'));
+	await play(host, 3, 0);
+	await host.shot(J, 'end', 'the end of a game: the way to challenge a friend');
+	await host.page.evaluate(() => {
+		for (const el of document.querySelectorAll<HTMLElement>('.result, .body'))
+			if (el.scrollHeight > el.clientHeight) el.scrollTop = el.scrollHeight;
+	});
+	await host.tap(await host.findText(/Do‘stni chaqirish/));
+	await sleep(1200);
+	await host.shot(J, 'share', 'the link to send');
+	const link = await host.page.$eval('input.link', (i) => (i as HTMLInputElement).value);
+	const path = new URL(link).pathname;
+
+	// the second friend's first guess lands on the host's real place (a finished game shows it):
+	// within 500 m, the street is learned; the only way a test can know where a street is
+	const gameId = new URL(host.page.url()).pathname.split('/').pop();
+	const actual = await host.page.evaluate(async (id) => {
+		const r = await fetch(`${location.protocol}//${location.hostname}:8131/v1/games/${id}`, {
+			credentials: 'include'
+		});
+		return ((await r.json()) as { rounds: { result: { actual: unknown } }[] }).rounds[0].result
+			.actual;
+	}, gameId);
+	await friend2.page.setRequestInterception(true);
+	friend2.page.on('request', (r) =>
+		r.method() === 'POST' && r.url().endsWith('/rounds/1/guess')
+			? r.continue({ postData: JSON.stringify({ pos: actual }) })
+			: r.continue()
+	);
+
+	for (const [p, ring] of [
+		[friend, true],
+		[friend2, true]
+	] as const) {
+		p.begin();
+		await p.go(path);
+		await sleep(1800);
+		await p.shot(J, 'landing', "a friend opens the challenge's link: taps");
+		await p.tap(await p.find('.go:not([disabled])'));
+		await play(p, 3, p === friend ? 30 : -40, ring);
+		await p.shot(J, 'end', 'the end of the challenge: the place on the board');
+		await p.go(path);
+		await sleep(1500);
+		await p.shot(J, 'after', 'the link again: the board');
+		const rows = await p.page.$$eval('.board li', (l) => l.length);
+		const want = p === friend ? 2 : 3;
+		if (rows !== want) problems.push(`${view.name} ${p.who}: ${rows} on the board, want ${want}`);
+		await p.go('/');
+		await sleep(1500);
+		const counts = await p.page.$eval('.meta', (m) => (m as HTMLElement).innerText);
+		const wantCount = p === friend2 ? /1 \/ \d+/ : /^(?!.*0 \/)/s;
+		if (!wantCount.test(counts)) problems.push(`${view.name} ${p.who}: the home says "${counts}"`);
+		await p.shot(J, 'home', p === friend2 ? 'one street learned' : 'none learned: no 0 / 177');
+	}
+	for (const p of [host, friend, friend2]) await p.page.close();
+}
+
+const JOURNEYS = { solo, room, places, challenge } as const;
 
 // Every journey makes new guests, and the API allows 30 an hour per address: a full run makes
 // more. On this laptop the limit is cleared first (Redis database 1, local.md §3).

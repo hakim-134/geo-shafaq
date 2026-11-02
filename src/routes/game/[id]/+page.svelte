@@ -10,7 +10,8 @@
 		type Hint,
 		type LatLon,
 		type Round,
-		type RoundResult
+		type RoundResult,
+		type Schemas
 	} from '#lib/api/client.js';
 	import { PanoError } from '#lib/pano/index.js';
 	import RoundView, { type Status } from '#lib/game/RoundView.svelte';
@@ -31,7 +32,8 @@
 	import { fmtDistance, fmtNum, nameHasAvatar, starsFor } from '#lib/format.js';
 	import { showToast } from '#lib/toast.svelte.js';
 	import { yandexKey } from '#lib/config.js';
-	import { gameShare, nativeShare, type Share } from '#lib/game/share.js';
+	import { challengeCode, challengeShare, nativeShare, type Share } from '#lib/game/share.js';
+	import ChallengeBoard from '#lib/game/ChallengeBoard.svelte';
 	import ShareSheet from '#lib/components/ShareSheet.svelte';
 
 	type Phase = 'loading' | 'opening' | 'playing' | 'sending' | 'result' | 'final' | 'error';
@@ -111,6 +113,7 @@
 		guess = null;
 		hints = [];
 		finalPick = null;
+		board = null;
 	}
 
 	async function nextRound() {
@@ -316,13 +319,33 @@
 		}
 	}
 
-	// a link to the game on the site; the phone's share sheet, or our own
+	// the same streets for a friend: a challenge's link; the phone's share sheet, or our own
 	let sharing = $state<Share | null>(null);
+	let inviting = $state(false);
 	async function share() {
-		if (!game) return;
-		const s = gameShare(game);
-		if (!(await nativeShare(s))) sharing = s;
+		if (!game || inviting) return;
+		inviting = true;
+		try {
+			const s = challengeShare(game, await challengeCode(game.id));
+			if (!(await nativeShare(s))) sharing = s;
+		} catch (e) {
+			showToast(t(errorKey(e)));
+		}
+		inviting = false;
 	}
+
+	// a game of a challenge ends on its leaderboard
+	let board = $state<Schemas['Challenge'] | null>(null);
+	$effect(() => {
+		const code = game?.challenge;
+		if (phase !== 'final' || !code) return;
+		call(api().GET('/v1/challenges/{code}', { params: { path: { code } } }))
+			.then((c) => (board = c))
+			.catch(() => {
+				/* the game's own numbers stand without it */
+			});
+	});
+	const boardPlace = $derived(mine ? board?.you?.place : undefined);
 
 	// ---------- errors ----------
 	function errorKey(e: unknown): Key {
@@ -445,13 +468,15 @@
 				<div class="final-head">
 					<MapSign slug={game.map.slug} name={tx(game.map.name)} size="small" />
 					<h1 class:best={newBest}>
-						{newBest
-							? gamesBefore
-								? t('newBest')
-								: t('firstGame')
-							: mine
-								? t('gameOver')
-								: t('playerGame', { name: game.player.name })}
+						{boardPlace && (board?.players ?? 0) > 1
+							? t('yourPlace', { n: boardPlace })
+							: newBest
+								? gamesBefore
+									? t('newBest')
+									: t('firstGame')
+								: mine
+									? t('gameOver')
+									: t('playerGame', { name: game.player.name })}
 					</h1>
 					{#if !mine}
 						<a class="player" href={`/u/${game.player.id}`}>
@@ -473,6 +498,10 @@
 						</div>
 					{/if}
 				</div>
+
+				{#if board && board.players > 1}
+					<ChallengeBoard board={board.board} players={board.players} open />
+				{/if}
 
 				{#if done.length}
 					<div class="trip">
@@ -532,22 +561,6 @@
 						</button>
 					</div>
 				{/if}
-				<!-- after the last street: sharing, quiet, and the way home -->
-				<div class="after">
-					<button class="btn btn-ghost" onclick={share}>
-						<svg viewBox="0 0 24 24"
-							><path
-								d="M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5"
-							/></svg
-						>
-						{t('shareResults')}
-					</button>
-					<a class="btn btn-ghost home-btn" href="/" aria-label={t('home')} title={t('home')}
-						><svg viewBox="0 0 24 24"
-							><path d="M3.5 11 12 4l8.5 7M6 9.5V20h12V9.5M10 20v-5h4v5" /></svg
-						></a
-					>
-				</div>
 			</div>
 			{#snippet actions()}
 				<button class="btn btn-primary" onclick={() => playAgain()}>
@@ -556,13 +569,31 @@
 					>
 					{mine ? t('playAgain') : t('playThisMap')}
 				</button>
+				<!-- always in sight: the same streets for a friend, quiet, and the way home -->
+				<div class="row">
+					{#if mine && done.length}
+						<button class="btn btn-ghost" disabled={inviting} onclick={share}>
+							<svg viewBox="0 0 24 24"
+								><path
+									d="M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5"
+								/></svg
+							>
+							{t('challengeFriend')}
+						</button>
+					{/if}
+					<a class="btn btn-ghost home-btn" href="/" aria-label={t('home')} title={t('home')}
+						><svg viewBox="0 0 24 24"
+							><path d="M3.5 11 12 4l8.5 7M6 9.5V20h12V9.5M10 20v-5h4v5" /></svg
+						></a
+					>
+				</div>
 			{/snippet}
 		</ResultLayout>
 		{#if newBest}<Confetti />{/if}
 	{/if}
 </div>
 
-<ShareSheet share={sharing} onclose={() => (sharing = null)} />
+<ShareSheet share={sharing} title={t('challengeFriend')} onclose={() => (sharing = null)} />
 
 <style>
 	.game {
@@ -696,20 +727,11 @@
 		font-variant-numeric: tabular-nums;
 	}
 
-	/* after the last street: "Natijani ulashish" and the way home, a house as wide as it is tall */
-	.after {
-		display: flex;
-		gap: 10px;
-	}
-	.after .btn {
-		flex: 1;
-		min-width: 0;
-		padding: 0 14px;
-	}
-	.after .home-btn {
-		flex: none;
-		width: 56px;
-		padding: 0;
+	/* the house as wide as it is tall (ResultLayout stretches the row's buttons) */
+	.home-btn {
+		flex: none !important;
+		width: 56px !important;
+		padding: 0 !important;
 	}
 
 	/* a room game: everyone's total */

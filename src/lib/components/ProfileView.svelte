@@ -2,6 +2,7 @@
 	// Another player's page, kept short: who, the streets of Tashkent learned (why the game
 	// exists), three numbers, the last games. `action` goes next to the name, `children` at
 	// the end. The player's own page is a menu of its own (routes/me).
+	import { fitWords } from '#lib/fit.js';
 	import type { Snippet } from 'svelte';
 	import type { Profile } from '#lib/api/client.js';
 	import MapSign from '#lib/maps/MapSign.svelte';
@@ -25,7 +26,7 @@
 <section class="who">
 	<span class="avatar big">{u.avatar}</span>
 	<div class="who-text">
-		<h1>{u.name}</h1>
+		<h1 use:fitWords={u.name}>{u.name}</h1>
 		<p>
 			{#if u.guest}<span class="badge">{t('guestBadge')}</span>{/if}
 			{#if u.banned}<span class="badge red">{t('bannedBadge')}</span>{/if}
@@ -106,7 +107,6 @@
 		font-size: 28px;
 		line-height: 1.1;
 		letter-spacing: -0.02em;
-		overflow-wrap: anywhere;
 	}
 	.who-text p {
 		margin-top: 6px;

@@ -569,6 +569,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/games/{gameId}/challenge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The link to challenge friends on a finished game's streets. The same game gives the same link. */
+        post: operations["createChallenge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/challenges/{code}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A challenge and its leaderboard, with the caller's own game when there is one. */
+        get: operations["getChallenge"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/challenges/{code}/play": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The player's game of a challenge. One each - a second call gives the same game. */
+        post: operations["playChallenge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/challenges/{code}/card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The page Telegram and other link previews read - its title, text and picture. */
+        get: operations["getChallengeCard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/challenges/{code}/card.png": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The picture of a link preview, 1200×630. */
+        get: operations["getChallengeCardImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/rooms": {
         parameters: {
             query?: never;
@@ -1375,6 +1460,37 @@ export interface components {
         };
         /** @enum {string} */
         GameStatus: "playing" | "finished" | "abandoned";
+        Challenge: {
+            code: string;
+            map: components["schemas"]["MapSummary"];
+            rules: components["schemas"]["Rules"];
+            rounds: number;
+            /** @description Who sent it. */
+            by: components["schemas"]["PublicUser"];
+            /** @description Everyone who finished it. */
+            players: number;
+            /** @description The leaderboard's top, best first, and the caller's row wherever it stands. */
+            board: components["schemas"]["ChallengeRow"][];
+            you?: components["schemas"]["ChallengeYou"];
+        };
+        ChallengeRow: {
+            /** @description Equal scores share a place. */
+            place: number;
+            player: components["schemas"]["PublicUser"];
+            total: number;
+            /** Format: uuid */
+            game: string;
+            /** @description Hints taken */
+            hints?: number;
+        };
+        ChallengeYou: {
+            /** Format: uuid */
+            game: string;
+            status: components["schemas"]["GameStatus"];
+            total: number;
+            /** @description Once finished. */
+            place?: number;
+        };
         Game: {
             /** Format: uuid */
             id: string;
@@ -1393,6 +1509,8 @@ export interface components {
             /** @description Every round so far; the last one may still be running. */
             rounds: components["schemas"]["Round"][];
             room?: components["schemas"]["RoomTable"];
+            /** @description The code of the challenge this game is part of. */
+            challenge?: string;
         };
         GamePage: {
             games: components["schemas"]["GameListItem"][];
@@ -1560,6 +1678,7 @@ export interface components {
         GameId: string;
         UserId: string;
         RoundN: number;
+        ChallengeCode: string;
         RoomCode: string;
     };
     requestBodies: never;
@@ -1687,7 +1806,10 @@ export interface operations {
     };
     listMyStreets: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Only the rounds inside this place (a tumani's streets on "my map"). */
+                place?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -2372,6 +2494,128 @@ export interface operations {
             400: components["responses"]["Error"];
             404: components["responses"]["Error"];
             409: components["responses"]["Error"];
+        };
+    };
+    createChallenge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gameId: components["parameters"]["GameId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The challenge */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Challenge"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    getChallenge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["ChallengeCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The challenge */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Challenge"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    playChallenge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["ChallengeCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The game */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Game"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    getChallengeCard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["ChallengeCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A small HTML page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    getChallengeCardImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                code: components["parameters"]["ChallengeCode"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A PNG */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                };
+            };
+            404: components["responses"]["Error"];
         };
     };
     createRoom: {

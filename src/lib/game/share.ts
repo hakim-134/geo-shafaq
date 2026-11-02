@@ -1,9 +1,8 @@
-// Sharing a finished game: a link to it on the game's site, with a few words and a row of
-// coloured squares (one per round). Phones with a share sheet get it there (Telegram,
-// anything); everywhere else the page opens its own small sheet: the link to copy, and
-// Telegram.
-import type { Game } from '#lib/api/client.js';
-import { siteUrl } from '#lib/config.js';
+// "Challenge a friend" from a finished game: a challenge's link (the same streets for whoever
+// opens it), with a few words and a row of coloured squares (one per round). Phones with a share
+// sheet get it there (Telegram, anything); everywhere else the page opens its own small sheet: the
+// link to copy, and Telegram.
+import { api, call, ApiError, type Game } from '#lib/api/client.js';
 import { fmtNum } from '#lib/format.js';
 import { t, tx } from '#lib/i18n/index.svelte.js';
 
@@ -14,13 +13,30 @@ export interface Share {
 	text: string;
 }
 
-export function gameShare(game: Game): Share {
+/** A challenge's address, on whatever address the game was opened (the site; a laptop's LAN). */
+export const challengeUrl = (code: string) => `${location.origin}/c/${code}`;
+
+/** The link to a finished game's streets; the same game gives the same one. A room's last round
+ * may still be on its way to the database: it asks once more a moment later. */
+export async function challengeCode(gameId: string): Promise<string> {
+	const make = () =>
+		call(api().POST('/v1/games/{gameId}/challenge', { params: { path: { gameId } } }));
+	try {
+		return (await make()).code;
+	} catch (e) {
+		if (!(e instanceof ApiError && e.code === 'wrong_phase')) throw e;
+		await new Promise((r) => setTimeout(r, 1200));
+		return (await make()).code;
+	}
+}
+
+export function challengeShare(game: Game, code: string): Share {
 	const squares = game.rounds
 		.filter((r) => r.result)
 		.map((r) => square(r.result!.score))
 		.join('');
 	return {
-		url: siteUrl(`/game/${game.id}`),
+		url: challengeUrl(code),
 		text: [t('shareText', { map: tx(game.map.name), score: fmtNum(game.total) }), squares]
 			.filter(Boolean)
 			.join('\n')

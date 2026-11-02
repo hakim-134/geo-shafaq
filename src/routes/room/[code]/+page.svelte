@@ -36,9 +36,14 @@
 	import { extras } from '#lib/game/summary.js';
 	import RulesFacts from '#lib/game/RulesFacts.svelte';
 	import ShareSheet from '#lib/components/ShareSheet.svelte';
-	import { copyText, nativeShare, type Share } from '#lib/game/share.js';
+	import {
+		challengeCode,
+		challengeUrl,
+		copyText,
+		nativeShare,
+		type Share
+	} from '#lib/game/share.js';
 	import { sfxJoin, unlockAudio, vibrate } from '#lib/sfx.svelte.js';
-	import { siteUrl } from '#lib/config.js';
 	import { playerColor } from '#lib/game/colors.js';
 	import { choiceFrom, rulesFor, testProviders, type Choice } from '#lib/rules.js';
 	import { PanoError } from '#lib/pano/index.js';
@@ -502,16 +507,26 @@
 	// the end: the next step, or the rest under ⋯
 	let moreOpen = $state(false);
 
-	// after a game: my game's page on the site, with everyone's table on it
+	// after a game: a challenge's link to its streets, with everyone here on its leaderboard
+	let inviting = $state(false);
 	async function shareResults() {
-		if (!st?.yourGame) return;
+		if (!st?.yourGame || inviting) return;
+		inviting = true;
+		let url = '';
+		try {
+			url = challengeUrl(await challengeCode(st.yourGame));
+		} catch (e) {
+			showToast(t(errorKey(e)));
+		}
+		inviting = false;
+		if (!url) return;
 		const place = standings.findIndex((p) => p.id === st?.you) + 1;
 		const squares = st.results
 			.map((r) => r.scores.find((x) => x.player === st?.you)?.score ?? 0)
 			.map((sc) => ['🟥', '🟥', '🟨', '🟩'][starsFor(sc)])
 			.join('');
 		const share = {
-			url: siteUrl(`/game/${st.yourGame}`),
+			url,
 			text: [
 				t('shareRoomText', {
 					map: tx(st.map.name),
@@ -522,7 +537,7 @@
 				squares
 			].join('\n')
 		};
-		if (!(await nativeShare(share))) sharing = { share, title: t('shareTitle') };
+		if (!(await nativeShare(share))) sharing = { share, title: t('challengeFriend') };
 	}
 
 	function errorKey(e: unknown): Key {
@@ -890,13 +905,13 @@
 					{/if}
 					<div class="row">
 						{#if st.yourGame}
-							<button class="btn btn-ghost" onclick={shareResults}>
+							<button class="btn btn-ghost" disabled={inviting} onclick={shareResults}>
 								<svg viewBox="0 0 24 24"
 									><path
 										d="M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5"
 									/></svg
 								>
-								{t('shareResults')}
+								{t('challengeFriend')}
 							</button>
 						{/if}
 						<button

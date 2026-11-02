@@ -10,7 +10,7 @@
 	import Confetti from './Confetti.svelte';
 	import { crowdGap, fmtDistance, starsFor, verdictKey } from '#lib/format.js';
 	import { t } from '#lib/i18n/index.svelte.js';
-	import { sfxFanfare, sfxFar } from '#lib/sfx.svelte.js';
+	import { sfxFanfare, sfxFar, sfxLearned } from '#lib/sfx.svelte.js';
 
 	interface Props {
 		n: number;
@@ -53,6 +53,8 @@
 	const vsCrowd = $derived(
 		guessed && !late && km != null && crowd != null ? crowdGap(crowd, km) : null
 	);
+	// the game's whole point, said when it happens: a street guessed within 500 m is learned
+	const learned = $derived(guessed && km != null && km <= 0.5 && !!place.street);
 	const title = $derived(late ? t('late') : guessed ? t(verdictKey(score)) : t('noGuess'));
 
 	let party = $state(false);
@@ -62,6 +64,7 @@
 			party = true;
 			setTimeout(sfxFanfare, 350);
 		} else if (!stars) setTimeout(sfxFar, 200);
+		if (learned) setTimeout(sfxLearned, 900);
 	});
 </script>
 
@@ -87,6 +90,14 @@
 			{t('noPin')}
 		{/if}
 	</p>
+	{#if learned}
+		<p class="learned-line">
+			<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+				><path d="m5 12.5 4.5 4.5L19 7.5" /></svg
+			>
+			{t('streetLearned')}
+		</p>
+	{/if}
 	{#if vsCrowd != null}
 		<p class="crowd">
 			<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><circle cx="12" cy="12" r="8" /></svg
@@ -109,6 +120,27 @@
 {#if party}<Confetti />{/if}
 
 <style>
+	.learned-line {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-weight: 800;
+		color: var(--green-ink);
+	}
+	.reveal:not(.go) .learned-line {
+		opacity: 0;
+	}
+	.go .learned-line {
+		animation: pop-in 0.4s var(--pop) 0.9s both;
+	}
+	:global(:root[data-theme='dark']) .learned-line {
+		color: var(--green);
+	}
+	.learned-line .icon {
+		width: 20px;
+		height: 20px;
+		stroke-width: 3;
+	}
 	.reveal {
 		display: flex;
 		flex-direction: column;

@@ -11,7 +11,15 @@
 	import Sheet from '#lib/components/Sheet.svelte';
 	import MapSign from '#lib/maps/MapSign.svelte';
 	import CityMap from '#lib/maps/CityMap.svelte';
-	import { api, call, ApiError, type GameListItem, type MapSummary } from '#lib/api/client.js';
+	import DistrictSheet from '#lib/maps/DistrictSheet.svelte';
+	import {
+		api,
+		call,
+		ApiError,
+		type GameListItem,
+		type MapSummary,
+		type Schemas
+	} from '#lib/api/client.js';
 	import { t, tx, type Key } from '#lib/i18n/index.svelte.js';
 	import { ensureSession, session } from '#lib/session.svelte.js';
 	import { openSignIn } from '#lib/account.svelte.js';
@@ -40,6 +48,7 @@
 	let settingsOpen = $state(false);
 	let codeOpen = $state(false);
 	let wide = $state(false); // a laptop: the right half shows the city
+	let district = $state<Schemas['PlaceCard'] | null>(null); // its streets are open
 
 	const me = $derived(session.me);
 	const banned = $derived(!!me?.user.banned);
@@ -209,22 +218,27 @@
 					top={tx(current.description)}
 					outline={current.outline}
 				/>
-				<span class="meta">
-					{#if newPlayer}
-						<span></span>
-					{:else if current.progress && current.progress.unit !== 'spot'}
-						<Progress progress={current.progress} />
-					{:else}
-						<span>{t('nSpots', { n: current.panoramas })}</span>
-					{/if}
-					<span class="swap">
-						<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
-							><path d="M7 7h11l-3-3M17 17H6l3 3" /></svg
-						>
-						{t('otherPlace')}
-					</span>
-				</span>
 			</a>
+			<!-- how much is known here, a way to my map; and another place -->
+			<div class="meta">
+				{#if newPlayer}
+					<span></span>
+				{:else if current.progress?.unit === 'street'}
+					<a class="known" href="/me" aria-label={t('myStreets')}
+						><Progress progress={current.progress} quiet /></a
+					>
+				{:else if current.progress && current.progress.unit !== 'spot'}
+					<Progress progress={current.progress} />
+				{:else}
+					<span>{t('nSpots', { n: current.panoramas })}</span>
+				{/if}
+				<a class="swap" href={placesHref}>
+					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+						><path d="M7 7h11l-3-3M17 17H6l3 3" /></svg
+					>
+					{t('otherPlace')}
+				</a>
+			</div>
 		{:else if !offline}
 			<div class="where skeleton"></div>
 		{/if}
@@ -321,7 +335,12 @@
 
 	{#if wide}
 		<div class="side girih">
-			<CityMap glow={newPlayer} chosen={current?.slug} onpick={pickPlace} />
+			<CityMap
+				glow={newPlayer}
+				chosen={current?.slug}
+				onpick={(c) => pickPlace(c.map)}
+				onstreets={(c) => (district = c)}
+			/>
 		</div>
 	{/if}
 </main>
@@ -329,6 +348,8 @@
 <footer class="foot">
 	<span>{t('credits')}</span>
 </footer>
+
+<DistrictSheet place={district} onclose={() => (district = null)} />
 
 <Sheet open={settingsOpen} onclose={() => (settingsOpen = false)} title={t('setup')}>
 	<RulesForm bind:choice {canMove} />
@@ -412,14 +433,28 @@
 		justify-content: space-between;
 		gap: 10px;
 		min-height: 32px;
+		margin-top: -10px;
 		padding: 0 2px 0 4px;
 		font-size: 13px;
 		color: var(--muted);
+	}
+	.known {
+		display: flex;
+		align-items: center;
+		min-height: 40px;
+		min-width: 0;
+		color: inherit;
+		text-decoration: none;
+	}
+	.known:hover {
+		color: var(--text);
 	}
 	.swap {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
+		min-height: 40px;
+		text-decoration: none;
 		color: var(--sky-ink);
 		font-weight: 700;
 		font-size: 14px;

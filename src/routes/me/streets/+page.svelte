@@ -3,12 +3,11 @@
 	// (guessed within 500 m) with a green tick, the others with the closest guess so far. What
 	// the game is for, in one list. Each street's 🏁 badge opens its panorama on Yandex Maps.
 	import SubPage from '#lib/components/SubPage.svelte';
-	import StreetPlate from '#lib/game/StreetPlate.svelte';
+	import StreetRow from '#lib/maps/StreetRow.svelte';
 	import { api, call, type Schemas } from '#lib/api/client.js';
 	import { ensureSession, session } from '#lib/session.svelte.js';
 	import { t } from '#lib/i18n/index.svelte.js';
-	import { fmtDistance, fmtNum } from '#lib/format.js';
-	import { flagSvg, openPanorama, panoramaUrl } from '#lib/map/map.js';
+	import { fmtNum } from '#lib/format.js';
 
 	type Filter = 'all' | 'learned' | 'not';
 	let data = $state<Schemas['MyStreets'] | null>(null);
@@ -68,40 +67,7 @@
 			<ul>
 				{#each shown as s, i (i)}
 					<li>
-						<!-- the whole row is the street's panorama on Yandex Maps, its 🏁 badge first -->
-						<svelte:element
-							this={s.at ? 'a' : 'div'}
-							class="row"
-							href={s.at ? panoramaUrl(s.at, s.heading) : undefined}
-							target={s.at ? '_blank' : undefined}
-							rel={s.at ? 'noopener' : undefined}
-							title={s.at ? t('seePanorama') : undefined}
-							role={s.at ? 'link' : 'presentation'}
-							onclick={(e: MouseEvent) => {
-								if (!s.at) return;
-								e.preventDefault();
-								openPanorama(s.at, s.heading);
-							}}
-						>
-							{#if s.at}
-								<span class="pano"><img src={flagSvg()} alt="" width="34" height="40" /></span>
-							{/if}
-							<span class="plate"
-								><StreetPlate place={{ street: s.name, district: s.place }} size="small" /></span
-							>
-							<span class="how">
-								{#if s.learned}
-									<span class="tick" title={t('learnedLabel')}>
-										<svg viewBox="0 0 24 24" class="icon"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
-									</span>
-								{:else if s.bestKm != null}
-									<b>{fmtDistance(s.bestKm)}</b>
-								{:else}
-									<b>—</b>
-								{/if}
-								<span>{t('nRounds', { n: s.rounds })}</span>
-							</span>
-						</svelte:element>
+						<StreetRow street={s} />
 					</li>
 				{/each}
 			</ul>
@@ -185,59 +151,6 @@
 	}
 	li {
 		border-bottom: 1px solid var(--border);
-	}
-	.row {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		padding: 10px 0;
-		color: inherit;
-		text-decoration: none;
-		transition: transform 0.12s;
-	}
-	a.row:active {
-		transform: scale(0.98);
-	}
-	.pano {
-		flex: none;
-		display: grid;
-		place-items: center;
-		width: 40px;
-		height: 44px;
-	}
-	.plate {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-	}
-	.how {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-end;
-		gap: 2px;
-		flex: none;
-		font-size: 12.5px;
-		color: var(--muted);
-	}
-	.how b {
-		font-family: var(--display);
-		font-size: 14px;
-		color: var(--text);
-	}
-	.tick {
-		width: 28px;
-		height: 28px;
-		border-radius: 50%;
-		background: var(--green);
-		color: #fff;
-		display: grid;
-		place-items: center;
-		box-shadow: 0 2px 0 var(--green-edge);
-	}
-	.tick .icon {
-		width: 16px;
-		height: 16px;
-		stroke-width: 3;
 	}
 	.empty {
 		margin-top: 24px;

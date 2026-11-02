@@ -41,6 +41,8 @@
 		onpick: (c: Card) => void;
 		onmark?: (m: Mark) => void;
 		zoomable?: boolean; // pinch, drag, the wheel, + and −: go close to read every shape's name
+		level?: boolean; // every name stands level; one that can't fit is a pill with a line
+		crop?: [number, number, number, number]; // the part of the drawing to show, not the whole
 	}
 	let {
 		drawing,
@@ -52,7 +54,9 @@
 		ondrill,
 		onpick,
 		onmark,
-		zoomable = false
+		zoomable = false,
+		level = false,
+		crop
 	}: Props = $props();
 
 	const hatch = `hatch-${++maps}`;
@@ -61,11 +65,9 @@
 
 	const pad = $derived(Math.max(drawing.width, drawing.height) * 0.03);
 	// the frame: the whole place, its own shape (the owner: "see that region with its tumanlar")
-	const vb = $derived({
-		x: -pad,
-		y: -pad,
-		w: drawing.width + 2 * pad,
-		h: drawing.height + 2 * pad
+	const vb = $derived.by(() => {
+		const [x0, y0, x1, y1] = crop ?? [0, 0, drawing.width, drawing.height];
+		return { x: x0 - pad, y: y0 - pad, w: x1 - x0 + 2 * pad, h: y1 - y0 + 2 * pad };
 	});
 	let width = $state(0); // the map on screen, px
 	let height = $state(0);
@@ -622,7 +624,7 @@
 			// small, its middle line inside (grazing the edge at most); else a pill beside it with
 			// a line back, only over paper or "Tez orada" land (a pill over a neighbour would take
 			// its taps); else the nearest free spot inside it
-			if (placeInside(it, text, 'exact') || placeInside(it, text, 'loose')) continue;
+			if (placeInside(it, text, 'exact') || (!level && placeInside(it, text, 'loose'))) continue;
 			// a region's pill: on empty paper if there is any near (over a neighbour, even a "Tez
 			// orada" one, it names the wrong land: Toshkent viloyati over the Farg‘ona valley), else
 			// beside its own shape
@@ -733,7 +735,7 @@
 						? [FONT, FONT * 0.85, FONT * 0.8]
 						: [FONT];
 			// loose: along the strip first, upright it would lie on a neighbour (Yakkasaroy)
-			const angles = Math.abs(it.axis) > 15 ? (loose ? [it.axis, 0] : [0, it.axis]) : [0];
+			const angles = !level && Math.abs(it.axis) > 15 ? (loose ? [it.axis, 0] : [0, it.axis]) : [0];
 			// two words may stand on two lines ("Toshkent" over "viloyati")
 			const words = text.split(' ');
 			const variants: string[][] = [[text]];
@@ -1175,7 +1177,7 @@
 		transition: transform 0.43s var(--settle);
 	}
 	.shape {
-		fill: color-mix(in srgb, var(--gold) var(--known), var(--bg));
+		fill: color-mix(in srgb, var(--star) var(--known), var(--bg));
 		stroke: var(--lapis);
 		stroke-width: 1.3px;
 		vector-effect: non-scaling-stroke;
@@ -1190,7 +1192,7 @@
 		fill: color-mix(
 			in srgb,
 			var(--sky) 14%,
-			color-mix(in srgb, var(--gold) var(--known), var(--bg))
+			color-mix(in srgb, var(--star) var(--known), var(--bg))
 		);
 	}
 	/* "Tez orada" borders thin: where two of them zig-zag along a reservoir, no black tangle */
@@ -1279,7 +1281,7 @@
 	/* in the dark the playable places are the raised navy of the page's cards; "Tez orada"
 	   sinks into the background with a fainter hatch, as paper and drab hatch do in the light */
 	:global(:root[data-theme='dark']) .shape {
-		fill: color-mix(in srgb, var(--gold) var(--known), var(--surface-2));
+		fill: color-mix(in srgb, var(--star) var(--known), var(--surface-2));
 		stroke: color-mix(in srgb, var(--sky) 55%, var(--bg));
 	}
 	:global(:root[data-theme='dark']) .hatch-bg {
@@ -1288,9 +1290,12 @@
 	:global(:root[data-theme='dark']) .hatch-line {
 		stroke: color-mix(in srgb, var(--muted) 18%, transparent);
 	}
-	/* on the night-blue map gold mixed thin turns brown: the stars' gold, stronger */
+	/* where the player has been: a gold edge, on the paper and on the night blue */
+	.shape.played {
+		stroke: var(--gold);
+	}
 	:global(:root[data-theme='dark']) .shape.played {
-		fill: color-mix(in srgb, var(--star) calc(var(--known) + 12%), var(--surface));
+		fill: color-mix(in srgb, var(--star) var(--known), var(--surface));
 		stroke: var(--star);
 	}
 	.edge {
@@ -1324,7 +1329,7 @@
 		fill: transparent;
 	}
 	.badge .disc {
-		fill: color-mix(in srgb, var(--gold) var(--known), var(--surface));
+		fill: color-mix(in srgb, var(--star) var(--known), var(--surface));
 		stroke: var(--lapis);
 		transition: fill 0.15s;
 	}

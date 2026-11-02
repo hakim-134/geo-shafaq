@@ -96,6 +96,8 @@ export const sfxStep = (i: number) =>
 
 /** A miss far away: a soft falling note, not a buzzer. */
 // a hint's cost lands on the score: a soft step down
+/** A street learned: a short rising note. */
+export const sfxLearned = () => tone(520, 0.28, { to: 1040, gain: 0.08, type: 'triangle' });
 export const sfxCost = () => tone(560, 0.22, { to: 400, gain: 0.06, type: 'sine' });
 export const sfxFar = () => tone(330, 0.3, { to: 220, gain: 0.07, type: 'sine' });
 

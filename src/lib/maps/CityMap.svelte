@@ -1,27 +1,76 @@
 <script lang="ts">
-	// The laptop home's right half: Tashkent's 13 tumanlar on the place map's own drawing
-	// (PlaceMap: names inside their shapes, coloured by what the player knows). The place on the
-	// home's sign is marked (a district lit, the whole city edged); a click on a district makes
-	// it the sign at once (onpick), no page in between. Before the first game it glows under
-	// "Shu yerdan boshlang". The sign names what is picked, so the map has no caption of it.
-	import { goto } from '$app/navigation';
+	// My map (P1028 4.3): Tashkent's 13 tumanlar on the place map's own drawing (PlaceMap: names
+	// inside their shapes, coloured by what the player knows), the streets learned beside its
+	// title. The profile's big picture, where a tap on a district shows its streets; the laptop
+	// home's right half, where the place on the sign is marked (a district lit, the whole city
+	// edged) and a click on a district makes it the sign at once. onpick says which. Before the
+	// first game it glows under "Shu yerdan boshlang".
 	import { api, call, type Schemas } from '#lib/api/client.js';
 	import { session } from '#lib/session.svelte.js';
-	import { t } from '#lib/i18n/index.svelte.js';
+	import { t, tx } from '#lib/i18n/index.svelte.js';
+	import { fmtNum } from '#lib/format.js';
 	import PlaceMap from './PlaceMap.svelte';
+	import { shortName } from './progress.js';
 
 	// chosen: the map on the home's sign ("tashkent-streets", "place-chilonzor-tumani", …);
-	// onpick: a district clicked, by its map (without it, the place map opens with it picked)
+	// onstreets: the home's way to the streets of the district on the sign, beside the title
 	let {
 		glow = false,
 		chosen = '',
-		onpick
-	}: { glow?: boolean; chosen?: string; onpick?: (map: string) => void } = $props();
+		onpick,
+		onstreets
+	}: {
+		glow?: boolean;
+		chosen?: string;
+		onpick: (c: Schemas['PlaceCard']) => void;
+		onstreets?: (c: Schemas['PlaceCard']) => void;
+	} = $props();
 	const pick = $derived(chosen.startsWith('place-') ? chosen.slice(6) : '');
 	const whole = $derived(chosen === 'tashkent-streets' || pick === 'toshkent');
 
 	let detail = $state<Schemas['PlaceDetail'] | null>(null);
 	let drawing = $state<Schemas['PlaceMap'] | null>(null);
+	// the city without what floats outside it (Mirzo Ulug‘bek's far piece reads as a stain, with a
+	// blank band above the city for it): only here, the place map stays whole
+	const city = $derived.by(() => {
+		if (!drawing) return null;
+		const rings = (d: string) => d.split('M').filter((r) => r.trim());
+		const box = (r: string) => {
+			const n = (r.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+			const xs = n.filter((_, i) => i % 2 === 0);
+			const ys = n.filter((_, i) => i % 2 === 1);
+			return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+		};
+		const size = (b: number[]) => (b[2] - b[0]) * (b[3] - b[1]);
+		const main = drawing.shapes.map((s) =>
+			rings(s.d)
+				.map(box)
+				.reduce((a, b) => (size(b) > size(a) ? b : a))
+		);
+		const all = [
+			Math.min(...main.map((b) => b[0])),
+			Math.min(...main.map((b) => b[1])),
+			Math.max(...main.map((b) => b[2])),
+			Math.max(...main.map((b) => b[3]))
+		] as [number, number, number, number];
+		const inCity = (b: number[]) =>
+			b[0] < all[2] && b[2] > all[0] && b[1] < all[3] && b[3] > all[1];
+		return {
+			crop: all,
+			drawing: {
+				...drawing,
+				shapes: drawing.shapes.map((s) => ({
+					...s,
+					d: rings(s.d)
+						.filter((r) => inCity(box(r)))
+						.map((r) => `M${r}`)
+						.join(' ')
+				}))
+			}
+		};
+	});
+	const picked = $derived(detail?.children.find((c) => c.slug === pick));
+	const known = $derived((picked ?? detail?.place)?.progress);
 
 	$effect(() => {
 		void session.version;
@@ -41,17 +90,37 @@
 	}
 </script>
 
-{#if detail && drawing}
+{#if detail && city}
 	<figure class="city" class:glow>
 		<!-- before the first game there is no "your Tashkent" yet: the city glows, start here -->
-		<figcaption class="title">{glow ? t('startHere') : t('yourTashkent')}</figcaption>
+		<figcaption class="head">
+			<span class="title">{glow ? t('startHere') : t('yourTashkent')}</span>
+			{#if !glow && known}
+				{#if picked && onstreets}
+					<button class="count link" onclick={() => onstreets(picked)}>
+						{shortName(tx(picked.name))}: <b>{fmtNum(known.learned)}</b> / {fmtNum(known.total)}
+						{t('streetsWord')}
+						<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+					</button>
+				{:else if known.learned}
+					<span class="count">
+						<b>{fmtNum(known.learned)}</b> / {fmtNum(known.total)}
+						{t('streetsLearnedShort')}
+					</span>
+				{:else}
+					<span class="count">{t('firstLearnHint')}</span>
+				{/if}
+			{/if}
+		</figcaption>
 		<PlaceMap
-			{drawing}
+			drawing={city.drawing}
+			crop={city.crop}
+			level
 			cards={detail.children}
 			lit={pick ? [pick] : []}
 			{whole}
 			ondrill={() => {}}
-			onpick={(c) => (onpick ? onpick(c.map) : goto(`/places/toshkent?pick=${c.slug}`))}
+			{onpick}
 		/>
 	</figure>
 {/if}
@@ -63,8 +132,51 @@
 		gap: 14px;
 		margin: 0;
 	}
+	.head {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 2px 12px;
+	}
+	.count {
+		font-size: 14px;
+		color: var(--muted);
+		text-decoration: none;
+	}
+	.count.link {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		min-height: 32px;
+		padding: 0;
+		border: none;
+		background: none;
+		font: inherit;
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--sky-ink);
+		cursor: pointer;
+	}
+	:global(:root[data-theme='dark']) .count.link {
+		color: var(--sky);
+	}
+	.count.link:hover {
+		text-decoration: underline;
+	}
+	.count.link .icon {
+		width: 16px;
+		height: 16px;
+	}
+	.count b {
+		font-family: var(--display);
+		font-size: 17px;
+		color: var(--green-ink);
+	}
+	:global(:root[data-theme='dark']) .count b {
+		color: var(--green);
+	}
 	.title {
-		align-self: flex-start;
 		font-family: var(--display);
 		font-weight: 800;
 		font-size: 18px;
