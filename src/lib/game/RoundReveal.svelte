@@ -8,7 +8,7 @@
 	import ScoreCount from './ScoreCount.svelte';
 	import StreetPlate from './StreetPlate.svelte';
 	import Confetti from './Confetti.svelte';
-	import { fmtDistance, starsFor, verdictKey } from '#lib/format.js';
+	import { crowdGap, fmtDistance, starsFor, verdictKey } from '#lib/format.js';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import { sfxFanfare, sfxFar } from '#lib/sfx.svelte.js';
 
@@ -25,6 +25,7 @@
 		place: Schemas['PlaceInfo'];
 		actual: LatLon;
 		heading?: number; // the round's first heading: the plate's panorama link faces it
+		crowd?: number; // the average distance of the round's guesses: the ring on the map
 		go: boolean;
 		children?: Snippet;
 	}
@@ -41,12 +42,17 @@
 		place,
 		actual,
 		heading,
+		crowd,
 		go,
 		children
 	}: Props = $props();
 
 	const stars = $derived(starsFor(score));
 	const perfect = $derived(guessed && verdictKey(score) === 'perfect');
+	// next to the ring: how this guess stands against the average
+	const vsCrowd = $derived(
+		guessed && !late && km != null && crowd != null ? crowdGap(crowd, km) : null
+	);
 	const title = $derived(late ? t('late') : guessed ? t(verdictKey(score)) : t('noGuess'));
 
 	let party = $state(false);
@@ -81,6 +87,17 @@
 			{t('noPin')}
 		{/if}
 	</p>
+	{#if vsCrowd != null}
+		<p class="crowd">
+			<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><circle cx="12" cy="12" r="8" /></svg
+			>
+			{#if vsCrowd === 0}
+				{t('crowdSame')}
+			{:else}
+				{t(vsCrowd > 0 ? 'crowdCloser' : 'crowdFarther', { d: fmtDistance(Math.abs(vsCrowd)) })}
+			{/if}
+		</p>
+	{/if}
 
 	<div class="where">
 		<StreetPlate {place} at={actual} {heading} land={go} delay={450} />
@@ -118,6 +135,7 @@
 	/* nothing gives the answer away before the real pin lands */
 	.reveal:not(.go) .verdict,
 	.reveal:not(.go) .far,
+	.reveal:not(.go) .crowd,
 	.reveal:not(.go) .where {
 		visibility: hidden;
 	}
@@ -126,6 +144,9 @@
 	}
 	.go .far {
 		animation: rise 0.35s 0.3s var(--settle) both;
+	}
+	.go .crowd {
+		animation: rise 0.35s 0.45s var(--settle) both;
 	}
 	.verdict.perfect {
 		color: var(--green-ink);
@@ -143,6 +164,22 @@
 	}
 	.far .icon {
 		color: var(--red);
+	}
+	.crowd {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-weight: 600;
+		font-size: 15px;
+		margin-top: -8px;
+	}
+	.crowd .icon {
+		width: 24px;
+		height: 24px;
+		flex: none;
+		fill: rgba(232, 169, 12, 0.18);
+		stroke: #e8a90c;
+		stroke-width: 2.5;
 	}
 	.where {
 		padding-top: 4px;

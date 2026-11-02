@@ -13,6 +13,7 @@
 	import MapSign from '#lib/maps/MapSign.svelte';
 	import PlaceMap, { type Mark } from '#lib/maps/PlaceMap.svelte';
 	import Progress from '#lib/maps/Progress.svelte';
+	import { fewPlaces } from '#lib/maps/progress.js';
 	import { api, call, ApiError, type MapSummary, type Schemas } from '#lib/api/client.js';
 	import { ensureSession, session } from '#lib/session.svelte.js';
 	import { t, tx, type Key } from '#lib/i18n/index.svelte.js';
@@ -80,6 +81,10 @@
 	const cards = $derived(detail?.children ?? []);
 	const playable = $derived(cards.filter((c) => c.panoramas > 0));
 	const chosenMap = $derived(ready.find((m) => m.slug === chosen));
+	// a place that is a ready map's whole area plays that map, under its own sign: one Tashkent
+	const sameMap = $derived(
+		ready.find((m) => m.places?.length === 1 && m.places[0] === place?.slug)
+	);
 	const newPlayer = $derived((session.me?.stats.games ?? 1) === 0);
 
 	// what "O‘ynash" plays: the picked place, the country's ready map, or the place on screen
@@ -101,13 +106,14 @@
 				outline: c.outline,
 				progress: c.progress
 			};
-		if (country && chosenMap)
+		const ready = country ? chosenMap : sameMap;
+		if (ready)
 			return {
-				map: chosenMap.slug,
-				name: tx(chosenMap.name),
-				top: tx(chosenMap.description),
-				outline: chosenMap.outline ?? '',
-				progress: chosenMap.progress
+				map: ready.slug,
+				name: tx(ready.name),
+				top: tx(ready.description),
+				outline: ready.outline ?? '',
+				progress: ready.progress
 			};
 		return {
 			map: place.map,
@@ -248,6 +254,7 @@
 				{ondrill}
 				{onpick}
 				onmark={(m) => goto(`/places/${m.slug}`)}
+				zoomable
 			/>
 		{/key}
 
@@ -258,7 +265,7 @@
 				{#each playable as c (c.slug)}
 					<li>
 						<button class:on={picked === c.slug} onclick={() => tapRow(c)}>
-							<span class="name">{tx(c.name)}</span>
+							<span class="name" class:few={fewPlaces(c)}>{tx(c.name)}</span>
 							<Progress progress={c.progress} />
 							{#if c.places > 0}
 								<svg viewBox="0 0 24 24" class="icon go-in" aria-hidden="true"
@@ -284,9 +291,7 @@
 				outline={target.outline}
 				size="small"
 			/>
-			{#if target.progress && target.progress.unit !== 'spot'}<Progress
-					progress={target.progress}
-				/>{/if}
+			{#if target.progress}<Progress progress={target.progress} />{/if}
 		</div>
 		<button class="btn btn-primary play" onclick={play} disabled={busy}>
 			{#if busy}<span class="spinner"></span>{:else}<svg viewBox="0 0 24 24" aria-hidden="true"
@@ -298,6 +303,9 @@
 {/if}
 
 <style>
+	.few {
+		font-style: italic;
+	}
 	/* the map stands in the middle of the free space; "Ro‘yxat" just above the bar */
 	.places {
 		min-height: calc(100vh - 70px);
@@ -407,8 +415,12 @@
 		color: var(--muted);
 		flex: none;
 	}
+	/* it takes the free space: close up the map uses all of it */
 	.places > :global(.map) {
-		margin-block: auto;
+		flex: 1;
+		justify-content: center;
+		margin-inline: -24px; /* close up, to the screen's edges; the whole map keeps its margin */
+		padding-inline: 24px;
 	}
 	.list-box summary {
 		width: fit-content;

@@ -20,11 +20,14 @@
 	// apart, a short line back to their place. A tap on a place with places inside flies into
 	// it (ondrill); a tap on one without picks it (onpick). Places without panoramas are hatched
 	// and say "Tez orada". The page says what plays; the map only shows it: `lit` places in sky
-	// blue, `whole` the whole map edged, `marks` as gold stars with their names.
+	// blue, `whole` the whole map edged, `marks` as gold stars with their names. With zoomable a
+	// pinch, the wheel, or + and − go close, and a finger or the mouse moves the map: the same
+	// places, never the level below. Close up names are laid out again, every place gets one, with
+	// panoramas or not: a player learns the shapes and names by looking.
 	import type { Schemas } from '#lib/api/client.js';
 	import { t, tx } from '#lib/i18n/index.svelte.js';
 	import Progress from './Progress.svelte';
-	import { knownTint, shortName } from './progress.js';
+	import { fewPlaces, knownTint, shortName } from './progress.js';
 
 	type Card = Schemas['PlaceCard'];
 	interface Props {
@@ -37,6 +40,7 @@
 		ondrill: (c: Card) => void;
 		onpick: (c: Card) => void;
 		onmark?: (m: Mark) => void;
+		zoomable?: boolean; // pinch, drag, the wheel, + and −: go close to read every shape's name
 	}
 	let {
 		drawing,
@@ -47,7 +51,8 @@
 		glow = '',
 		ondrill,
 		onpick,
-		onmark
+		onmark,
+		zoomable = false
 	}: Props = $props();
 
 	const hatch = `hatch-${++maps}`;
@@ -55,36 +60,161 @@
 	const BADGE = 11; // a town's dot radius on screen, px
 
 	const pad = $derived(Math.max(drawing.width, drawing.height) * 0.03);
-	// the frame: what can be played (and the capital's hole), with a margin, up to 3× closer
-	// than the whole place; the "Tez orada" rest runs off the edges. On the country's map and
-	// Tashkent's the playable places already span the whole.
-	const vb = $derived.by(() => {
-		const whole = { x: -pad, y: -pad, w: drawing.width + 2 * pad, h: drawing.height + 2 * pad };
-		const playable = new Set(cards.filter((c) => c.panoramas > 0).map((c) => c.slug));
-		const boxes = drawing.shapes.filter((sh) => playable.has(sh.slug)).map((sh) => bbox(sh.d));
-		for (const m of marks.filter((x) => x.link)) boxes.push([m.x, m.y, m.x, m.y]);
-		if (!boxes.length) return whole;
-		let x0 = Math.min(...boxes.map((b) => b[0]));
-		let y0 = Math.min(...boxes.map((b) => b[1]));
-		let x1 = Math.max(...boxes.map((b) => b[2]));
-		let y1 = Math.max(...boxes.map((b) => b[3]));
-		const m = Math.max(x1 - x0, y1 - y0) * 0.06;
-		[x0, y0, x1, y1] = [x0 - m, y0 - m, x1 + m, y1 + m];
-		// no closer than 3×
-		const grow = (a: number, b: number, min: number): [number, number] =>
-			b - a >= min ? [a, b] : [(a + b) / 2 - min / 2, (a + b) / 2 + min / 2];
-		[x0, x1] = grow(x0, x1, whole.w / 3);
-		[y0, y1] = grow(y0, y1, whole.h / 3);
-		// never wider than the whole
-		x0 = Math.max(x0, whole.x);
-		y0 = Math.max(y0, whole.y);
-		x1 = Math.min(x1, whole.x + whole.w);
-		y1 = Math.min(y1, whole.y + whole.h);
-		return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+	// the frame: the whole place, its own shape (the owner: "see that region with its tumanlar")
+	const vb = $derived({
+		x: -pad,
+		y: -pad,
+		w: drawing.width + 2 * pad,
+		h: drawing.height + 2 * pad
 	});
-	const framed = $derived(vb.w < drawing.width * 0.95 || vb.h < drawing.height * 0.95);
 	let width = $state(0); // the map on screen, px
-	const k = $derived(vb.w / Math.max(width, 1)); // drawing units per screen px
+	let height = $state(0);
+	let boxW = $state(0); // the figure around it: a zoomed map uses all of it
+	let boxH = $state(0);
+
+	// ---------- going close: the same map, closer. Names are laid out again when it stops ----------
+	type View = { x: number; y: number; w: number; h: number };
+	let moved = $state.raw<View | null>(null); // where the fingers have it now
+	let settled = $state.raw<View | null>(null); // where the names are laid out for
+	const view = $derived(moved ?? vb);
+	const at = $derived(settled ?? vb);
+	const closer = $derived(vb.w / at.w); // 1: the whole place
+	const MAX_CLOSER = 12;
+	let settleTimer: ReturnType<typeof setTimeout> | undefined;
+
+	/** The view scaled by f around a point of the map, kept on the map. */
+	function zoomBy(f: number, ax: number, ay: number) {
+		const v = view;
+		const w = Math.min(vb.w, Math.max(vb.w / MAX_CLOSER, v.w / f));
+		const h = (w * vb.h) / vb.w;
+		moveTo(ax - ((ax - v.x) * w) / v.w, ay - ((ay - v.y) * h) / v.h, w, h);
+	}
+	function moveTo(x: number, y: number, w: number, h: number) {
+		const near = w >= vb.w * 0.98; // nearly whole: whole
+		moved = near
+			? null
+			: {
+					x: Math.min(vb.x + vb.w - w, Math.max(vb.x, x)),
+					y: Math.min(vb.y + vb.h - h, Math.max(vb.y, y)),
+					w,
+					h
+				};
+		clearTimeout(settleTimer);
+		settleTimer = setTimeout(() => (settled = moved), 130);
+	}
+	/** A + or − button: glides around the middle of what is on screen. */
+	function step(f: number) {
+		const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+		const t0 = performance.now();
+		const from = view.w;
+		const ax = view.x + view.w / 2;
+		const ay = view.y + view.h / 2;
+		const frame = (now: number) => {
+			const e = still ? 1 : Math.min((now - t0) / 220, 1);
+			const w = from / f ** (1 - (1 - e) ** 3);
+			zoomBy(view.w / w, ax, ay);
+			if (e < 1) requestAnimationFrame(frame);
+		};
+		requestAnimationFrame(frame);
+	}
+
+	// the map's point under a place on screen
+	let svgEl = $state<SVGSVGElement>();
+	function toMap(cx: number, cy: number): [number, number] {
+		const r = svgEl!.getBoundingClientRect();
+		return [
+			view.x + ((cx - r.left) / r.width) * view.w,
+			view.y + ((cy - r.top) / r.height) * view.h
+		];
+	}
+	const pointers = new Map<number, [number, number]>();
+	let pinch = 0; // the fingers' distance
+	let dragged = false; // a drag is no tap
+	let downAt: [number, number] = [0, 0];
+	function down(e: PointerEvent) {
+		if (!zoomable || flying) return;
+		pointers.set(e.pointerId, [e.clientX, e.clientY]);
+		if (pointers.size === 1) {
+			dragged = false;
+			downAt = [e.clientX, e.clientY];
+		}
+		if (pointers.size === 2) pinch = fingers().d;
+	}
+	const fingers = () => {
+		const [[ax, ay], [bx, by]] = [...pointers.values()];
+		return { d: Math.hypot(ax - bx, ay - by), x: (ax + bx) / 2, y: (ay + by) / 2 };
+	};
+	function move(e: PointerEvent) {
+		const last = pointers.get(e.pointerId);
+		if (!last) return;
+		const next: [number, number] = [e.clientX, e.clientY];
+		if (pointers.size >= 2) {
+			pointers.set(e.pointerId, next);
+			const f = fingers();
+			if (pinch > 0) {
+				const [ax, ay] = toMap(f.x, f.y);
+				zoomBy(f.d / pinch, ax, ay);
+			}
+			pinch = f.d;
+			dragged = true;
+			return;
+		}
+		// one finger or the mouse moves the map once it is close, and only then
+		if (!moved) return;
+		if (!dragged && Math.hypot(next[0] - downAt[0], next[1] - downAt[1]) < 7) return;
+		dragged = true;
+		const r = svgEl!.getBoundingClientRect();
+		const scale = view.w / r.width;
+		moveTo(
+			view.x - (next[0] - last[0]) * scale,
+			view.y - (next[1] - last[1]) * scale,
+			view.w,
+			view.h
+		);
+		pointers.set(e.pointerId, next);
+	}
+	function up(e: PointerEvent) {
+		pointers.delete(e.pointerId);
+		if (pointers.size < 2) pinch = 0;
+		// the click comes right after: it was a drag. Then a tap (or a key) is a tap again
+		if (!pointers.size) setTimeout(() => (dragged = false), 60);
+	}
+	function wheel(e: WheelEvent) {
+		if (!moved && e.deltaY > 0) return; // the whole place, wheel down: the page scrolls
+		e.preventDefault();
+		const [ax, ay] = toMap(e.clientX, e.clientY);
+		zoomBy(Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.002)), ax, ay);
+	}
+	// two fingers on the map never pinch the page; close up one finger moves the map, not the page.
+	// Not on touchstart for one finger: that would take away the tap.
+	let figureEl = $state<HTMLElement>();
+	$effect(() => {
+		if (!zoomable || !figureEl) return;
+		const el = figureEl;
+		const two = (e: TouchEvent) => {
+			if (e.touches.length >= 2) e.preventDefault();
+		};
+		const moving = (e: TouchEvent) => {
+			if (e.touches.length >= 2 || moved) e.preventDefault();
+		};
+		el.addEventListener('wheel', wheel, { passive: false });
+		el.addEventListener('touchstart', two, { passive: false });
+		el.addEventListener('touchmove', moving, { passive: false });
+		return () => {
+			el.removeEventListener('wheel', wheel);
+			el.removeEventListener('touchstart', two);
+			el.removeEventListener('touchmove', moving);
+		};
+	});
+
+	const k = $derived(at.w / Math.max(width, 1)); // drawing units per screen px
+	// what is on screen: the map's frame, and at close range the free space around it too
+	const frame = $derived({
+		x: at.x - (closer > 1 ? Math.max(boxW - width, 0) / 2 : 0) * k,
+		y: at.y - (closer > 1 ? Math.max(boxH - height, 0) / 2 : 0) * k,
+		w: at.w + (closer > 1 ? Math.max(boxW - width, 0) : 0) * k,
+		h: at.h + (closer > 1 ? Math.max(boxH - height, 0) : 0) * k
+	});
 
 	type Box = [number, number, number, number];
 	interface Item {
@@ -98,20 +228,26 @@
 		rings: [number, number][][];
 		axis: number; // its long side's angle, degrees (a thin strip's name runs along it)
 	}
+	// the shapes' numbers, once a map: going close only changes how big they are on screen
+	const geometry = $derived(
+		new Map(
+			drawing.shapes.map((s) => {
+				const rings = ringsOf(s.d);
+				return [s.slug, { box: bbox(s.d), rings, axis: axisOf(rings) }];
+			})
+		)
+	);
 	const items = $derived.by((): Item[] => {
 		const bySlug = new Map(cards.map((c) => [c.slug, c]));
 		return drawing.shapes.flatMap((s) => {
 			const card = bySlug.get(s.slug);
 			if (!card) return [];
-			const box = bbox(s.d);
+			const { box, rings, axis } = geometry.get(s.slug)!;
 			const px = Math.max(box[2] - box[0], box[3] - box[1]) / k;
 			// too small to tap as a shape, and playable: a dot. A town gets one sooner, so a child
 			// finds Samarqand or Buxoro by a dot with its name, not by a smudge
 			const badge = card.panoramas > 0 && (px < 16 || (card.kind === 'city' && px < 60));
-			const rings = ringsOf(s.d);
-			return [
-				{ card, d: s.d, x: s.label.x, y: s.label.y, box, px, badge, rings, axis: axisOf(rings) }
-			];
+			return [{ card, d: s.d, x: s.label.x, y: s.label.y, box, px, badge, rings, axis }];
 		});
 	});
 	// shapes smaller than a few pixels draw nothing but a scribble: the dot stands for them; a
@@ -244,6 +380,7 @@
 		const tw = textWidth(text, 13, '--display', 800) * k;
 		const w = tw + 28 * k;
 		const h = 26 * k;
+		if (closer > 1) return null; // it points from the whole map's empty sky
 		const x = Math.max(vb.x + vb.w - w - 2 * k, Math.min(glowItem.x - w / 2, vb.x + vb.w - w));
 		const y = Math.max(vb.y + 2 * k, glowItem.y - (BADGE + 44) * k - h);
 		return { text, x, y, w, h, tw };
@@ -281,9 +418,21 @@
 		]);
 		for (const m of stars) taken.push([m.x - 10 * k, m.y - 10 * k, m.x + 10 * k, m.y + 10 * k]);
 		if (tag) taken.push([tag.x, tag.y, tag.x + tag.w, tag.y + tag.h]);
-		const m = 5 * k; // a name keeps clear of the map's edge, its tap area too
+		// close up the + and − stand over the map, in the frame's corner
+		if (zoomable && closer > 1)
+			taken.push([
+				frame.x + frame.w - 60 * k,
+				frame.y + frame.h - 134 * k,
+				frame.x + frame.w,
+				frame.y + frame.h
+			]);
+		// a name keeps clear of the map's edge, its tap area too; close up, of the soft cut
+		const m = (closer > 1 ? 16 : 5) * k;
 		const inside = (b: Box) =>
-			b[0] >= vb.x + m && b[1] >= vb.y + m && b[2] <= vb.x + vb.w - m && b[3] <= vb.y + vb.h - m;
+			b[0] >= frame.x + m &&
+			b[1] >= frame.y + m &&
+			b[2] <= frame.x + frame.w - m &&
+			b[3] <= frame.y + frame.h - m;
 		// a callout's line is an obstacle too: no pill or name may lie across it
 		const lines: [number, number, number, number][] = [];
 		if (tag && glowItem) {
@@ -301,6 +450,7 @@
 		const free = (b: Box) =>
 			inside(b) && !taken.some((o) => overlaps(b, o)) && !lines.some((l) => crosses(b, l));
 		const out: Label[] = [];
+		let paperOnly = false;
 
 		// a pill by a point (a town's dot, a star) or, for a district too narrow for its name, by
 		// its middle with a line back. A town's or district's pill stands only where its whole
@@ -322,6 +472,9 @@
 			const w = textWidth(text, size, '--body', 800) * k + (mark?.link ? 0 : 12 * k);
 			const h = size * (mark?.link ? 1.2 : 1.5) * k;
 			const far = !!it; // towns and districts may go out with a line; stars stay by theirs
+			// straight above or below, moved in from the map's edge if it must
+			const inX = (px: number) =>
+				Math.max(frame.x + m + w / 2, Math.min(px, frame.x + frame.w - m - w / 2));
 			const spots: [number, number][] = mark?.link
 				? [[x, y]] // the capital's name always stands in its hole
 				: (district
@@ -337,7 +490,9 @@
 						[x + d * 0.7 + w / 2, y - d * 0.7 - h / 2],
 						[x - d * 0.7 - w / 2, y + d * 0.7 + h / 2],
 						[x - d * 0.7 - w / 2, y - d * 0.7 - h / 2],
-						[x + d * 0.7 + w / 2, y + d * 0.7 + h / 2]
+						[x + d * 0.7 + w / 2, y + d * 0.7 + h / 2],
+						[inX(x + w / 2), y - d - h / 2],
+						[inX(x + w / 2), y + d + h / 2]
 					]);
 			const boxAt = ([sx, sy]: [number, number]): Box => [
 				sx - w / 2,
@@ -355,7 +510,9 @@
 			const clean = (b: Box) =>
 				!items.some(
 					(o) =>
-						o !== it && o.card.panoramas > 0 && grid(b).some(([px, py]) => within(o.rings, px, py))
+						o !== it &&
+						(o.card.panoramas > 0 || paperOnly) &&
+						grid(b).some(([px, py]) => within(o.rings, px, py))
 				);
 			const onNeighbour = ([px, py]: [number, number]) =>
 				items.some((o) => o !== it && o.card.panoramas > 0 && within(o.rings, px, py));
@@ -442,7 +599,13 @@
 			twice.has(base(it)) || it.badge ? tx(it.card.name) : shortName(tx(it.card.name));
 		const rank = (it: Item) =>
 			it.card.slug === glow ? 0 : it.card.panoramas === 0 ? 3 : it.badge ? 1 : 2;
-		const order = [...items].sort((a, b) => rank(a) - rank(b) || area(b.box) - area(a.box));
+		const sight: Box = [frame.x, frame.y, frame.x + frame.w, frame.y + frame.h];
+		const order = items
+			.filter((it) => overlaps(it.box, sight))
+			.sort((a, b) => rank(a) - rank(b) || area(b.box) - area(a.box));
+		// close up every place gets its name, big or small, with panoramas or not: that is how
+		// a player learns them
+		const everyName = closer > 1.3;
 		for (const it of order) {
 			const text = nameOf(it);
 			const dot = dots.get(it.card.slug);
@@ -454,12 +617,21 @@
 				continue;
 			}
 			if (!drawn.includes(it)) continue;
-			if (placeInside(it, text) || it.card.panoramas === 0) continue;
+			if (placeInside(it, text) || (it.card.panoramas === 0 && !everyName)) continue;
 			// too narrow for its whole name, and a playable place is never left without one:
 			// small, its middle line inside (grazing the edge at most); else a pill beside it with
 			// a line back, only over paper or "Tez orada" land (a pill over a neighbour would take
 			// its taps); else the nearest free spot inside it
 			if (placeInside(it, text, 'exact') || placeInside(it, text, 'loose')) continue;
+			// a region's pill: on empty paper if there is any near (over a neighbour, even a "Tez
+			// orada" one, it names the wrong land: Toshkent viloyati over the Farg‘ona valley), else
+			// beside its own shape
+			if (it.card.places > 0) {
+				paperOnly = true;
+				const onPaper = beside(it.card.slug, it, text, it.x, it.y, 8 * k, undefined, true);
+				paperOnly = false;
+				if (onPaper || beside(it.card.slug, it, text, it.x, it.y, 8 * k, undefined, true)) continue;
+			}
 			// a place one picks: a pill over paper or "Tez orada" land; where all around is playable
 			// (Tashkent), the nearest free pill with a short line: readable at 10 px beats a name
 			// across a border. It names and picks its own place; the neighbour stays tappable.
@@ -476,22 +648,37 @@
 			const size = FONT * 0.8;
 			const w = textWidth(text, size) * k;
 			const h = size * 1.25 * k;
-			const boxAt = (x: number, y: number): Box => [x - w / 2, y - h / 2, x + w / 2, y + h / 2];
-			// the free spot with the most of its middle line on its own land
-			const onLand = (x: number, y: number) =>
-				[-0.5, -0.25, 0, 0.25, 0.5].filter((f) => within(it.rings, x + f * w, y)).length;
+			const boxAt = (x: number, y: number, deg: number): Box => {
+				const cos = Math.abs(Math.cos((deg * Math.PI) / 180));
+				const sin = Math.abs(Math.sin((deg * Math.PI) / 180));
+				const hw = (w * cos + h * sin) / 2;
+				const hh = (w * sin + h * cos) / 2;
+				return [x - hw, y - hh, x + hw, y + hh];
+			};
+			// the free spot with the most of its middle line on its own land, along a strip if
+			// that is what stays on it (Yakkasaroy): over a neighbour it reads as the neighbour's
+			const onLand = (x: number, y: number, deg: number) =>
+				[-0.5, -0.25, 0, 0.25, 0.5].filter((f) =>
+					within(
+						it.rings,
+						x + f * w * Math.cos((deg * Math.PI) / 180),
+						y + f * w * Math.sin((deg * Math.PI) / 180)
+					)
+				).length;
 			let at: [number, number] = [it.x, it.y];
+			let angle = 0;
 			let best = -1;
-			for (const r of [0, 0.8, 1.6, 2.4, 3.2, 4.5, 6])
-				for (let a = 0; a < (r ? 12 : 1); a++) {
-					const c: [number, number] = [
-						it.x + r * h * Math.cos((a * Math.PI) / 6),
-						it.y + r * h * Math.sin((a * Math.PI) / 6)
-					];
-					const score = onLand(...c);
-					if (score > best && free(boxAt(...c))) [at, best] = [c, score];
-				}
-			taken.push(boxAt(...at));
+			for (const deg of Math.abs(it.axis) > 15 ? [0, it.axis] : [0])
+				for (const r of [0, 0.8, 1.6, 2.4, 3.2, 4.5, 6])
+					for (let a = 0; a < (r ? 12 : 1); a++) {
+						const c: [number, number] = [
+							it.x + r * h * Math.cos((a * Math.PI) / 6),
+							it.y + r * h * Math.sin((a * Math.PI) / 6)
+						];
+						const score = onLand(...c, deg);
+						if (score > best && free(boxAt(...c, deg))) [at, best, angle] = [c, score, deg];
+					}
+			taken.push(boxAt(...at, angle));
 			out.push({
 				key: it.card.slug,
 				it,
@@ -499,13 +686,34 @@
 				x: at[0],
 				y: at[1],
 				anchor: 'middle',
-				box: boxAt(...at),
+				box: boxAt(...at, angle),
 				size,
 				pill: false,
-				angle: 0,
+				angle,
 				w,
 				h
 			});
+		}
+
+		// where a shape's name goes: its middle, or close up, if that is off screen, the middle of
+		// the part in sight
+		function middleInSight(it: Item): [number, number] {
+			const seen = it.x > sight[0] && it.x < sight[2] && it.y > sight[1] && it.y < sight[3];
+			if (seen) return [it.x, it.y];
+			const x0 = Math.max(it.box[0], sight[0]);
+			const y0 = Math.max(it.box[1], sight[1]);
+			const x1 = Math.min(it.box[2], sight[2]);
+			const y1 = Math.min(it.box[3], sight[3]);
+			let best: [number, number] = [it.x, it.y];
+			let far = Infinity;
+			for (let i = 1; i < 8; i++)
+				for (let j = 1; j < 8; j++) {
+					const x = x0 + ((x1 - x0) * i) / 8;
+					const y = y0 + ((y1 - y0) * j) / 8;
+					const d = Math.hypot(x - (x0 + x1) / 2, y - (y0 + y1) / 2);
+					if (d < far && within(it.rings, x, y)) [best, far] = [[x, y], d];
+				}
+			return best;
 		}
 
 		// a name inside its own shape and clear of the others: around its middle, upright, else
@@ -521,10 +729,11 @@
 			const sizes =
 				mode !== 'tight'
 					? [FONT * 0.8] // never under 10 px: smaller is a pill
-					: it.card.panoramas > 0
+					: it.card.panoramas > 0 || everyName
 						? [FONT, FONT * 0.85, FONT * 0.8]
 						: [FONT];
-			const angles = Math.abs(it.axis) > 15 ? [0, it.axis] : [0];
+			// loose: along the strip first, upright it would lie on a neighbour (Yakkasaroy)
+			const angles = Math.abs(it.axis) > 15 ? (loose ? [it.axis, 0] : [0, it.axis]) : [0];
 			// two words may stand on two lines ("Toshkent" over "viloyati")
 			const words = text.split(' ');
 			const variants: string[][] = [[text]];
@@ -547,7 +756,11 @@
 						// a place one picks: its whole box; a place one flies into: its middle line is
 						// enough (crossing a border there picks nothing wrong)
 						const grid: [number, number][] = [];
-						for (const fx of [-1, -0.5, 0, 0.5, 1])
+						// a region's name stands on its middle line alone: looked at closely, or it runs
+						// out over the next region and back (Toshkent viloyati)
+						for (const fx of it.card.places > 0
+							? [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]
+							: [-1, -0.5, 0, 0.5, 1])
 							for (const fy of it.card.places > 0
 								? [0]
 								: loose && Math.abs(fx) === 1
@@ -575,17 +788,29 @@
 							return [cx - hw, cy - hh, cx + hw, cy + hh];
 						};
 						// its middle first, then rings around it
-						const spots: [number, number][] = [[it.x, it.y]];
+						const [mx, my] = middleInSight(it);
+						const spots: [number, number][] = [[mx, my]];
 						for (const r of [0.6, 1.2, 2, 3, 4.5])
 							for (let a = 0; a < 8; a++)
 								spots.push([
-									it.x + r * h * Math.cos((a * Math.PI) / 4),
-									it.y + r * h * Math.sin((a * Math.PI) / 4)
+									mx + r * h * Math.cos((a * Math.PI) / 4),
+									my + r * h * Math.sin((a * Math.PI) / 4)
 								]);
-						const spot = spots.find(([x, y]) => fits(x, y) && free(aabb(x, y)));
+						// a turned name keeps clear along its own line: its square would keep two
+						// neighbouring strips' names from both turning (Mirobod, Yakkasaroy)
+						const along = (cx: number, cy: number): Box[] =>
+							angle
+								? [-0.42, -0.25, -0.08, 0.08, 0.25, 0.42].map((f): Box => {
+										const px = cx + f * w * cos;
+										const py = cy + f * w * sin;
+										const r = Math.max(h, w / 6) / 2;
+										return [px - r, py - h / 2, px + r, py + h / 2];
+									})
+								: [aabb(cx, cy)];
+						const spot = spots.find(([x, y]) => fits(x, y) && along(x, y).every(free));
 						if (!spot) continue;
 						const b = aabb(...spot);
-						taken.push(b);
+						taken.push(...along(...spot));
 						out.push({
 							key: it.card.slug,
 							it,
@@ -625,7 +850,7 @@
 	let zoom = $state('');
 	let flying = $state('');
 	function tap(it: Item) {
-		if (flying) return;
+		if (flying || dragged) return;
 		if (it.card.panoramas === 0) {
 			told = it.card;
 			clearTimeout(toldTimer);
@@ -642,9 +867,9 @@
 		const [x0, y0, x1, y1] = dot
 			? [dot.x - BADGE * k, dot.y - BADGE * k, dot.x + BADGE * k, dot.y + BADGE * k]
 			: it.box;
-		const s = Math.min(vb.w / (x1 - x0), vb.h / (y1 - y0)) * 0.9;
-		const tx = vb.x + (vb.w - (x1 - x0) * s) / 2 - x0 * s;
-		const ty = vb.y + (vb.h - (y1 - y0) * s) / 2 - y0 * s;
+		const s = Math.min(view.w / (x1 - x0), view.h / (y1 - y0)) * 0.9;
+		const tx = view.x + (view.w - (x1 - x0) * s) / 2 - x0 * s;
+		const ty = view.y + (view.h - (y1 - y0) * s) / 2 - y0 * s;
 		flying = it.card.slug;
 		zoom = `translate(${tx}px, ${ty}px) scale(${s})`;
 		const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -657,12 +882,27 @@
 	}
 </script>
 
-<figure class="map" class:flying={!!flying}>
+<figure
+	class="map"
+	class:flying={!!flying}
+	class:close={!!moved}
+	class:zoomable
+	bind:this={figureEl}
+	bind:clientWidth={boxW}
+	bind:clientHeight={boxH}
+	onpointerdown={down}
+	onpointermove={move}
+	onpointerup={up}
+	onpointercancel={up}
+	onpointerleave={up}
+>
 	<svg
+		bind:this={svgEl}
 		bind:clientWidth={width}
+		bind:clientHeight={height}
 		style:max-width={`calc(min(560px, 58dvh) * ${vb.w / vb.h})`}
-		viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
-		class:framed
+		style:aspect-ratio={`${vb.w} / ${vb.h}`}
+		viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
 		role="group"
 		aria-label={t('placesTitle')}
 	>
@@ -767,6 +1007,7 @@
 					class:link={!!l.mark?.link}
 					class:quiet={!!l.it && l.it.badge && marks.some((m) => !m.link)}
 					class:soon={!!l.it && l.it.card.panoramas === 0}
+					class:few={!!l.it && fewPlaces(l.it.card)}
 					transform={l.angle ? `rotate(${l.angle} ${l.x} ${l.y})` : undefined}
 					onclick={() => (l.it ? tap(l.it) : l.mark && onmark?.(l.mark))}
 					onpointerenter={(e) => l.it && enter(e, l.it.card)}
@@ -823,6 +1064,21 @@
 			{/if}
 		</g>
 	</svg>
+	{#if zoomable}
+		<div class="zoom">
+			<button aria-label={t('zoomIn')} title={t('zoomIn')} onclick={() => step(1.8)}>
+				<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M6 12h12M12 6v12" /></svg>
+			</button>
+			<button
+				aria-label={t('zoomOut')}
+				title={t('zoomOut')}
+				disabled={!moved}
+				onclick={() => step(1 / 1.8)}
+			>
+				<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="M6 12h12" /></svg>
+			</button>
+		</div>
+	{/if}
 	<figcaption class="caption">
 		{#if shown}
 			<b>{tx(shown.name)}</b>
@@ -848,10 +1104,71 @@
 		filter: drop-shadow(0 6px 10px rgba(19, 35, 63, 0.16));
 		-webkit-tap-highlight-color: transparent;
 	}
-	/* framed on what can be played: the rest is cut at the map's edge, softly */
-	svg.framed {
-		overflow: hidden;
-		border-radius: 18px;
+	.zoomable {
+		touch-action: pan-y;
+	}
+	/* close up: the map fills its space, cut softly at the top and bottom; no shadow to redraw */
+	.close {
+		overflow: clip;
+		mask-image:
+			linear-gradient(to bottom, transparent, #000 12px, #000 calc(100% - 12px), transparent),
+			linear-gradient(to right, transparent, #000 12px, #000 calc(100% - 12px), transparent);
+		mask-composite: intersect;
+	}
+	.close {
+		touch-action: none;
+		cursor: grab;
+	}
+	.close:active {
+		cursor: grabbing;
+	}
+	.close svg,
+	.close .shapes.whole {
+		filter: none;
+	}
+	.close .caption:not(:has(b)) {
+		display: none;
+	}
+	.close .caption {
+		position: absolute;
+		left: 50%;
+		bottom: 8px;
+		translate: -50%;
+		min-height: 0;
+		padding: 2px 12px;
+		border-radius: 999px;
+		white-space: nowrap;
+		background: var(--surface);
+	}
+	.zoom {
+		position: absolute;
+		right: 12px;
+		bottom: 34px;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		z-index: 1;
+	}
+	.zoom button {
+		display: grid;
+		place-items: center;
+		width: 40px;
+		height: 40px;
+		border-radius: 12px;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		color: var(--text);
+		box-shadow: 0 2px 0 rgba(0, 0, 0, 0.12);
+		cursor: pointer;
+	}
+	.zoom svg {
+		width: 22px;
+		height: 22px;
+		filter: none;
+	}
+	.zoom button:disabled {
+		opacity: 0.4;
+		cursor: default;
 	}
 	.world {
 		transform-origin: 0 0;
@@ -928,6 +1245,9 @@
 	}
 	.badge.gone {
 		display: none;
+	}
+	.label.few text {
+		font-style: italic;
 	}
 	.label.soon text {
 		fill: var(--muted);

@@ -7,8 +7,22 @@ export function fmtNum(n: number): string {
 
 export function fmtDistance(km: number): string {
 	if (km < 1) return `${Math.round(km * 1000)} ${t('m')}`;
-	if (km < 10) return `${km.toFixed(1)} ${t('km')}`;
+	if (km < 100) return `${km.toFixed(1)} ${t('km')}`;
 	return `${fmtNum(km)} ${t('km')}`;
+}
+
+/** A room's round: the average distance of its guesses, once two or more were made. */
+export function crowdKm(scores: { km?: number | null }[]): number | undefined {
+	const kms = scores.flatMap((s) => (s.km != null ? [s.km] : []));
+	return kms.length >= 2 ? kms.reduce((a, b) => a + b, 0) / kms.length : undefined;
+}
+
+/** How much farther the crowd is than the player, from the numbers on screen, so what the
+ *  player reads adds up (7.6 − 6.1 says 1.5). */
+export function crowdGap(crowd: number, km: number): number {
+	const shown = (v: number) =>
+		v < 1 ? Math.round(v * 1000) / 1000 : v < 100 ? Math.round(v * 10) / 10 : Math.round(v);
+	return Math.round((shown(crowd) - shown(km)) * 1000) / 1000;
 }
 
 export function fmtClock(seconds: number): string {

@@ -44,7 +44,7 @@
 	import { PanoError } from '#lib/pano/index.js';
 	import { t, tx, type Key } from '#lib/i18n/index.svelte.js';
 	import { ensureSession, refreshMe, setMe } from '#lib/session.svelte.js';
-	import { fmtDistance, fmtNum, starsFor } from '#lib/format.js';
+	import { crowdKm, fmtDistance, fmtNum, starsFor } from '#lib/format.js';
 	import { showToast } from '#lib/toast.svelte.js';
 
 	let link = $state<RoomLink | null>(null);
@@ -297,6 +297,7 @@
 				}))
 			: []
 	);
+	const lastCrowd = $derived(last ? crowdKm(last.scores) : undefined);
 	const gameOver = $derived(!!st && st.rules.rounds > 0 && st.results.length >= st.rules.rounds);
 	// the points a player's hints took in this game (free hints take none)
 	const hintCostOf = (id: string) =>
@@ -760,6 +761,7 @@
 						layer={savedLayer()}
 						pairs={lastPairs}
 						reveal
+						crowd={lastCrowd}
 						onlanded={() => (landed = true)}
 					/>
 				{/snippet}
@@ -775,6 +777,7 @@
 					place={last.place}
 					actual={last.actual}
 					heading={last.heading}
+					crowd={lastCrowd}
 					go={landed}
 				>
 					<ol class="table">

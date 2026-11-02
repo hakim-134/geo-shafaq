@@ -1090,6 +1090,11 @@ export interface components {
             /** @description Allowed panorama providers; empty = the players' providers (PROVIDERS) that cover the place. Test providers (TEST_PROVIDERS, e.g. demo) play only when named here. */
             providers: string[];
             /**
+             * @description How hard the places are to guess, and nothing else. Absent = any place.
+             * @enum {string}
+             */
+            difficulty?: "easy" | "normal" | "hard";
+            /**
              * Format: double
              * @description Stretches the map's scoring distance; 2 = forgiving, 0.6 = strict.
              */
@@ -1505,6 +1510,16 @@ export interface components {
             gameOver?: boolean;
             /** @description The game's total after this round. */
             total?: number;
+            /** @description Other players on this panorama (solo games), when three or more guessed it. */
+            crowd?: {
+                /**
+                 * Format: double
+                 * @description The average distance of their guesses.
+                 */
+                km: number;
+                /** @description How many other players. */
+                n: number;
+            };
         };
         /** @description "You were here": what the round teaches. */
         PlaceInfo: {

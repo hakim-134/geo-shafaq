@@ -374,6 +374,18 @@ async function places(browser: Browser, view: View, dir: string) {
 	await p.find('.map path.shape');
 	await sleep(1200);
 	await p.shot(J, 'map-tashkent');
+	// going close: + twice, every name stays, then back (not counted: the way to a game has none)
+	const press = (nth: number) =>
+		p.page.$$eval('.zoom button', (b, i) => (b[i] as HTMLElement).click(), nth);
+	await press(0);
+	await sleep(500);
+	await press(0);
+	await sleep(800);
+	await p.shot(J, 'map-tashkent-close', 'the map close up: the same places, every name');
+	await press(1);
+	await sleep(500);
+	await press(1);
+	await sleep(800);
 	await p.tap(await p.find('path.shape[aria-label="Chilonzor tumani"]'));
 	await sleep(700);
 	await p.shot(J, 'map-district', 'Chilonzor picked: the bar says what plays');
@@ -457,7 +469,22 @@ async function room(browser: Browser, view: View, dir: string) {
 		}
 		await host.guess(80, -60);
 		await host.find('.ring-row', 20000);
-		await sleep(4000);
+		if (n === 1) {
+			await sleep(2600);
+			await host.shot(J, 'result-1-pulse', 'the crowd ring pulsing out from the badge');
+		}
+		await sleep(n === 1 ? 2400 : 5000);
+		// every round on every phone: the gold ring's label, and "closer" or "farther" under the score
+		for (const who of [host, friend, friend2]) {
+			const [label, line] = await who.page.evaluate(() => [
+				document.querySelector('.sg-crowd-label')?.textContent ?? '',
+				document.querySelector('.reveal .crowd')?.textContent?.trim() ?? ''
+			]);
+			if (!label || !line)
+				problems.push(
+					`${who.view.name} ${who.who} round ${n}: crowd ring "${label}", line "${line}"`
+				);
+		}
 		// round 1 goes on by itself after its ring; round 2 by the host's "Hozir"; the last one
 		// the host holds, then goes on
 		let last = '';

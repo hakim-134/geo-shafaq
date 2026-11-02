@@ -9,11 +9,12 @@ import { load, save } from '#lib/storage.js';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export type YMap = any;
 
-export const COLORS = { guess: '#0099b5', actual: '#1eb53a', line: '#ce1126' };
+export const COLORS = { guess: '#0099b5', actual: '#1eb53a', line: '#ce1126', crowd: '#e8a90c' };
 
 export type BBox = [number, number, number, number]; // west, south, east, north
 
 type Pt = [number, number]; // [lat, lon], Yandex's order
+const KM_PER_LAT = 111.32;
 const pt = (p: LatLon): Pt => [p.lat, p.lon];
 export const bounds = (b: BBox): [Pt, Pt] => [
 	[b[1], b[0]],
@@ -315,6 +316,120 @@ export async function hintArea(geometry: GeoJSON.Geometry): Promise<any[]> {
 	);
 }
 
+/** The crowd's ring: everyone's average distance around the real place, soft gold (not green,
+ *  the real place; not red, the line; not a player's colour), with a white edge for satellite. */
+export async function crowdRing(center: LatLon, km: number): Promise<any> {
+	const ymaps = await loadYmaps('uz');
+	return new ymaps.Circle(
+		[pt(center), km * 1000],
+		{},
+		{
+			fillColor: COLORS.crowd + '1c',
+			strokeColor: ['#ffffffcc', COLORS.crowd],
+			strokeWidth: [5, 2.5],
+			interactivityModel: 'default#transparent'
+		}
+	);
+}
+
+// a ring this many pixels across or more runs past any screen: the pulse need not be bigger
+const PULSE_MAX_PX = 900;
+
+/** The ring on screen: its radius in pixels at the map's zoom. */
+function ringPixels(map: YMap, c: LatLon, km: number): number {
+	const project = map.options.get('projection');
+	const z = map.getZoom();
+	const a = project.toGlobalPixels(pt(c), z);
+	const b = project.toGlobalPixels([c.lat + km / KM_PER_LAT, c.lon], z);
+	return Math.abs(a[1] - b[1]);
+}
+
+/** The ring pulsing out from the badge (the look is in app.css, .sg-crowd-pulse). Yandex's
+ *  circle can't animate: this is a placemark as wide as the ring is at this zoom. */
+export async function crowdPulse(map: YMap, c: LatLon, km: number): Promise<any> {
+	const ymaps = await loadYmaps('uz');
+	const r = Math.round(Math.min(ringPixels(map, c, km), PULSE_MAX_PX));
+	const Layout = ymaps.templateLayoutFactory.createClass(
+		`<i class="sg-crowd-pulse" style="--r:${r}px"></i>`
+	);
+	return new ymaps.Placemark(
+		pt(c),
+		{},
+		{ iconLayout: Layout, zIndex: 900, interactivityModel: 'default#transparent' }
+	);
+}
+
+/** Where the ring's label sits: the spot on the ring, in sight, over as little as can be of the
+ *  badge, the pins and what Yandex and the key keep in the corners; the ring's bottom when all
+ *  is equal (a badge and a pin stand up from their spots, so the bottom is the free side).
+ *  Null: no part of the ring is on screen. */
+function ringSpot(map: YMap, c: LatLon, km: number, avoid: LatLon[], text: string): Pt | null {
+	const project = map.options.get('projection');
+	const z = map.getZoom();
+	const [cx, cy] = map.getGlobalPixelCenter();
+	const [w, h] = map.container.getSize();
+	const [ax, ay] = project.toGlobalPixels(pt(c), z);
+	const r = ringPixels(map, c, km);
+	const lw = text.length * 7 + 20; // the pill, about
+	const lh = 24;
+	const onScreen = ([x, y]: number[]): [number, number] => [x - cx + w / 2, y - cy + h / 2];
+	type Box = [number, number, number, number];
+	const [bx, by] = onScreen([ax, ay]);
+	const keep: Box[] = [
+		[bx - 20, by - 45, bx + 24, by + 7], // the badge
+		...avoid.map((p): Box => {
+			const [x, y] = onScreen(project.toGlobalPixels(pt(p), z));
+			return [x - 14, y - 36, x + 14, y];
+		}),
+		[0, 0, 190, 40], // Yandex's box
+		[0, h - 70, 170, h], // the key
+		[w - 170, h - 28, w, h] // the logo
+	];
+	const over = (x: number, y: number) =>
+		keep.reduce((sum, [x0, y0, x1, y1]) => {
+			const dx = Math.min(x + lw / 2, x1) - Math.max(x - lw / 2, x0);
+			const dy = Math.min(y + lh / 2, y1) - Math.max(y - lh / 2, y0);
+			return sum + (dx > 0 && dy > 0 ? dx * dy : 0);
+		}, 0);
+	let best: [number, number] | null = null;
+	let bestCost = Infinity;
+	for (let deg = 0; deg < 360; deg += 15) {
+		const a = (deg * Math.PI) / 180;
+		const gx = ax + r * Math.sin(a);
+		const gy = ay + r * Math.cos(a); // 0: the bottom
+		const [x, y] = onScreen([gx, gy]);
+		if (x < lw / 2 + 4 || x > w - lw / 2 - 4 || y < lh / 2 + 2 || y > h - lh / 2 - 2) continue;
+		const cost = over(x, y) + Math.min(deg, 360 - deg) / 10;
+		if (cost < bestCost) {
+			bestCost = cost;
+			best = [gx, gy];
+		}
+	}
+	return best && project.fromGlobalPixels(best, z);
+}
+
+/** The ring's label on its edge: "O‘rtacha 2.3 km". Under the pins, if it must touch one: a pin
+ *  says where someone is. Nothing when the ring is off screen. */
+export async function crowdLabel(
+	map: YMap,
+	c: LatLon,
+	km: number,
+	avoid: LatLon[],
+	text: string
+): Promise<any | null> {
+	const at = ringSpot(map, c, km, avoid, text);
+	if (!at) return null;
+	const ymaps = await loadYmaps('uz');
+	const Layout = ymaps.templateLayoutFactory.createClass(
+		`<span class="sg-crowd-label">${text}</span>`
+	);
+	return new ymaps.Placemark(
+		at,
+		{},
+		{ iconLayout: Layout, zIndex: 500, interactivityModel: 'default#transparent' }
+	);
+}
+
 /** The dashed line from where the player guessed to where the place was. */
 export async function guessLine(a: LatLon, b: LatLon): Promise<any> {
 	const ymaps = await loadYmaps('uz');
@@ -354,9 +469,16 @@ export function boxOf(points: LatLon[]): BBox {
 	return [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)];
 }
 
+/** A rough distance, for framing the map: not for scores, the server has those. */
+export function kmBetween(a: LatLon, b: LatLon): number {
+	const dLat = (a.lat - b.lat) * KM_PER_LAT;
+	const dLon = (a.lon - b.lon) * KM_PER_LAT * Math.cos((((a.lat + b.lat) / 2) * Math.PI) / 180);
+	return Math.hypot(dLat, dLon);
+}
+
 /** The box around a circle, for zooming to a hint. */
 export function circleBox(c: LatLon, radiusKm: number): BBox {
-	const dLat = radiusKm / 111.32;
-	const dLon = radiusKm / (111.32 * Math.cos((c.lat * Math.PI) / 180));
+	const dLat = radiusKm / KM_PER_LAT;
+	const dLon = radiusKm / (KM_PER_LAT * Math.cos((c.lat * Math.PI) / 180));
 	return [c.lon - dLon, c.lat - dLat, c.lon + dLon, c.lat + dLat];
 }

@@ -466,6 +466,45 @@ a {
 	border: 3px solid #1eb53a;
 	animation: drop-ring 1.2s 0.35s ease-out 2 both;
 }
+/* the crowd's ring pulsing out from the badge, twice, once it has landed (map.ts, crowdPulse) */
+.sg-crowd-pulse {
+	position: absolute;
+	left: calc(-1 * var(--r));
+	top: calc(-1 * var(--r));
+	width: calc(2 * var(--r));
+	height: calc(2 * var(--r));
+	border-radius: 50%;
+	border: 3px solid #e8a90c;
+	background: radial-gradient(closest-side, transparent 72%, rgba(232, 169, 12, 0.22));
+	animation: crowd-pulse 1s 0.35s cubic-bezier(0.2, 0.6, 0.3, 1) 2 both;
+	pointer-events: none;
+}
+@keyframes crowd-pulse {
+	from {
+		transform: scale(0.04);
+		opacity: 0.95;
+	}
+	70% {
+		opacity: 0.8;
+	}
+	to {
+		transform: scale(1);
+		opacity: 0;
+	}
+}
+.sg-crowd-label {
+	position: absolute;
+	transform: translate(-50%, -50%);
+	padding: 3px 9px;
+	border-radius: 999px;
+	background: #f5b81c;
+	color: #13233f;
+	font: 700 12.5px/1.25 var(--body, Onest, sans-serif);
+	white-space: nowrap;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+	animation: pop-in 0.3s var(--pop) both;
+	pointer-events: none;
+}
 /* the first badge on a device: its ring keeps calling a few times more, "tap me" */
 .sg-drop.calling .sg-drop-ring {
 	animation-iteration-count: 6;

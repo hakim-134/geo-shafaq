@@ -404,6 +404,7 @@
 					layer={savedLayer()}
 					pairs={[{ actual: result!.actual, heading: result!.heading, guess: result!.guess }]}
 					reveal
+					crowd={result!.crowd?.km}
 					onlanded={() => (landed = true)}
 				/>
 			{/snippet}
@@ -420,6 +421,7 @@
 				place={result.place}
 				actual={result.actual}
 				heading={result.heading}
+				crowd={result.crowd?.km}
 				go={landed}
 			/>
 			{#snippet actions()}

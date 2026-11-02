@@ -1,8 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { applyPreset, loadChoice, rulesFor, type Choice } from './rules.js';
+import { loadChoice, rulesFor, type Choice } from './rules.js';
 
 const choice = (c: Partial<Choice> = {}): Choice => ({
-	...applyPreset({ map: 'x', preset: 'easy', rounds: 5, timeSec: 0 } as Choice, c.preset ?? 'easy'),
+	map: 'x',
+	preset: 'easy',
+	rounds: 5,
+	timeSec: 0,
+	hints: { count: 1, per: 'round', kind: 'region', cost: 0.2 },
+	movement: 'move',
 	compass: true,
 	...c
 });
@@ -13,10 +18,12 @@ describe('rulesFor', () => {
 		expect(r).toMatchObject({ rounds: 7, timeSec: 90, providers: [], scoreScale: 1 });
 		expect(r.hints).toEqual({ count: 1, per: 'round', kind: 'region', cost: 0.2 });
 	});
-	it('hard suggests no hints and has no map labels', () => {
-		const r = rulesFor(choice({ preset: 'hard' }));
-		expect(r.hints.count).toBe(0);
-		expect(r.mapLabels).toBe(false);
+	it('a difficulty is how hard the places are, and changes nothing else', () => {
+		const { difficulty: easy, ...a } = rulesFor(choice({ preset: 'easy' }));
+		const { difficulty: hard, ...b } = rulesFor(choice({ preset: 'hard' }));
+		expect([easy, hard]).toEqual(['easy', 'hard']);
+		expect(b).toEqual(a);
+		expect(a).toMatchObject({ scoreScale: 1, mapLabels: true, panoLabels: true });
 	});
 	it("keeps the player's own hints, movement and compass", () => {
 		const c = choice({ movement: 'nomove', compass: false });

@@ -3,6 +3,7 @@
 	// Tapping the real place's badge opens its panorama on Yandex Maps.
 	// With reveal (one round's result): the map frames both points, the line runs from the
 	// guess to the real place, and the real pin drops there; onlanded says when it has.
+	// With crowd (km): the crowd's gold ring around the real place, pulsing out as the pin lands.
 	import { onMount } from 'svelte';
 	import {
 		addBorder,
@@ -11,10 +12,15 @@
 		COLORS,
 		countryShape,
 		createMap,
+		crowdLabel,
+		crowdPulse,
+		crowdRing,
+		circleBox,
 		dropMarker,
 		flagMarker,
 		growLine,
 		guessLine,
+		kmBetween,
 		marker,
 		yandexType,
 		type BBox,
@@ -22,7 +28,8 @@
 		type YMap
 	} from './map.js';
 	import type { LatLon } from '#lib/api/client.js';
-	import { i18n } from '#lib/i18n/index.svelte.js';
+	import { fmtDistance } from '#lib/format.js';
+	import { i18n, t } from '#lib/i18n/index.svelte.js';
 	import { load, save } from '#lib/storage.js';
 
 	export interface Pair {
@@ -39,9 +46,10 @@
 		bbox: BBox;
 		layer: Layer; // the look the player chose on the guess map
 		reveal?: boolean;
+		crowd?: number; // the average distance of the round's guesses, km
 		onlanded?: () => void;
 	}
-	let { pairs, bbox, layer, reveal = false, onlanded }: Props = $props();
+	let { pairs, bbox, layer, reveal = false, crowd, onlanded }: Props = $props();
 
 	let el: HTMLDivElement;
 	let map = $state<YMap | null>(null);
@@ -49,6 +57,10 @@
 	let drawn: any[] = [];
 	let drawnKey = '';
 	let run = 0;
+
+	const RING_FIT = 8; // the ring may be this many times the farthest guess, and still be framed
+	const PULSE_MS = 1000; // one pulse and the wait for the badge to land: as .sg-crowd-pulse
+	const PULSE_DELAY_MS = 350;
 
 	onMount(() => {
 		let gone = false;
@@ -65,6 +77,7 @@
 		);
 		return () => {
 			gone = true;
+			run++;
 			map?.destroy();
 		};
 	});
@@ -76,10 +89,11 @@
 	$effect(() => {
 		const m = map;
 		const list = pairs;
+		const ringKm = reveal ? crowd : undefined;
 		if (!m) return;
 		// the same points again (a room's state comes again on a pause, a ring tick): what is
 		// drawn stays, and a reveal under way plays on to its flag
-		const key = JSON.stringify(list) + reveal;
+		const key = JSON.stringify(list) + reveal + ringKm;
 		if (key === drawnKey) return;
 		drawnKey = key;
 		const mine = ++run;
@@ -91,21 +105,25 @@
 			drawn.push(o);
 		};
 		const points: LatLon[] = list.flatMap((p) => (p.guess ? [p.actual, p.guess] : [p.actual]));
+		if (ringKm != null && list.length && ringFits(list, ringKm)) {
+			const [w, s, e, n] = circleBox(list[0].actual, ringKm);
+			points.push({ lat: s, lon: w }, { lat: n, lon: e });
+		}
 
 		m.container.fitToViewport();
 		if (points.length === 1) m.setCenter([points[0].lat, points[0].lon], 15);
 		else if (points.length)
 			// any zoom, not only whole steps: the flags fill the map, on a phone too. The
 			// margins: Yandex's box and the flags' poles above the points, the key and the logo
-			// under them
+			// under them; less on a short map (a room's result on a phone), or the pins pile up
 			m.setBounds(bounds(boxOf(points)), {
-				zoomMargin: [104, 56, 84, 56],
+				zoomMargin: m.container.getSize()[1] < 400 ? [64, 44, 44, 44] : [104, 56, 84, 56],
 				preciseZoom: true,
 				checkZoomRange: true
 			});
 
 		if (reveal && list.length) {
-			revealPairs(list, add, () => mine === run);
+			revealPairs(m, list, ringKm, add, () => mine === run);
 			return;
 		}
 
@@ -134,8 +152,68 @@
 		return true;
 	}
 
+	// the map frames the ring unless it is far bigger than the guess: a guess a street away stays
+	// readable, the ring runs past the edges, and that says the same
+	function ringFits(list: Pair[], km: number): boolean {
+		const far = Math.max(0, ...list.map((p) => (p.guess ? kmBetween(p.actual, p.guess) : 0)));
+		return !far || km <= far * RING_FIT;
+	}
+
+	// the pulse runs out from the badge twice (app.css): the ring stays where the first one
+	// ends, its label comes when the last one is gone. Still for reduced motion.
+	async function playCrowd(
+		m: YMap,
+		list: Pair[],
+		km: number,
+		add: (o: any) => void,
+		live: () => boolean
+	) {
+		const c = list[0].actual;
+		const showLabel = async () => {
+			const label = await crowdLabel(
+				m,
+				c,
+				km,
+				list.flatMap((p) => (p.guess ? [p.guess] : [])),
+				t('crowdAverage', { d: fmtDistance(km) })
+			);
+			if (label && live()) add(label);
+		};
+		const ring = await crowdRing(c, km);
+		if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+			add(ring);
+			await showLabel();
+			return;
+		}
+		const pulse = await crowdPulse(m, c, km);
+		const stopPulse = () => {
+			m.geoObjects.remove(pulse);
+			drawn = drawn.filter((o) => o !== pulse);
+		};
+		// a pulse is as wide as the ring at this zoom: zoomed, it would be wrong
+		const onZoom = (e: any) => e.get('newZoom') !== e.get('oldZoom') && stopPulse();
+		add(pulse);
+		m.events.add('boundschange', onZoom);
+		setTimeout(() => live() && add(ring), PULSE_MS + PULSE_DELAY_MS);
+		setTimeout(
+			() => {
+				m.events.remove('boundschange', onZoom);
+				if (!live()) return;
+				stopPulse();
+				void showLabel();
+			},
+			2 * PULSE_MS + PULSE_DELAY_MS
+		);
+	}
+
 	// the guesses first, then every line runs to the real place, then its pin drops
-	async function revealPairs(list: Pair[], add: (o: any) => void, live: () => boolean) {
+	async function revealPairs(
+		m: YMap,
+		list: Pair[],
+		ringKm: number | undefined,
+		add: (o: any) => void,
+		live: () => boolean
+	) {
 		try {
 			const guesses = list.filter((p) => p.guess);
 			for (const p of guesses)
@@ -155,6 +233,7 @@
 					firstTime()
 				)
 			);
+			if (ringKm != null) await playCrowd(m, list, ringKm, add, live);
 		} catch {
 			/* drawn as far as it got */
 		}

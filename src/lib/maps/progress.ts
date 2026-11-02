@@ -5,8 +5,12 @@ import type { Schemas } from '#lib/api/client.js';
 
 export function knownTint(p: Schemas['Progress']): string {
 	if (!p.total || !p.seen) return '0%';
-	return `${Math.round(10 + (70 * (0.35 * p.seen + 0.65 * p.learned)) / p.total)}%`;
+	return `${Math.round(24 + (56 * (0.35 * p.seen + 0.65 * p.learned)) / p.total)}%`;
 }
+
+/** A place with fewer panoramas than the longest game: it plays, and its name in italics says
+ * there is little there yet. */
+export const fewPlaces = (p: { panoramas: number }) => p.panoramas > 0 && p.panoramas < 10;
 
 /** "Chilonzor tumani" → "Chilonzor": on a map of districts the word is everywhere. A city keeps
  * "shahri": "Samarqand shahri" stands beside "Samarqand tumani". */

@@ -5,7 +5,6 @@
 	import { t, type Key } from '#lib/i18n/index.svelte.js';
 	import { fmtClock } from '#lib/format.js';
 	import {
-		applyPreset,
 		ROUND_TILES,
 		TIME_TILES,
 		MAX_HINTS,
@@ -40,7 +39,7 @@
 				<button
 					class="tile {p}"
 					aria-pressed={choice.preset === p}
-					onclick={() => (choice = applyPreset(choice, p))}
+					onclick={() => (choice.preset = p)}
 				>
 					<span class="bars" aria-hidden="true">
 						{#each [1, 2, 3] as b (b)}<i class:on={b <= bars[p]}></i>{/each}

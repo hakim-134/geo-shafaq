@@ -1,11 +1,11 @@
-// The menu's choices, turned into the server's Rules. A difficulty (v0's Oson / O‘rta / Qiyin,
-// the same presets as api-geo-shafaq/internal/rules) sets the scoring and the labels, and
-// suggests hints and movement; rounds, time, hints, movement and the compass are then the
-// player's own.
+// The menu's choices, turned into the server's Rules. A difficulty (Oson / O‘rta / Qiyin) is how
+// hard the places are to guess, and nothing else (the owner, 2026-11-02): rounds, time, hints,
+// movement and the compass are the player's own, on every difficulty.
 import type { Rules } from '#lib/api/client.js';
 import { load, loadJSON, saveJSON } from '#lib/storage.js';
 
 export type Preset = 'easy' | 'normal' | 'hard';
+export const PRESETS: Preset[] = ['easy', 'normal', 'hard'];
 export type Movement = Rules['movement'];
 export type HintPer = Rules['hints']['per'];
 export type HintKind = NonNullable<Rules['hints']['kind']>;
@@ -16,18 +16,6 @@ export interface HintChoice {
 	kind: HintKind;
 	cost: number;
 }
-
-const scoring: Record<Preset, Pick<Rules, 'scoreScale' | 'panoLabels' | 'mapLabels'>> = {
-	easy: { scoreScale: 2, panoLabels: true, mapLabels: true },
-	normal: { scoreScale: 1, panoLabels: false, mapLabels: true },
-	hard: { scoreScale: 0.6, panoLabels: false, mapLabels: false }
-};
-
-const suggested: Record<Preset, { hints: HintChoice; movement: Movement }> = {
-	easy: { hints: { count: 1, per: 'round', kind: 'district', cost: 0 }, movement: 'move' },
-	normal: { hints: { count: 1, per: 'round', kind: 'region', cost: 0.2 }, movement: 'move' },
-	hard: { hints: { count: 0, per: 'round', kind: 'circle', cost: 0 }, movement: 'move' }
-};
 
 /** What the player picked on the menu, remembered on this device. */
 export interface Choice {
@@ -45,22 +33,17 @@ const defaults: Choice = {
 	preset: 'easy',
 	rounds: 5,
 	timeSec: 0,
-	...structuredClone(suggested.easy),
+	hints: { count: 1, per: 'round', kind: 'district', cost: 0 },
+	movement: 'move',
 	compass: true
 };
 
-/** A difficulty, with the hints and movement it suggests. */
-export function applyPreset(c: Choice, p: Preset): Choice {
-	return { ...c, preset: p, ...structuredClone(suggested[p]) };
-}
-
 export function loadChoice(): Choice {
 	const c = loadJSON('choice', defaults);
-	if (!(c.preset in scoring)) c.preset = 'easy';
-	// a choice saved before Phase 4 has no hints or movement: its difficulty's suggestion
-	const s = suggested[c.preset];
-	c.hints = { ...s.hints, ...c.hints };
-	c.movement ??= s.movement;
+	if (!PRESETS.includes(c.preset)) c.preset = 'easy';
+	// a choice saved before Phase 4 has no hints or movement
+	c.hints = { ...defaults.hints, ...c.hints };
+	c.movement ??= defaults.movement;
 	c.rounds = nearest(Math.max(0, c.rounds || 0), ROUND_TILES);
 	c.timeSec = nearest(Math.max(0, c.timeSec || 0), TIME_TILES);
 	c.hints.count = clamp(Math.round(c.hints.count), 0, MAX_HINTS);
@@ -80,7 +63,10 @@ export const testProviders = (): string[] =>
 
 export function rulesFor(c: Choice, providers: string[] = []): Rules {
 	return {
-		...scoring[c.preset],
+		difficulty: c.preset,
+		scoreScale: 1,
+		panoLabels: true,
+		mapLabels: true,
 		rounds: c.rounds,
 		timeSec: c.timeSec,
 		movement: c.movement,
@@ -92,7 +78,9 @@ export function rulesFor(c: Choice, providers: string[] = []): Rules {
 
 /** Rules back as the menu's choices: a room's rules, for its host to change. */
 export function choiceFrom(r: Rules, map: string): Choice {
-	const preset: Preset = r.scoreScale >= 2 ? 'easy' : r.scoreScale >= 1 ? 'normal' : 'hard';
+	// a room from before difficulty meant this has it only as its scoring
+	const preset: Preset =
+		r.difficulty ?? (r.scoreScale >= 2 ? 'easy' : r.scoreScale >= 1 ? 'normal' : 'hard');
 	return {
 		map,
 		preset,
@@ -101,7 +89,7 @@ export function choiceFrom(r: Rules, map: string): Choice {
 		hints: {
 			count: r.hints.count,
 			per: r.hints.per,
-			kind: r.hints.kind ?? suggested[preset].hints.kind,
+			kind: r.hints.kind ?? defaults.hints.kind,
 			cost: r.hints.cost
 		},
 		movement: r.movement,
