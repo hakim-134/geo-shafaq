@@ -240,6 +240,11 @@
 						<MapSign slug={m.slug} name={tx(m.name)} outline={m.outline} size="small" />
 					</button>
 				{/each}
+				<a class="new-map" href="/maps/new">＋ {t('mapsNew')}</a>
+				<a class="more-maps" href="/maps">
+					{t('mapsMore')}
+					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+				</a>
 			</div>
 		{/if}
 
@@ -303,6 +308,31 @@
 {/if}
 
 <style>
+	.new-map {
+		display: inline-flex;
+		align-items: center;
+		min-height: 38px;
+		padding: 0 14px;
+		border-radius: 10px;
+		border: 2px dashed var(--muted);
+		color: var(--text);
+		font-family: var(--display);
+		font-weight: 700;
+		font-size: 13px;
+		text-decoration: none;
+	}
+	.more-maps {
+		flex-basis: 100%;
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+		min-height: 40px;
+		padding: 0 4px 0 10px;
+		font-weight: 700;
+		font-size: 14.5px;
+		color: var(--muted);
+		text-decoration: none;
+	}
 	.few {
 		font-style: italic;
 	}

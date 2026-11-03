@@ -126,6 +126,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/maps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The maps the player made. */
+        get: operations["listMyMaps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/config": {
         parameters: {
             query?: never;
@@ -352,6 +369,75 @@ export interface paths {
         /** The maps on the menu. */
         get: operations["listMaps"];
         put?: never;
+        /** Make a map from places, a drawn area and streets; the library fills it. */
+        post: operations["createMap"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/maps/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** How many panoramas a map made of these would hold. */
+        post: operations["previewMap"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/maps/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The listed maps, most played first; by name, by tag. */
+        get: operations["searchMaps"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/points": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Where the library has panoramas in this box, thinned; the map maker's dots. */
+        get: operations["libraryPoints"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/library/streets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The named streets with panoramas; the map maker's list. */
+        get: operations["libraryStreets"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -369,7 +455,42 @@ export interface paths {
         get: operations["getMap"];
         put?: never;
         post?: never;
+        /** The owner deletes a map. Games already played keep it. */
+        delete: operations["deleteMap"];
+        options?: never;
+        head?: never;
+        /** The owner changes a map's name, who sees it, its tags. */
+        patch: operations["updateMap"];
+        trace?: never;
+    };
+    "/v1/maps/{slug}/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A map's page. plays, likes, best scores, tags. */
+        get: operations["getMapPage"];
+        put?: never;
+        post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/maps/{slug}/like": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["likeMap"];
+        post?: never;
+        delete: operations["unlikeMap"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1142,6 +1263,86 @@ export interface components {
             map: string;
             streets: components["schemas"]["MyStreet"][];
         };
+        /** @enum {string} */
+        MapVisibility: "private" | "unlisted" | "public";
+        /**
+         * @description none: not public. pending: waits for a person; plays by its link. approved: listed. rejected: not listed.
+         * @enum {string}
+         */
+        MapModeration: "none" | "pending" | "approved" | "rejected";
+        MapSources: {
+            places?: string[];
+            streets?: number[];
+            /** @description A drawn loop of [lat, lon]. */
+            area?: number[][];
+        };
+        NewMap: components["schemas"]["MapSources"] & {
+            name: string;
+            visibility: components["schemas"]["MapVisibility"];
+            tags?: string[];
+        };
+        MapUpdate: {
+            name: string;
+            visibility: components["schemas"]["MapVisibility"];
+            tags: string[];
+        };
+        MapPreview: {
+            panoramas: number;
+            streets: number;
+        };
+        LibraryStreet: {
+            /** Format: int64 */
+            id: number;
+            name: components["schemas"]["Text"];
+            panoramas: number;
+        };
+        MapCard: {
+            slug: string;
+            name: components["schemas"]["Text"];
+            description: components["schemas"]["Text"];
+            official: boolean;
+            panoramas: number;
+            plays: number;
+            likes: number;
+            tags: string[];
+            visibility: components["schemas"]["MapVisibility"];
+            moderation: components["schemas"]["MapModeration"];
+        };
+        MapSearch: {
+            maps: components["schemas"]["MapCard"][];
+            total: number;
+        };
+        MapPage: {
+            map: components["schemas"]["MapSummary"];
+            by?: components["schemas"]["PublicUser"];
+            visibility: components["schemas"]["MapVisibility"];
+            moderation: components["schemas"]["MapModeration"];
+            /** @description Why it was rejected; its owner only. */
+            moderationNote?: string;
+            tags: string[];
+            /** @description Games started on it. */
+            plays: number;
+            likes: number;
+            /** @description This player likes it. */
+            liked: boolean;
+            /** @description This player made it. */
+            mine: boolean;
+            /** @description The drawn area as a GeoJSON geometry, when the map has one. */
+            area?: {
+                [key: string]: unknown;
+            };
+            /** @description Where its picked streets run: [lat, lon] of their panoramas. */
+            streetPoints?: number[][];
+            board: components["schemas"]["MapBoardRow"][];
+        };
+        MapBoardRow: {
+            place: number;
+            player: components["schemas"]["PublicUser"];
+            /** @description Points per round in the player's best game here. */
+            perRound: number;
+            /** Format: uuid */
+            game: string;
+        };
         MapBest: {
             map: components["schemas"]["MapRef"];
             games: number;
@@ -1871,6 +2072,27 @@ export interface operations {
             401: components["responses"]["Error"];
         };
     };
+    listMyMaps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Maps */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapCard"][];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
     getConfig: {
         parameters: {
             query?: never;
@@ -2229,6 +2451,131 @@ export interface operations {
             };
         };
     };
+    createMap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewMap"];
+            };
+        };
+        responses: {
+            /** @description The new map */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapSummary"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    previewMap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MapSources"];
+            };
+        };
+        responses: {
+            /** @description The count */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapPreview"];
+                };
+            };
+            400: components["responses"]["Error"];
+            429: components["responses"]["Error"];
+        };
+    };
+    searchMaps: {
+        parameters: {
+            query?: {
+                q?: string;
+                tag?: string;
+                page?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of maps */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapSearch"];
+                };
+            };
+        };
+    };
+    libraryPoints: {
+        parameters: {
+            query: {
+                west: number;
+                south: number;
+                east: number;
+                north: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description [lat, lon] pairs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": number[][];
+                };
+            };
+            400: components["responses"]["Error"];
+        };
+    };
+    libraryStreets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Streets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryStreet"][];
+                };
+            };
+        };
+    };
     getMap: {
         parameters: {
             query?: never;
@@ -2250,6 +2597,121 @@ export interface operations {
                 };
             };
             404: components["responses"]["Error"];
+        };
+    };
+    deleteMap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    updateMap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MapUpdate"];
+            };
+        };
+        responses: {
+            /** @description The map's page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapPage"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    getMapPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapPage"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    likeMap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Liked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    unlikeMap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No longer liked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
         };
     };
     getPlace: {

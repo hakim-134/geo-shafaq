@@ -8,9 +8,10 @@
 	interface Props {
 		title: string;
 		back?: { href: string; label: string };
+		signed?: boolean; // a road sign on the page says the name: the title stays for the tab
 		children: Snippet;
 	}
-	let { title, back, children }: Props = $props();
+	let { title, back, signed = false, children }: Props = $props();
 
 	ensureSession().catch(() => {}); // the top bar shows who is playing
 </script>
@@ -26,7 +27,7 @@
 			{back.label}
 		</a>
 	{/if}
-	<h1>{title}</h1>
+	{#if !signed}<h1>{title}</h1>{/if}
 	{@render children()}
 </main>
 

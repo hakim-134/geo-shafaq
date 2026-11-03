@@ -94,7 +94,8 @@
 			offline = false;
 			waiting = false;
 			placeMap = null;
-			if (choice.map.startsWith('place-')) {
+			// a place, or a player's map: not on the menu, asked for by itself
+			if (!m.some((x) => x.slug === choice.map)) {
 				try {
 					placeMap = await call(
 						api().GET('/v1/maps/{slug}', { params: { path: { slug: choice.map } } })

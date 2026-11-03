@@ -549,3 +549,20 @@ a {
 	bottom: calc(100cqh - 42px) !important;
 	left: 10px !important;
 }
+
+/* a tag on a player's map: a quiet pill; pressed, sky */
+.tag {
+	min-height: 40px;
+	padding: 0 14px;
+	border-radius: 999px;
+	border: 1.5px solid var(--border);
+	background: var(--surface);
+	color: var(--text);
+	font-weight: 600;
+	font-size: 14px;
+	white-space: nowrap;
+}
+.tag[aria-pressed='true'] {
+	border-color: var(--sky);
+	background: color-mix(in srgb, var(--sky) 14%, var(--surface));
+}

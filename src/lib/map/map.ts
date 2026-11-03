@@ -58,6 +58,52 @@ export async function createMap(o: MapOptions): Promise<YMap> {
 	);
 }
 
+const DOT =
+	'data:image/svg+xml,' +
+	encodeURIComponent(
+		'<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><circle cx="5" cy="5" r="4" fill="#1eb53a" stroke="#fff" stroke-width="1.5"/></svg>'
+	);
+
+/** Green dots where the library has panoramas in view, kept up as the map moves. It costs no panorama views. */
+export async function libraryDots(map: YMap, lang: Lang): Promise<void> {
+	const ymaps = await loadYmaps(lang);
+	const om = new ymaps.ObjectManager({ clusterize: false });
+	om.objects.options.set({
+		iconLayout: 'default#image',
+		iconImageHref: DOT,
+		iconImageSize: [10, 10],
+		iconImageOffset: [-5, -5],
+		interactivityModel: 'default#transparent',
+		hasBalloon: false,
+		hasHint: false
+	});
+	map.geoObjects.add(om);
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	let asked = 0;
+	const load = async () => {
+		const ask = ++asked;
+		const [[south, west], [north, east]] = map.getBounds();
+		const pts = await call(
+			api().GET('/v1/library/points', { params: { query: { west, south, east, north } } })
+		).catch(() => null);
+		if (!pts || ask !== asked) return;
+		om.removeAll();
+		om.add({
+			type: 'FeatureCollection',
+			features: pts.map((p, id) => ({
+				type: 'Feature',
+				id,
+				geometry: { type: 'Point', coordinates: p }
+			}))
+		});
+	};
+	map.events.add('boundschange', () => {
+		clearTimeout(timer);
+		timer = setTimeout(load, 250);
+	});
+	load();
+}
+
 /** A place's simplified border, fetched once per page. */
 const shapes = new Map<string, Promise<GeoJSON.Geometry>>();
 export function placeShape(slug: string): Promise<GeoJSON.Geometry> {
@@ -314,6 +360,51 @@ export async function hintArea(geometry: GeoJSON.Geometry): Promise<any[]> {
 				}
 			)
 	);
+}
+
+/** A player's map on its small picture: its area or places in gold. */
+export async function goldArea(geometry: GeoJSON.Geometry): Promise<any[]> {
+	const ymaps = await loadYmaps('uz');
+	return polygons(geometry).map(
+		(p) =>
+			new ymaps.Polygon(
+				[ring(p[0])],
+				{},
+				{
+					fillColor: COLORS.crowd + '40',
+					strokeColor: '#c98f06',
+					strokeWidth: 2.5,
+					interactivityModel: 'default#transparent'
+				}
+			)
+	);
+}
+
+/** A player's map on its small picture: where its picked streets run, as gold dots. */
+export async function goldDots(map: YMap, points: number[][]): Promise<void> {
+	const ymaps = await loadYmaps('uz');
+	const om = new ymaps.ObjectManager({ clusterize: false });
+	const dot = encodeURIComponent(
+		'<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12"><circle cx="6" cy="6" r="5" fill="#e8a90c" stroke="#fff" stroke-width="1.5"/></svg>'
+	);
+	om.objects.options.set({
+		iconLayout: 'default#image',
+		iconImageHref: `data:image/svg+xml,${dot}`,
+		iconImageSize: [12, 12],
+		iconImageOffset: [-6, -6],
+		interactivityModel: 'default#transparent',
+		hasBalloon: false,
+		hasHint: false
+	});
+	om.add({
+		type: 'FeatureCollection',
+		features: points.map((p, id) => ({
+			type: 'Feature',
+			id,
+			geometry: { type: 'Point', coordinates: p }
+		}))
+	});
+	map.geoObjects.add(om);
 }
 
 /** The crowd's ring: everyone's average distance around the real place, soft gold (not green,

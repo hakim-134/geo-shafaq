@@ -106,6 +106,11 @@
 						/></svg
 					>{/snippet}
 			</MenuRow>
+			<MenuRow href="/maps" label={t('mapsMine')} color="var(--sky)">
+				{#snippet icon()}<svg viewBox="0 0 24 24"
+						><path d="M9 4 3.5 6.5v14L9 18l6 2.5 5.5-2.5V4L15 6.5 9 4zM9 4v14M15 6.5v14" /></svg
+					>{/snippet}
+			</MenuRow>
 			<MenuRow href="/settings" label={t('settings')} color="var(--lapis-2)">
 				{#snippet icon()}<svg viewBox="0 0 24 24"
 						><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle

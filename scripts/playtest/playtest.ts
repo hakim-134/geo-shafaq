@@ -12,7 +12,8 @@
 // everyone into the next game), places (the map of Uzbekistan → Tashkent → Chilonzor picked → a game
 // there), challenge (a finished game's link → two friends as guests play it → one leaderboard),
 // missed (a game guessed far off → "Adashgan ko‘chalarim" → found on the spot, each street leaves the
-// list until none is left).
+// list until none is left), maker (a map from places and streets; "My mahalla" drawn with a finger,
+// played, its challenge sent to two guests: PLAN Phase 8's "Done when").
 //
 // Chrome runs headless with --disable-gpu (local.md §3) and a throwaway profile deleted at the
 // end, so the demo switch never reaches the owner's own Chrome. Screenshots, steps.json (the
@@ -33,7 +34,7 @@ const { values: args } = parseArgs({
 		url: { type: 'string', default: 'http://localhost:8130' },
 		out: { type: 'string', default: 'scripts/playtest/out' },
 		views: { type: 'string', default: 'phone-light,phone-dark,laptop,laptop-dark' },
-		only: { type: 'string', default: 'solo,room,places,challenge,missed' },
+		only: { type: 'string', default: 'solo,room,places,challenge,missed,maker' },
 		chrome: { type: 'string', default: process.env.CHROME ?? '/usr/bin/google-chrome' }
 	}
 });
@@ -235,6 +236,28 @@ class Player {
 		const sec = Math.round((Date.now() - this.lastTap) / 100) / 10;
 		await sleep(2500); // the round's number plate, the panorama coming in
 		return sec;
+	}
+
+	/** A finger (or the mouse) goes once around a point, as a player draws a loop on a map. */
+	async drawLoop(cx: number, cy: number, r: number) {
+		const at = (i: number): [number, number] => {
+			const a = (i / 36) * 2 * Math.PI;
+			return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+		};
+		if (this.view.phone) {
+			const touch = await this.page.touchscreen.touchStart(...at(0));
+			for (let i = 1; i <= 36; i++) {
+				await touch.move(...at(i));
+				await sleep(12);
+			}
+			await touch.end();
+		} else {
+			await this.page.mouse.move(...at(0));
+			await this.page.mouse.down();
+			for (let i = 1; i <= 36; i++) await this.page.mouse.move(...at(i));
+			await this.page.mouse.up();
+		}
+		this.taps++;
 	}
 
 	/** Open the map if it is folded away, tap a spot on it, press Guess. */
@@ -789,7 +812,177 @@ async function missed(browser: Browser, view: View, dir: string) {
 	await p.page.close();
 }
 
-const JOURNEYS = { solo, room, places, challenge, missed } as const;
+// The map maker and map pages: PLAN Phase 8's "Done when" on this laptop. A player makes "My mahalla"
+// from the profile, plays it, sends its challenge; two guests land on one leaderboard.
+async function maker(browser: Browser, view: View, dir: string) {
+	const J = 'maker';
+	const QUICK = JSON.stringify({
+		...ROOM_CHOICE,
+		preset: 'easy',
+		hints: { count: 0, per: 'round', kind: 'district', cost: 0 }
+	});
+	const host = new Player(view, 'host', dir);
+	const friend = new Player(view, 'friend', dir);
+	const friend2 = new Player(view, 'friend2', dir);
+	await host.open(browser, { sg_choice: QUICK, sg_coach_done: '1' });
+	await friend.open(browser, { sg_coach_done: '1' });
+	await friend2.open(browser, { sg_coach_done: '1' });
+	const tab = async (name: RegExp) => {
+		await host.tap(await host.findText(name));
+		await sleep(1500);
+	};
+
+	host.begin();
+	await host.go('/me');
+	await sleep(1200);
+	await host.tap(await host.findText(/Xaritalarim/));
+	await host.page.waitForFunction(() => location.pathname === '/maps');
+	await sleep(1000);
+	await host.shot(J, 'maps', 'the list of maps, one green button');
+	// the player stands in Tashkent: the maker's map flies there, a mahalla across
+	await host.page.browserContext().overridePermissions(args.url!, ['geolocation']);
+	await host.page.setGeolocation({ latitude: 41.2995, longitude: 69.2401 });
+	await host.tap(await host.findText(/Yangi xarita/));
+	await host.find('.bar .start:not([disabled])', 20000);
+	await sleep(3000);
+	await host.shot(J, 'draw', 'the first screen of the maker');
+
+	// places and streets, on the way: a map of a district and two streets
+	await tab(/Joylar/);
+	await host.shot(J, 'places-country');
+	await host.tap(await host.find('.places [aria-label="Toshkent"]'));
+	await host.find('.places .whole');
+	await sleep(1000);
+	await host.tap(await host.find('path.shape[aria-label="Chilonzor tumani"]'));
+	await sleep(1000);
+	await host.shot(J, 'places-picked', 'Chilonzor picked: the library says how many');
+	await tab(/Ko‘chalar/);
+	await host.page.type('.streets .search', 'Amir', { delay: 40 });
+	await sleep(500);
+	await host.tap(await host.find('.street'));
+	await sleep(1000);
+	await host.shot(J, 'streets-picked', 'a street found and picked');
+	await host.tap(await host.findText(/Davom etish/));
+	await sleep(600);
+	await host.shot(J, 'name', 'the second screen: a name, who plays');
+	await host.page.$eval('.form input', (i) => ((i as HTMLInputElement).value = ''));
+	await host.page.type('.form input', 'Chilonzor va Amir', { delay: 10 });
+	await host.tap(await host.findText(/Xaritani yaratish/));
+	await host.page.waitForFunction(() => /\/maps\/m-/.test(location.pathname), { timeout: 10000 });
+	await sleep(1800);
+	await host.shot(J, 'map-of-places', "its page; the sign's district in gold");
+
+	// "My mahalla": a loop drawn with a finger
+	host.begin();
+	await host.go('/maps/new');
+	await host.find('.bar .start:not([disabled])', 20000);
+	await sleep(3000);
+	await host.tap(await host.find('.bar .start'));
+	await sleep(400);
+	await host.shot(J, 'pen', 'the pen is on: a finger draws');
+	const box = await (await host.find('.draw-map')).boundingBox();
+	if (!box) throw new Error('no map to draw on');
+	await host.drawLoop(box.x + box.width / 2, box.y + box.height / 2, 60);
+	await sleep(1500);
+	await host.shot(J, 'drawn', 'the loop drawn: how many places it holds');
+	const holds = await host.page.$eval('.bar .what', (b) => (b as HTMLElement).innerText);
+	const spots = Number(holds.match(/([\d\s]+) ta joy/)?.[1]?.replace(/\s/g, '') ?? 0);
+	if (spots < 3 || spots > 60)
+		problems.push(`${view.name} maker: a thumb's loop holds "${holds}": not a mahalla`);
+	await host.tap(await host.findText(/Davom etish/));
+	await sleep(500);
+	await host.tap(await host.findText(/Xaritani yaratish/));
+	await host.page.waitForFunction(() => /\/maps\/m-/.test(location.pathname), { timeout: 10000 });
+	await sleep(2500);
+	await host.shot(J, 'my-mahalla', 'made: the taps from the maker to its page');
+	const mapPath = new URL(host.page.url()).pathname;
+
+	// plays it, and the home's sign becomes it
+	await host.tap(await host.find('.play'));
+	for (let i = 1; i <= 3; i++) {
+		await host.roundReady();
+		if (i === 1) await host.shot(J, 'round', 'a round on the map just made');
+		await host.guess(i * 15, -i * 10);
+		await host.find('.next', 20000);
+		await sleep(2500);
+		await host.tap(await host.find('.next'));
+	}
+	await host.find('.final', 15000);
+	await sleep(2500);
+	await host.shot(J, 'end', 'the end of a game on it');
+	await host.page.evaluate(() => {
+		for (const el of document.querySelectorAll<HTMLElement>('.result, .body'))
+			if (el.scrollHeight > el.clientHeight) el.scrollTop = el.scrollHeight;
+	});
+	await host.tap(await host.findText(/Do‘stni chaqirish/));
+	await sleep(1200);
+	const link = await host.page.$eval('input.link', (i) => (i as HTMLInputElement).value);
+	await host.shot(J, 'share', 'the challenge to send to the group');
+
+	// two friends, guests, from that link
+	const path = new URL(link).pathname;
+	for (const [p, off] of [
+		[friend, 25],
+		[friend2, -30]
+	] as const) {
+		p.begin();
+		await p.go(path);
+		await sleep(1800);
+		await p.shot(J, 'landing', "a friend opens the challenge's link");
+		await p.tap(await p.find('.go:not([disabled])'));
+		for (let i = 1; i <= 3; i++) {
+			await p.roundReady();
+			await p.guess(i * 15 + off, -i * 10 + off);
+			await p.find('.next', 20000);
+			await sleep(2000);
+			await p.tap(await p.find('.next'));
+		}
+		await p.find('.final', 15000);
+		await sleep(2500);
+		await p.shot(J, 'end', 'the leaderboard');
+		const rows = await p.page.$$eval('.board li', (l) => l.length);
+		const want = p === friend ? 2 : 3;
+		if (rows !== want) problems.push(`${view.name} ${p.who}: ${rows} on the board, want ${want}`);
+	}
+
+	// the map's page, from a guest's phone: its best scores
+	await friend.go(mapPath);
+	await sleep(2500);
+	await friend.shot(J, 'map-page-friend', "the map's page: plays, best scores");
+	const board = await friend.page.$$eval('.board li', (l) => l.length);
+	if (board !== 3) problems.push(`${view.name} the map's page: ${board} best scores, want 3`);
+	await friend.tap(await friend.find('.like'));
+	await sleep(600);
+	await friend.go(mapPath);
+	await sleep(1500);
+	const likes = await friend.page.$eval('.like', (b) => (b as HTMLElement).innerText);
+	if (!/1/.test(likes)) problems.push(`${view.name} the like didn't stay: "${likes}"`);
+
+	// the owner makes it public: it waits in the queue, the search doesn't have it yet
+	await host.go(mapPath);
+	await sleep(1500);
+	await host.tap(await host.find('[aria-label="Xarita sozlamalari"]'));
+	await sleep(500);
+	await host.tap(await host.findText(/^\s*Hamma\s*$/));
+	await sleep(300);
+	await host.tap(await host.findText(/Mahalla/));
+	await sleep(300);
+	await host.shot(J, 'settings', 'the owner: the map public, a tag');
+	await host.tap(await host.findText(/Saqlash/));
+	await sleep(1000);
+	await host.shot(J, 'pending', 'public: it waits for a person');
+	await host.go('/maps');
+	await sleep(1500);
+	await host.shot(J, 'maps-mine', 'my maps on top of the list');
+
+	// the home's sign is the last map played
+	await host.go('/');
+	await sleep(1500);
+	await host.shot(J, 'home', 'the home: the sign is the map just played');
+	for (const p of [host, friend, friend2]) await p.page.close();
+}
+
+const JOURNEYS = { solo, room, places, challenge, missed, maker } as const;
 
 // Every journey makes new guests, and the API allows 30 an hour per address: a full run makes
 // more. On this laptop the limit is cleared first (Redis database 1, local.md §3).
