@@ -5,6 +5,7 @@ import { loadYmaps } from '#lib/ymaps.js';
 import { api, call, type LatLon } from '#lib/api/client.js';
 import { t, type Lang } from '#lib/i18n/index.svelte.js';
 import { load, save } from '#lib/storage.js';
+import { trailOf } from '#lib/barg/skins.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export type YMap = any;
@@ -431,16 +432,19 @@ export async function crowdLabel(
 }
 
 /** The dashed line from where the player guessed to where the place was. */
-export async function guessLine(a: LatLon, b: LatLon): Promise<any> {
+/** The line from a guess to the real place. trail: a room's player's own, '' for none; left out, this
+ *  player's. */
+export async function guessLine(a: LatLon, b: LatLon, trail?: string): Promise<any> {
 	const ymaps = await loadYmaps('uz');
+	const look = trailOf(trail);
 	return new ymaps.Polyline(
 		[pt(a), pt(b)],
 		{},
 		{
-			strokeColor: COLORS.line,
+			strokeColor: look?.color ?? COLORS.line,
 			strokeWidth: 2.5,
 			strokeOpacity: 0.85,
-			strokeStyle: 'dash'
+			strokeStyle: look?.style ?? 'dash'
 		}
 	);
 }

@@ -24,7 +24,7 @@
 </script>
 
 <section class="who">
-	<span class="avatar big">{u.avatar}</span>
+	<span class="avatar big" data-frame={u.frame}>{u.avatar}</span>
 	<div class="who-text">
 		<h1 use:fitWords={u.name}>{u.name}</h1>
 		<p>

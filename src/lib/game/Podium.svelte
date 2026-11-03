@@ -58,7 +58,9 @@
 				style:animation-delay={`${AT[2 - i]}ms`}
 			>
 				<span class="who">
-					<span class="avatar ring" style:--ring={colorOf(p.id)}>{p.avatar}</span>
+					<span class="avatar ring" style:--ring={colorOf(p.id)} data-frame={p.frame}
+						><em class="pc"></em>{p.avatar}</span
+					>
 					<span class="name">{p.name}</span>
 					<b>{fmtNum(p.total)}</b>
 					{#if costOf(p.id)}<span class="pill">💡 −{fmtNum(costOf(p.id))}</span>{/if}
@@ -73,7 +75,9 @@
 			{#each rest as p (p.id)}
 				<li class:me={p.id === you} class:off={p.left}>
 					<span class="pos">{placeOf(p)}</span>
-					<span class="avatar ring" style:--ring={colorOf(p.id)}>{p.avatar}</span>
+					<span class="avatar ring" style:--ring={colorOf(p.id)} data-frame={p.frame}
+						><em class="pc"></em>{p.avatar}</span
+					>
 					<span class="name">{p.name}</span>
 					{#if costOf(p.id)}<span class="pill">💡 −{fmtNum(costOf(p.id))}</span>{/if}
 					<b>{fmtNum(p.total)}</b>
@@ -164,9 +168,6 @@
 		font-size: 25px;
 		background: var(--bg);
 		margin-bottom: 4px;
-	}
-	.avatar.ring {
-		box-shadow: 0 0 0 3px var(--ring);
 	}
 	.s1 .avatar {
 		width: 58px;
@@ -261,9 +262,6 @@
 		height: 30px;
 		font-size: 17px;
 		margin: 0;
-	}
-	.rest .avatar.ring {
-		box-shadow: 0 0 0 2.5px var(--ring);
 	}
 	.rest .name {
 		flex: 1;

@@ -91,7 +91,7 @@
 			<h1>{t('challengeFriend')}</h1>
 		{:else}
 			<div class="who">
-				<span class="avatar face">{ch.by.avatar}</span>
+				<span class="avatar face" data-frame={ch.by.frame}>{ch.by.avatar}</span>
 				<h1 use:fitWords={ch.by.name}>{t('challengedBy', { name: ch.by.name })}</h1>
 			</div>
 			<!-- the card's promise: the score to beat, big -->

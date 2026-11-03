@@ -4,6 +4,7 @@
 	// settings, ways to sign in, name and picture.
 	import TopBar from '#lib/components/TopBar.svelte';
 	import MenuRow from '#lib/components/MenuRow.svelte';
+	import Coin from '#lib/barg/Coin.svelte';
 	import CityMap from '#lib/maps/CityMap.svelte';
 	import DistrictSheet from '#lib/maps/DistrictSheet.svelte';
 	import { api, call, type Profile, type Schemas } from '#lib/api/client.js';
@@ -48,13 +49,27 @@
 <main class="me">
 	{#if profile && me}
 		<section class="who">
-			<a class="avatar big" href="/me/edit" aria-label={t('editNameAvatar')}>{me.user.avatar}</a>
+			<a
+				class="avatar big"
+				href="/me/edit"
+				aria-label={t('editNameAvatar')}
+				data-frame={me.user.prefs?.frame}>{me.user.avatar}</a
+			>
 			<div class="who-text">
 				<h1 use:fitWords={me.user.name}>{me.user.name}</h1>
 				<p>
 					{#if me.user.guest}<span class="badge">{t('guestBadge')}</span>{/if}
 					<span>{t('joined', { date: fmtMonth(profile.user.joinedAt, i18n.lang) })}</span>
 				</p>
+				{#if me.barg}
+					<a class="barg" href="/me/wallet" aria-label={t('walletTitle')}>
+						<Coin size={20} />
+						<b>{fmtNum(me.barg)}</b>
+						<svg viewBox="0 0 24 24" class="icon chev" aria-hidden="true"
+							><path d="m9 6 6 6-6 6" /></svg
+						>
+					</a>
+				{/if}
 			</div>
 			<a class="icon-btn" href="/me/edit" aria-label={t('editNameAvatar')}>
 				<svg viewBox="0 0 24 24" class="icon"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" /></svg
@@ -104,6 +119,11 @@
 						><path
 							d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8.5 20h7"
 						/></svg
+					>{/snippet}
+			</MenuRow>
+			<MenuRow href="/shop" label={t('shopTitle')} color="var(--green)">
+				{#snippet icon()}<svg viewBox="0 0 24 24"
+						><path d="M4 9.5 5.5 4h13L20 9.5M4 9.5V20h16V9.5M4 9.5h16M9.5 20v-6h5v6" /></svg
 					>{/snippet}
 			</MenuRow>
 			<MenuRow href="/settings" label={t('settings')} color="var(--lapis-2)">
@@ -199,6 +219,26 @@
 		gap: 6px 8px;
 		font-size: 14px;
 		color: var(--muted);
+	}
+	.barg {
+		margin-top: 6px;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		min-height: 32px;
+		color: var(--text);
+		text-decoration: none;
+	}
+	.barg .chev {
+		width: 16px;
+		height: 16px;
+		color: var(--muted);
+	}
+	.barg b {
+		font-family: var(--display);
+		font-weight: 800;
+		font-size: 17px;
+		font-variant-numeric: tabular-nums;
 	}
 	.badge {
 		font-size: 13px;

@@ -28,6 +28,7 @@
 		type YMap
 	} from './map.js';
 	import type { LatLon } from '#lib/api/client.js';
+	import { pinColor } from '#lib/barg/skins.js';
 	import { fmtDistance } from '#lib/format.js';
 	import { i18n, t } from '#lib/i18n/index.svelte.js';
 	import { load, save } from '#lib/storage.js';
@@ -39,6 +40,7 @@
 		label?: string;
 		guessColor?: string; // a room's player
 		guessLabel?: string;
+		trail?: string; // a room's player's: '' for none
 	}
 
 	interface Props {
@@ -137,8 +139,8 @@
 			}
 			if (p.guess)
 				objects.push(
-					guessLine(p.guess, p.actual),
-					marker(p.guessColor ?? COLORS.guess, p.guess, p.guessLabel)
+					guessLine(p.guess, p.actual, p.trail),
+					marker(p.guessColor ?? pinColor(), p.guess, p.guessLabel)
 				);
 		}
 		Promise.all(objects).then((os) => os.forEach(add));
@@ -217,8 +219,8 @@
 		try {
 			const guesses = list.filter((p) => p.guess);
 			for (const p of guesses)
-				add(await marker(p.guessColor ?? COLORS.guess, p.guess!, p.guessLabel));
-			const lines = await Promise.all(guesses.map((p) => guessLine(p.guess!, p.guess!)));
+				add(await marker(p.guessColor ?? pinColor(), p.guess!, p.guessLabel));
+			const lines = await Promise.all(guesses.map((p) => guessLine(p.guess!, p.guess!, p.trail)));
 			lines.forEach(add);
 			await new Promise((r) => setTimeout(r, 250));
 			if (!live()) return;

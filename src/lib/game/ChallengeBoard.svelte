@@ -38,7 +38,7 @@
 					href={open ? `/game/${row.game}` : undefined}
 				>
 					<span class="place">{row.place}</span>
-					<span class="avatar">{row.player.avatar}</span>
+					<span class="avatar" data-frame={row.player.frame}>{row.player.avatar}</span>
 					<span class="name">{row.player.name}</span>
 					{#if row.hints}<span class="hints" title={t('hintsTaken', { n: row.hints })}
 							>💡 {row.hints}</span

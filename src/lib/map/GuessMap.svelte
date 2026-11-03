@@ -20,6 +20,7 @@
 		type YMap
 	} from './map.js';
 	import type { Hint, LatLon } from '#lib/api/client.js';
+	import { pinColor } from '#lib/barg/skins.js';
 	import { i18n } from '#lib/i18n/index.svelte.js';
 
 	interface Props {
@@ -126,7 +127,7 @@
 		} else if (pinMark) {
 			pinMark.geometry.setCoordinates([at.lat, at.lon]);
 		} else {
-			marker(COLORS.guess, at).then((p) => {
+			marker(pinColor(), at).then((p) => {
 				if (pinMark || !guess) return; // placed meanwhile, or taken back
 				p.geometry.setCoordinates([guess.lat, guess.lon]);
 				pinMark = p;

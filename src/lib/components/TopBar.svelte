@@ -66,7 +66,9 @@
 		</button>
 		{#if session.me}
 			<a class="me" href="/me" title={t('profile')}>
-				<span class="avatar">{session.me.user.avatar}</span>
+				<span class="avatar" data-frame={session.me.user.prefs?.frame}
+					>{session.me.user.avatar}</span
+				>
 				<!-- the name the greeting says, a guest's too ("Ukki 42") -->
 				<span class="me-name">{session.me.user.name}</span>
 			</a>

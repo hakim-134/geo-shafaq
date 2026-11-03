@@ -549,3 +549,62 @@ a {
 	bottom: calc(100cqh - 42px) !important;
 	left: 10px !important;
 }
+
+/* a room's player colour: a tiny pin on the face's corner, the colour of their pin on the map, so the
+   only ring on a face is a bought frame */
+.avatar .pc {
+	position: absolute;
+	right: -2%;
+	bottom: -2%;
+	width: 26%;
+	height: 26%;
+	min-width: 10px;
+	min-height: 10px;
+	border-radius: 50% 50% 50% 0;
+	transform: rotate(-45deg);
+	background: var(--ring);
+	box-shadow: 0 0 0 2px var(--surface);
+}
+.avatar.ring,
+.avatar.host-face {
+	position: relative;
+}
+
+/* a profile frame from the shop (PLAN 9.4): a ring on the face's own edge, whatever its size: it
+   takes no room from what's around it. data-frame on any .avatar */
+.avatar[data-frame] {
+	position: relative;
+}
+.avatar[data-frame]::before {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border-radius: 50%;
+	background: var(--frame);
+	-webkit-mask: radial-gradient(closest-side, transparent 82%, #000 84%);
+	mask: radial-gradient(closest-side, transparent 82%, #000 84%);
+	pointer-events: none;
+}
+.avatar[data-frame='frame-zar'] {
+	--frame: conic-gradient(#f7d66a, #c98f06, #f7d66a, #c98f06, #f7d66a);
+}
+.avatar[data-frame='frame-lojuvard'] {
+	--frame: conic-gradient(#1d3f8f, #4f7fe0, #1d3f8f, #4f7fe0, #1d3f8f);
+}
+.avatar[data-frame='frame-anor'] {
+	--frame: conic-gradient(#8e1230, #e0456b, #8e1230, #e0456b, #8e1230);
+}
+.avatar[data-frame='frame-girih'] {
+	--frame: repeating-conic-gradient(#e8a90c 0 15deg, var(--girih-dark, #13233f) 15deg 30deg);
+}
+:root[data-theme='dark'] .avatar[data-frame='frame-girih'] {
+	--girih-dark: #4f7fe0;
+}
+.avatar[data-frame='frame-samarqand'] {
+	--frame: repeating-conic-gradient(
+		#12a6b8 0 12deg,
+		#e8a90c 12deg 14deg,
+		#1d3f8f 14deg 26deg,
+		#e8a90c 26deg 28deg
+	);
+}

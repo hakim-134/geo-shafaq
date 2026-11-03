@@ -4,6 +4,7 @@
 	// landed on the map). Solo games and rooms both use it; a room adds its table below.
 	import type { Snippet } from 'svelte';
 	import type { LatLon, Schemas } from '#lib/api/client.js';
+	import Coin from '#lib/barg/Coin.svelte';
 	import Stars from './Stars.svelte';
 	import ScoreCount from './ScoreCount.svelte';
 	import StreetPlate from './StreetPlate.svelte';
@@ -27,6 +28,7 @@
 		heading?: number; // the round's first heading: the plate's panorama link faces it
 		crowd?: number; // the average distance of the round's guesses: the ring on the map
 		go: boolean;
+		earned?: Schemas['Earned'][]; // Barg this guess earned
 		children?: Snippet;
 	}
 	let {
@@ -44,8 +46,11 @@
 		heading,
 		crowd,
 		go,
+		earned = [],
 		children
 	}: Props = $props();
+	const forStreet = $derived(earned.find((e) => e.reason === 'street'));
+	const others = $derived(earned.filter((e) => e.reason !== 'street'));
 
 	const stars = $derived(starsFor(score));
 	const perfect = $derived(guessed && verdictKey(score) === 'perfect');
@@ -60,7 +65,7 @@
 	let party = $state(false);
 	$effect(() => {
 		if (!go) return;
-		if (perfect) {
+		if (perfect || earned.some((e) => e.reason === 'district')) {
 			party = true;
 			setTimeout(sfxFanfare, 350);
 		} else if (!stars) setTimeout(sfxFar, 200);
@@ -90,14 +95,6 @@
 			{t('noPin')}
 		{/if}
 	</p>
-	{#if learned}
-		<p class="learned-line">
-			<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
-				><path d="m5 12.5 4.5 4.5L19 7.5" /></svg
-			>
-			{t('streetLearned')}
-		</p>
-	{/if}
 	{#if vsCrowd != null}
 		<p class="crowd">
 			<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><circle cx="12" cy="12" r="8" /></svg
@@ -109,6 +106,28 @@
 			{/if}
 		</p>
 	{/if}
+	{#if learned}
+		<p class="learned-line">
+			<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+				><path d="m5 12.5 4.5 4.5L19 7.5" /></svg
+			>
+			{t('streetLearned')}
+			{#if forStreet}<span class="plus">+{forStreet.amount} <Coin size={16} /></span>{/if}
+		</p>
+	{/if}
+	{#each others as e (e.reason)}
+		{#if e.reason === 'district'}
+			<p class="district-plate">
+				{t('districtWon', { name: e.note ?? '' })}
+				<span class="plus">+{e.amount} <Coin size={18} /></span>
+			</p>
+		{:else}
+			<p class="learned-line">
+				{t('reason_challenge')}
+				<span class="plus">+{e.amount} <Coin size={16} /></span>
+			</p>
+		{/if}
+	{/each}
 
 	<div class="where">
 		<StreetPlate {place} at={actual} {heading} land={go} delay={450} />
@@ -120,6 +139,33 @@
 {#if party}<Confetti />{/if}
 
 <style>
+	.district-plate {
+		margin: 12px 0;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+		padding: 10px 14px;
+		border-radius: 12px;
+		background: linear-gradient(135deg, #f7d66a, #e8a90c);
+		color: #1b2a44;
+		font-family: var(--display);
+		font-weight: 800;
+		font-size: 15px;
+		box-shadow: 0 3px 0 #a97c06;
+	}
+	.reveal:not(.go) .district-plate {
+		opacity: 0;
+	}
+	.go .district-plate {
+		animation: pop-in 0.5s var(--pop) 1s both;
+	}
+	.plus {
+		flex: none;
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+	}
 	.learned-line {
 		display: flex;
 		align-items: center;

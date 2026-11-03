@@ -126,6 +126,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/wallet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The player's Barg, and how it came and went. */
+        get: operations["getWallet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Everything for sale, at fixed prices, and what the player has. */
+        get: operations["getShop"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shop/{item}/buy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Spends earned Barg on an item. Bought before, it changes nothing. */
+        post: operations["buyItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shop/{item}/wear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Puts on or takes off something the player owns. One of each kind. */
+        post: operations["wearItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/config": {
         parameters: {
             query?: never;
@@ -1024,6 +1092,12 @@ export interface components {
              * @enum {string}
              */
             compass?: "classic" | "modern" | "mnemonic";
+            /** @description Worn from the shop; read only: POST /v1/shop/{item}/wear. */
+            frame?: string;
+            /** @description Worn from the shop; read only. */
+            pin?: string;
+            /** @description Worn from the shop; read only. */
+            trail?: string;
         };
         Stats: {
             games: number;
@@ -1031,6 +1105,8 @@ export interface components {
             avgRound: number;
         };
         Me: {
+            /** @description The player's Barg, the sum of their ledger. */
+            barg: number;
             user: components["schemas"]["User"];
             stats: components["schemas"]["Stats"];
             identities: components["schemas"]["Identity"][];
@@ -1090,6 +1166,8 @@ export interface components {
             banned?: boolean;
             /** Format: date-time */
             joinedAt: string;
+            /** @description The shop's profile frame the player wears. */
+            frame?: string;
         };
         ProfileStats: {
             games: number;
@@ -1141,6 +1219,42 @@ export interface components {
             /** @description The player's map of these streets: POST /v1/games plays it, refreshed. */
             map: string;
             streets: components["schemas"]["MyStreet"][];
+        };
+        Earned: {
+            /** @enum {string} */
+            reason: "street" | "district" | "challenge";
+            amount: number;
+            /** @description The street's or the place's name. */
+            note?: string;
+        };
+        Wallet: {
+            /** @description The sum of the ledger. */
+            balance: number;
+            /** @description The newest hundred entries. */
+            entries: components["schemas"]["WalletEntry"][];
+        };
+        WalletEntry: {
+            amount: number;
+            /** @enum {string} */
+            reason: "street" | "district" | "challenge" | "buy" | "refund";
+            /** @description buy, refund: the item. */
+            ref: string;
+            note?: string;
+            /** Format: date-time */
+            at: string;
+        };
+        Shop: {
+            balance: number;
+            items: components["schemas"]["ShopItem"][];
+        };
+        ShopItem: {
+            id: string;
+            /** @enum {string} */
+            kind: "frame" | "pin" | "trail";
+            /** @description Fixed. */
+            price: number;
+            owned: boolean;
+            worn: boolean;
         };
         MapBest: {
             map: components["schemas"]["MapRef"];
@@ -1410,6 +1524,10 @@ export interface components {
             name: string;
             avatar: string;
             guest: boolean;
+            /** @description The shop's profile frame the player wears. */
+            frame?: string;
+            /** @description The shop's trail the player wears: their line on the result, on every phone. */
+            trail?: string;
             /** @description Has the room open now. */
             online: boolean;
             /** @description Left during this game; kept in its table. */
@@ -1455,6 +1573,8 @@ export interface components {
             /** @description The score before hints, when they took points (absent when they took none). */
             base?: number;
             hintsUsed: number;
+            /** @description Barg this guess earned. */
+            earned?: components["schemas"]["Earned"][];
         };
         /** @description What the room's WebSocket sends. */
         RoomMessage: {
@@ -1650,6 +1770,8 @@ export interface components {
             gameOver?: boolean;
             /** @description The game's total after this round. */
             total?: number;
+            /** @description Barg this guess earned, only as it happens. */
+            earned?: components["schemas"]["Earned"][];
             /** @description Other players on this panorama (solo games), when three or more guessed it. */
             crowd?: {
                 /**
@@ -1869,6 +1991,106 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+        };
+    };
+    getWallet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The wallet */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Wallet"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    getShop: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The shop */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Shop"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    buyItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The shop afterwards */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Shop"];
+                };
+            };
+            401: components["responses"]["Error"];
+            403: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    wearItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    on: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description The shop afterwards */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Shop"];
+                };
+            };
+            400: components["responses"]["Error"];
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
         };
     };
     getConfig: {

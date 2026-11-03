@@ -4,7 +4,8 @@
 	// top and the panel rises under it, its buttons always under the thumb.
 	import type { Snippet } from 'svelte';
 	import { t } from '#lib/i18n/index.svelte.js';
-	import { COLORS, flagSvg, pinSvg } from '#lib/map/map.js';
+	import { flagSvg, pinSvg } from '#lib/map/map.js';
+	import { pinColor } from '#lib/barg/skins.js';
 
 	interface Props {
 		map: Snippet;
@@ -33,8 +34,7 @@
 			<div class="legend" aria-hidden="true">
 				<span><img src={flagSvg()} alt="" width="20" height="24" />{t('actual')}</span>
 				{#if legend !== 'actual'}
-					<span
-						><img src={pinSvg(COLORS.guess)} alt="" width="14" height="18" />{t('yourGuess')}</span
+					<span><img src={pinSvg(pinColor())} alt="" width="14" height="18" />{t('yourGuess')}</span
 					>
 				{/if}
 			</div>

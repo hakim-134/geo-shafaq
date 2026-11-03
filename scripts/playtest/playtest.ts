@@ -12,7 +12,8 @@
 // everyone into the next game), places (the map of Uzbekistan → Tashkent → Chilonzor picked → a game
 // there), challenge (a finished game's link → two friends as guests play it → one leaderboard),
 // missed (a game guessed far off → "Adashgan ko‘chalarim" → found on the spot, each street leaves the
-// list until none is left).
+// list until none is left), shop (a street found earns Barg; the shop: too little, then bought and worn;
+// the skins in a game, the frame in a room, a challenge won on the framed player's board).
 //
 // Chrome runs headless with --disable-gpu (local.md §3) and a throwaway profile deleted at the
 // end, so the demo switch never reaches the owner's own Chrome. Screenshots, steps.json (the
@@ -33,7 +34,7 @@ const { values: args } = parseArgs({
 		url: { type: 'string', default: 'http://localhost:8130' },
 		out: { type: 'string', default: 'scripts/playtest/out' },
 		views: { type: 'string', default: 'phone-light,phone-dark,laptop,laptop-dark' },
-		only: { type: 'string', default: 'solo,room,places,challenge,missed' },
+		only: { type: 'string', default: 'solo,room,places,challenge,missed,shop' },
 		chrome: { type: 'string', default: process.env.CHROME ?? '/usr/bin/google-chrome' }
 	}
 });
@@ -789,7 +790,235 @@ async function missed(browser: Browser, view: View, dir: string) {
 	await p.page.close();
 }
 
-const JOURNEYS = { solo, room, places, challenge, missed } as const;
+// Barg and the shop. Earning 900 honestly takes a while, so this laptop's ledger gets a test entry.
+function grantBarg(userId: string, amount: number) {
+	execFileSync(
+		'docker',
+		[
+			'exec',
+			'postgres',
+			'psql',
+			'-U',
+			'postgres',
+			'-d',
+			'shafaq_lcl',
+			'-c',
+			`INSERT INTO barg_ledger (user_id, amount, reason, ref, note, key) VALUES ('${userId}', ${amount}, 'district', 'playtest', 'Playtest', 'playtest:${userId}')`
+		],
+		{ encoding: 'utf8' }
+	);
+}
+
+async function shop(browser: Browser, view: View, dir: string) {
+	const J = 'shop';
+	const CHOICE = JSON.stringify({
+		...ROOM_CHOICE,
+		preset: 'easy',
+		rounds: 3,
+		hints: { count: 0, per: 'round', kind: 'district', cost: 0 }
+	});
+	const host = new Player(view, 'host', dir);
+	const friend = new Player(view, 'friend', dir);
+	await host.open(browser, { sg_choice: CHOICE, sg_coach_done: '1' });
+	await friend.open(browser, { sg_coach_done: '1' });
+
+	// which rounds' guesses find their place; the others land far away
+	const finds = new Map<Player, Set<number>>([
+		[host, new Set([1])],
+		[friend, new Set([1, 2, 3])]
+	]);
+	for (const p of [host, friend]) {
+		await p.page.setRequestInterception(true);
+		p.page.on('request', (r) => {
+			const m = r.method() === 'POST' && r.url().match(/\/games\/([^/]+)\/rounds\/(\d+)\/guess$/);
+			if (!m) return r.continue();
+			const n = Number(m[2]);
+			const pos = finds.get(p)!.has(n) ? roundSpot(m[1], n) : { lat: 40.5, lon: 60.5 };
+			r.continue({ postData: JSON.stringify({ pos }) });
+		});
+	}
+	const balance = (p: Player) =>
+		p.page.evaluate(async () => {
+			const r = await fetch(`${location.protocol}//${location.hostname}:8131/v1/me`, {
+				credentials: 'include'
+			});
+			return (await r.json()) as { barg: number; user: { id: string } };
+		});
+	async function playAll(p: Player, shotFirst = false) {
+		for (let i = 1; ; i++) {
+			await p.roundReady();
+			if (shotFirst && i === 1) await p.shot(J, 'round-skinned', 'a round with skins on');
+			await p.guess(i * 15, -i * 10);
+			await p.find('.next', 20000);
+			await sleep(3800);
+			if (i === 1) await p.shot(J, shotFirst ? 'result-skinned' : 'result-earned');
+			await p.tap(await p.find('.next'));
+			if (await p.page.waitForSelector('.final', { timeout: 4000 }).catch(() => null)) break;
+			if (i > 12) throw new Error('the game does not end');
+		}
+		await sleep(2800);
+	}
+
+	// a street found: Barg, said when it happens
+	host.begin();
+	await host.go('/');
+	await sleep(1500);
+	await host.tap(await host.find('.go .play'));
+	await playAll(host);
+	await host.shot(J, 'end-earned', 'what the game earned');
+	if (!(await host.has('.earned-line')))
+		problems.push(`${view.name} shop: no Barg at the end of a game with a street found`);
+	const earned = await balance(host);
+	if (earned.barg < 5) problems.push(`${view.name} shop: ${earned.barg} Barg after a street found`);
+
+	// the profile, the wallet; the shop: too little
+	await host.go('/me');
+	await sleep(1200);
+	await host.shot(J, 'profile', 'the balance on the profile');
+	await host.go('/me/wallet');
+	await sleep(800);
+	await host.shot(J, 'wallet', 'how it is earned, where it came from');
+	await host.go('/shop');
+	await sleep(1000);
+	await host.shot(J, 'shop', 'the shop: fixed prices');
+	const tile = async (name: string, section: number) => {
+		const tiles = await host.page.$$('.grid');
+		const all = await tiles[section].$$('.tile');
+		for (const t of all)
+			if ((await t.evaluate((x) => (x as HTMLElement).innerText)).includes(name)) return t;
+		throw new Error(`no ${name} in the shop`);
+	};
+	await host.tap(await tile('Oltin', 0));
+	await sleep(600);
+	await host.shot(J, 'too-little', 'too little Barg: what is missing, no dead button');
+	await host.page.keyboard.press('Escape');
+	await sleep(300);
+
+	// bought and worn in one tap each
+	grantBarg(earned.user.id, 900);
+	await host.go('/shop');
+	await sleep(1000);
+	for (const [name, section] of [
+		['Oltin', 0],
+		['Lojuvard', 1],
+		['Nuqtalar', 2]
+	] as const) {
+		await host.tap(await tile(name, section));
+		await sleep(500);
+		if (section === 0) await host.shot(J, 'buy', 'one button: the price');
+		await host.tap(await host.find('.sheet .act'));
+		if (section === 0) {
+			await sleep(300);
+			await host.shot(J, 'bought', 'the moment it is yours');
+		}
+		await host.page.waitForFunction(() => !document.querySelector('.sheet'), { timeout: 8000 });
+		await sleep(300);
+	}
+	await sleep(600);
+	await host.shot(J, 'shop-worn', 'bought and worn');
+	const left = await balance(host);
+	const want = earned.barg + 900 - (100 + 60 + 80);
+	if (left.barg !== want) problems.push(`${view.name} shop: balance ${left.barg}, want ${want}`);
+	await host.page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+	await sleep(400);
+	await host.shot(J, 'shop-bottom');
+	await host.go('/me');
+	await sleep(1200);
+	await host.shot(J, 'profile-framed', 'the frame on the profile');
+
+	// the skins in a game; its challenge for a friend
+	finds.set(host, new Set());
+	await host.go('/');
+	await sleep(1500);
+	await host.tap(await host.find('.go .play'));
+	await playAll(host, true);
+	await host.shot(J, 'end-skinned', 'the pin and the dotted trail');
+	await host.page.evaluate(() => {
+		for (const el of document.querySelectorAll<HTMLElement>('.result, .body'))
+			if (el.scrollHeight > el.clientHeight) el.scrollTop = el.scrollHeight;
+	});
+	await host.tap(await host.findText(/Do‘stni chaqirish/));
+	await sleep(1200);
+	const link = await host.page.$eval('input.link', (i) => (i as HTMLInputElement).value);
+	await host.page.keyboard.press('Escape');
+
+	// the friend beats the host: the challenge won, the frame on the board
+	await friend.go(new URL(link).pathname);
+	await sleep(1800);
+	await friend.shot(J, 'landing', 'the challenger with their frame');
+	await friend.tap(await friend.find('.go:not([disabled])'));
+	await playAll(friend);
+	await friend.shot(J, 'challenge-won', 'first on the board, the frame on the other row');
+	const won = await friend.page.evaluate(() => document.querySelector('.earned-line')?.textContent);
+	const friendBarg = await balance(friend);
+	if (friendBarg.barg < 20)
+		problems.push(`${view.name} shop: the winner has ${friendBarg.barg} Barg, "${won}"`);
+
+	// a whole district learned: Uchtepa's seven streets, all found; the biggest reward has its moment
+	finds.set(friend, new Set(Array.from({ length: 20 }, (_, i) => i + 1)));
+	const gameId = await friend.page.evaluate(async () => {
+		const api = `${location.protocol}//${location.hostname}:8131/v1`;
+		const m = (await (await fetch(`${api}/maps`, { credentials: 'include' })).json())[0];
+		const r = await fetch(`${api}/games`, {
+			method: 'POST',
+			credentials: 'include',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				map: 'place-uchtepa-tumani',
+				rules: { ...m.rules, providers: ['demo'], rounds: 10, timeSec: 0, movement: 'nomove' }
+			})
+		});
+		return ((await r.json()) as { id: string }).id;
+	});
+	await friend.go(`/game/${gameId}`);
+	let plate = false;
+	for (let i = 1; i <= 10 && !plate; i++) {
+		await friend.roundReady();
+		await friend.guess(10, 10);
+		await friend.find('.next', 20000);
+		await sleep(3500);
+		plate = await friend.has('.district-plate');
+		if (!plate) {
+			await friend.tap(await friend.find('.next'));
+			await sleep(800);
+		}
+	}
+	if (plate) await friend.shot(J, 'district-won', 'a whole district: the gold plate, the fanfare');
+	else problems.push(`${view.name} shop: every street of a district found, no plate`);
+
+	// a room: the frame in the lobby
+	await host.go('/');
+	await sleep(1500);
+	await host.tap(await host.findText(/Do‘stlar bilan/));
+	await host.page.waitForFunction(() => location.pathname.startsWith('/room/'), { timeout: 15000 });
+	await sleep(1500);
+	const code = host.page.url().split('/room/')[1].slice(0, 5);
+	await friend.go(`/room/${code}`);
+	await sleep(2500);
+	await host.shot(J, 'lobby-framed', 'the frame in the lobby');
+
+	// on to the podium: the frame on the result's table and the steps
+	await sleep(2000);
+	await host.tap(await host.find('.btn-play:not([disabled])'));
+	for (let n = 1; n <= 3; n++) {
+		await Promise.all([host.roundReady(), friend.roundReady()]);
+		await friend.guess(5, 5);
+		await host.guess(40, -30);
+		await host.find('.ring-row', 20000);
+		await sleep(3500);
+		if (n === 1) {
+			await host.shot(J, 'room-result', 'the frame in the table');
+		}
+		if (n < 3 || (await host.has('.now-btn'))) await host.tap(await host.find('.now-btn'));
+	}
+	await host.find('.podium', 20000);
+	await sleep(3000);
+	await host.shot(J, 'podium', 'the frame on the podium');
+	await friend.page.close();
+	await host.page.close();
+}
+
+const JOURNEYS = { solo, room, places, challenge, missed, shop } as const;
 
 // Every journey makes new guests, and the API allows 30 an hour per address: a full run makes
 // more. On this laptop the limit is cleared first (Redis database 1, local.md §3).

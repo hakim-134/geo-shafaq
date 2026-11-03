@@ -32,6 +32,7 @@
 	import { fmtDistance, fmtNum, nameHasAvatar, starsFor } from '#lib/format.js';
 	import { showToast } from '#lib/toast.svelte.js';
 	import { yandexKey } from '#lib/config.js';
+	import Coin from '#lib/barg/Coin.svelte';
 	import { challengeCode, challengeShare, nativeShare, type Share } from '#lib/game/share.js';
 	import ChallengeBoard from '#lib/game/ChallengeBoard.svelte';
 	import ShareSheet from '#lib/components/ShareSheet.svelte';
@@ -206,6 +207,7 @@
 				})
 			);
 			result = res;
+			earnedHere = [...earnedHere, ...(res.earned ?? [])];
 			game.total = res.total ?? game.total;
 			upsertRound({ ...round, result: res });
 			landed = false;
@@ -292,6 +294,20 @@
 			showToast(t(e instanceof ApiError && e.code === 'banned' ? 'bannedText' : errorKey(e)), 3500);
 		}
 	}
+
+	// Barg this game earned, while the page is open, and what for
+	let earnedHere = $state<Schemas['Earned'][]>([]);
+	const earnedSum = $derived(earnedHere.reduce((sum, e) => sum + e.amount, 0));
+	const earnedFor = $derived.by(() => {
+		const n = (r: string) => earnedHere.filter((e) => e.reason === r).length;
+		return [
+			n('street') ? t('earnedStreets', { n: n('street') }) : '',
+			n('district') ? t('earnedDistricts', { n: n('district') }) : '',
+			n('challenge') ? t('earnedWin') : ''
+		]
+			.filter(Boolean)
+			.join(', ');
+	});
 
 	// Streets I miss: the end says what left the list and how many are left; none left, no more game
 	const missMap = $derived(game?.map.slug.startsWith('miss-') ?? false);
@@ -466,6 +482,7 @@
 				heading={result.heading}
 				crowd={result.crowd?.km}
 				go={landed}
+				earned={result.earned ?? []}
 			/>
 			{#snippet actions()}
 				<button class="btn btn-primary next" onclick={afterResult}>
@@ -506,7 +523,9 @@
 					</h1>
 					{#if !mine}
 						<a class="player" href={`/u/${game.player.id}`}>
-							{#if !nameHasAvatar(game.player)}<span class="avatar">{game.player.avatar}</span>{/if}
+							{#if !nameHasAvatar(game.player)}<span class="avatar" data-frame={game.player.frame}
+									>{game.player.avatar}</span
+								>{/if}
 							<span>{game.player.name}</span>
 						</a>
 					{/if}
@@ -533,6 +552,14 @@
 					<p class="missed-line">
 						<a href="/me/missed">{t('missedLeft', { n: missedLeft })}</a>
 					</p>
+				{/if}
+
+				{#if earnedHere.length}
+					<a class="earned-line" href="/me/wallet">
+						+{earnedSum}
+						<Coin size={18} /> <span>· {earnedFor}</span>
+						<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+					</a>
 				{/if}
 
 				{#if board && board.players > 1}
@@ -576,7 +603,7 @@
 						{#each game.room.players as row, i (row.game)}
 							<a class="room-row" class:me={row.game === game.id} href={`/game/${row.game}`}>
 								<span class="place">{i + 1}</span>
-								<span class="avatar">{row.player.avatar}</span>
+								<span class="avatar" data-frame={row.player.frame}>{row.player.avatar}</span>
 								<span class="name">{row.player.name}</span>
 								{#if row.hints}<span class="hints" title={t('hintsTaken', { n: row.hints })}
 										>💡 {row.hints}</span
@@ -653,6 +680,29 @@
 <ShareSheet share={sharing} title={t('challengeFriend')} onclose={() => (sharing = null)} />
 
 <style>
+	.earned-line {
+		display: inline-flex;
+		align-items: center;
+		align-self: flex-start;
+		gap: 5px;
+		font-family: var(--display);
+		font-weight: 800;
+		font-size: 17px;
+		color: var(--green-ink);
+		text-decoration: none;
+	}
+	:global(:root[data-theme='dark']) .earned-line {
+		color: var(--green);
+	}
+	.earned-line span {
+		font-family: var(--body);
+		font-weight: 600;
+		font-size: 14.5px;
+	}
+	.earned-line .icon {
+		width: 16px;
+		height: 16px;
+	}
 	.missed-line {
 		font-size: 15px;
 		font-weight: 600;

@@ -298,7 +298,8 @@
 					heading: last.heading,
 					guess: s.guess,
 					guessColor: colorOf(s.player),
-					guessLabel: nameOf(s.player)?.avatar
+					guessLabel: nameOf(s.player)?.avatar,
+					trail: nameOf(s.player)?.trail ?? ''
 				}))
 			: []
 	);
@@ -328,7 +329,8 @@
 						label: String(r.n),
 						guess: s.guess,
 						guessColor: colorOf(s.player),
-						guessLabel: nameOf(s.player)?.avatar
+						guessLabel: nameOf(s.player)?.avatar,
+						trail: nameOf(s.player)?.trail ?? ''
 					}))
 			)
 	);
@@ -658,7 +660,8 @@
 							onclick={() => (p.id === st.you ? startNaming() : (target = p))}
 							aria-label={p.id === st.you ? t('changeName') : `${p.name}: ${t('playerMenu')}`}
 						>
-							<span class="avatar ring" style:--ring={playerColor(i)}>
+							<span class="avatar ring" style:--ring={playerColor(i)} data-frame={p.frame}
+								><em class="pc"></em>
 								{p.avatar}
 								{#if p.id === st.host}<span class="crown" aria-hidden="true">👑</span>{/if}
 							</span>
@@ -713,8 +716,11 @@
 				</button>
 			{:else}
 				<p class="wait">
-					{#if hostP}<span class="avatar host-face" style:--ring={colorOf(hostP.id)}
-							>{hostP.avatar}<i aria-hidden="true">👑</i></span
+					{#if hostP}<span
+							class="avatar host-face"
+							style:--ring={colorOf(hostP.id)}
+							data-frame={hostP.frame}
+							><em class="pc"></em>{hostP.avatar}<i aria-hidden="true">👑</i></span
 						>{/if}
 					{t('waitHost')}
 				</p>
@@ -794,13 +800,16 @@
 					heading={last.heading}
 					crowd={lastCrowd}
 					go={landed}
+					earned={myLast?.earned ?? []}
 				>
 					<ol class="table">
 						{#each lastRows as s, i (s.player)}
 							{@const p = nameOf(s.player)}
 							<li class:me={s.player === st.you} style:animation-delay={`${700 + i * 80}ms`}>
 								<span class="pos">{i + 1}</span>
-								<span class="avatar ring" style:--ring={colorOf(s.player)}>{p?.avatar}</span>
+								<span class="avatar ring" style:--ring={colorOf(s.player)} data-frame={p?.frame}
+									><em class="pc"></em>{p?.avatar}</span
+								>
 								<span class="name">{p?.name ?? '—'}</span>
 								<span class="km">{s.km != null ? fmtDistance(s.km) : '—'}</span>
 								{#if s.base}
@@ -897,8 +906,11 @@
 						</button>
 					{:else}
 						<p class="wait">
-							{#if hostP}<span class="avatar host-face" style:--ring={colorOf(hostP.id)}
-									>{hostP.avatar}<i aria-hidden="true">👑</i></span
+							{#if hostP}<span
+									class="avatar host-face"
+									style:--ring={colorOf(hostP.id)}
+									data-frame={hostP.frame}
+									><em class="pc"></em>{hostP.avatar}<i aria-hidden="true">👑</i></span
 								>{/if}
 							{t('waitHostAgain')}
 						</p>
@@ -1177,9 +1189,6 @@
 		font-size: 32px;
 		background: var(--surface);
 	}
-	.avatar.ring {
-		box-shadow: 0 0 0 3px var(--ring);
-	}
 	.crown {
 		position: absolute;
 		top: -14px;
@@ -1449,7 +1458,6 @@
 		height: 30px;
 		font-size: 17px;
 		background: var(--bg);
-		box-shadow: 0 0 0 2.5px var(--ring);
 		flex: none;
 	}
 	.host-face i {
