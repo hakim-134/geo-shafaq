@@ -291,7 +291,7 @@
 				outline={target.outline}
 				size="small"
 			/>
-			{#if target.progress}<Progress progress={target.progress} />{/if}
+			{#if target.progress}<Progress progress={target.progress} quiet />{/if}
 		</div>
 		<button class="btn btn-primary play" onclick={play} disabled={busy}>
 			{#if busy}<span class="spinner"></span>{:else}<svg viewBox="0 0 24 24" aria-hidden="true"

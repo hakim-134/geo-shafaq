@@ -18,7 +18,7 @@
 	import ResultMap, { type Pair } from '#lib/map/ResultMap.svelte';
 	import { savedLayer, type BBox } from '#lib/map/map.js';
 	import MapSign from '#lib/maps/MapSign.svelte';
-	import { loadChoice, saveChoice } from '#lib/rules.js';
+	import { loadChoice, rulesFor, saveChoice, testProviders } from '#lib/rules.js';
 	import Loader from '#lib/game/Loader.svelte';
 	import ResultLayout from '#lib/game/ResultLayout.svelte';
 	import RoundReveal from '#lib/game/RoundReveal.svelte';
@@ -263,7 +263,8 @@
 			phase === 'final' &&
 			game?.status === 'finished' &&
 			total > bestBefore &&
-			bestBefore >= 0
+			bestBefore >= 0 &&
+			!game.map.slug.startsWith('miss-') // practice: the streets were just shown to the player
 	);
 
 	const finalPairs = $derived<Pair[]>(
@@ -282,13 +283,32 @@
 	async function playAgain(map = game?.map.slug) {
 		if (!game || !map) return;
 		try {
-			const g = await call(api().POST('/v1/games', { body: { map, rules: game.rules } }));
-			saveChoice({ ...loadChoice(), map }); // the home's sign: the last place played
+			// the missed map: the player's own settings, its last game was cut to the streets left
+			const rules = missMap ? rulesFor(loadChoice(), testProviders()) : game.rules;
+			const g = await call(api().POST('/v1/games', { body: { map, rules } }));
+			if (!missMap) saveChoice({ ...loadChoice(), map }); // the home's sign: the last place played
 			goto(`/game/${g.id}`);
 		} catch (e) {
 			showToast(t(e instanceof ApiError && e.code === 'banned' ? 'bannedText' : errorKey(e)), 3500);
 		}
 	}
+
+	// Streets I miss: the end says what left the list and how many are left; none left, no more game
+	const missMap = $derived(game?.map.slug.startsWith('miss-') ?? false);
+	let missedLeft = $state<number | null>(null);
+	$effect(() => {
+		if (phase !== 'final' || !missMap || !mine) return;
+		call(api().GET('/v1/me/missed'))
+			.then((d) => (missedLeft = d.streets.length))
+			.catch(() => {
+				/* the end stands without the count */
+			});
+	});
+	const missedGot = $derived(
+		new Set(
+			done.filter((r) => (r.result?.km ?? Infinity) <= 0.5).map((r) => r.result?.place.street?.uz)
+		).size
+	);
 
 	// "start narrow, go wide": after a good game in a place, the place around it
 	const wider = $derived(
@@ -467,16 +487,22 @@
 			<div class="final">
 				<div class="final-head">
 					<MapSign slug={game.map.slug} name={tx(game.map.name)} size="small" />
-					<h1 class:best={newBest}>
-						{boardPlace && (board?.players ?? 0) > 1
-							? t('yourPlace', { n: boardPlace })
-							: newBest
-								? gamesBefore
-									? t('newBest')
-									: t('firstGame')
-								: mine
-									? t('gameOver')
-									: t('playerGame', { name: game.player.name })}
+					<h1 class:best={newBest || (missMap && missedGot > 0)}>
+						{missMap && missedLeft === 0
+							? t('missedAllDone')
+							: missMap && missedGot
+								? t('missedGot', { n: missedGot })
+								: missMap && missedLeft
+									? t('missedLeft', { n: missedLeft })
+									: boardPlace && (board?.players ?? 0) > 1
+										? t('yourPlace', { n: boardPlace })
+										: newBest
+											? gamesBefore
+												? t('newBest')
+												: t('firstGame')
+											: mine
+												? t('gameOver')
+												: t('playerGame', { name: game.player.name })}
 					</h1>
 					{#if !mine}
 						<a class="player" href={`/u/${game.player.id}`}>
@@ -494,13 +520,23 @@
 							<b>{starsWon}</b>
 							<span>/ {done.length * 3}</span>
 							<span class="sep"></span>
-							<span>{fmtDistance(done.reduce((s, r) => s + (r.result?.km ?? 0), 0))}</span>
+							<span
+								>{t('totalKm', {
+									km: fmtDistance(done.reduce((s, r) => s + (r.result?.km ?? 0), 0))
+								})}</span
+							>
 						</div>
 					{/if}
 				</div>
 
+				{#if missMap && missedLeft && missedGot}
+					<p class="missed-line">
+						<a href="/me/missed">{t('missedLeft', { n: missedLeft })}</a>
+					</p>
+				{/if}
+
 				{#if board && board.players > 1}
-					<ChallengeBoard board={board.board} players={board.players} open />
+					<ChallengeBoard board={board.board} players={board.players} open seek />
 				{/if}
 
 				{#if done.length}
@@ -563,39 +599,67 @@
 				{/if}
 			</div>
 			{#snippet actions()}
-				<button class="btn btn-primary" onclick={() => playAgain()}>
-					<svg viewBox="0 0 24 24"
-						><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3L3.5 8.3M3.5 3.5v4.8h4.8" /></svg
-					>
-					{mine ? t('playAgain') : t('playThisMap')}
-				</button>
-				<!-- always in sight: the same streets for a friend, quiet, and the way home -->
-				<div class="row">
-					{#if mine && done.length}
-						<button class="btn btn-ghost" disabled={inviting} onclick={share}>
-							<svg viewBox="0 0 24 24"
-								><path
-									d="M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5"
-								/></svg
+				{#if missMap}
+					<!-- the way home beside the one button: the streets stay in sight -->
+					<div class="row">
+						{#if missedLeft === 0}
+							<a class="btn btn-primary" href="/">{t('home')}</a>
+						{:else}
+							<a class="btn btn-ghost home-btn" href="/" aria-label={t('home')} title={t('home')}
+								><svg viewBox="0 0 24 24"
+									><path d="M3.5 11 12 4l8.5 7M6 9.5V20h12V9.5M10 20v-5h4v5" /></svg
+								></a
 							>
-							{t('challengeFriend')}
-						</button>
-					{/if}
-					<a class="btn btn-ghost home-btn" href="/" aria-label={t('home')} title={t('home')}
-						><svg viewBox="0 0 24 24"
-							><path d="M3.5 11 12 4l8.5 7M6 9.5V20h12V9.5M10 20v-5h4v5" /></svg
-						></a
-					>
-				</div>
+							<button class="btn btn-primary" onclick={() => playAgain()}>
+								<svg viewBox="0 0 24 24"
+									><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3L3.5 8.3M3.5 3.5v4.8h4.8" /></svg
+								>
+								{t('playAgain')}
+							</button>
+						{/if}
+					</div>
+				{:else}
+					<button class="btn btn-primary" onclick={() => playAgain()}>
+						<svg viewBox="0 0 24 24"
+							><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3L3.5 8.3M3.5 3.5v4.8h4.8" /></svg
+						>
+						{mine ? t('playAgain') : t('playThisMap')}
+					</button>
+					<!-- always in sight: the same streets for a friend, quiet, and the way home -->
+					<div class="row">
+						{#if mine && done.length}
+							<button class="btn btn-ghost" disabled={inviting} onclick={share}>
+								<svg viewBox="0 0 24 24"
+									><path
+										d="M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5"
+									/></svg
+								>
+								{t('challengeFriend')}
+							</button>
+						{/if}
+						<a class="btn btn-ghost home-btn" href="/" aria-label={t('home')} title={t('home')}
+							><svg viewBox="0 0 24 24"
+								><path d="M3.5 11 12 4l8.5 7M6 9.5V20h12V9.5M10 20v-5h4v5" /></svg
+							></a
+						>
+					</div>
+				{/if}
 			{/snippet}
 		</ResultLayout>
-		{#if newBest}<Confetti />{/if}
+		{#if newBest || (missMap && missedLeft === 0)}<Confetti />{/if}
 	{/if}
 </div>
 
 <ShareSheet share={sharing} title={t('challengeFriend')} onclose={() => (sharing = null)} />
 
 <style>
+	.missed-line {
+		font-size: 15px;
+		font-weight: 600;
+	}
+	.missed-line a {
+		color: var(--muted);
+	}
 	.game {
 		position: fixed;
 		inset: 0;

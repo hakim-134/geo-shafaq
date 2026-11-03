@@ -8,8 +8,12 @@
 	import { flagSvg, openPanorama, panoramaUrl } from '#lib/map/map.js';
 
 	// district: the plate's small line, when the page knows it better than the street does
-	let { street: s, district }: { street: Schemas['MyStreet']; district?: Schemas['Text'] } =
-		$props();
+	// plain: the page already says what the distance is for
+	let {
+		street: s,
+		district,
+		plain = false
+	}: { street: Schemas['MyStreet']; district?: Schemas['Text']; plain?: boolean } = $props();
 </script>
 
 <svelte:element
@@ -42,7 +46,9 @@
 		{:else}
 			<b>—</b>
 		{/if}
-		<span>{s.learned ? t('nRounds', { n: s.rounds }) : t('learnAt')}</span>
+		{#if s.learned || !plain}
+			<span>{s.learned ? t('nRounds', { n: s.rounds }) : t('learnAt')}</span>
+		{/if}
 	</span>
 </svelte:element>
 

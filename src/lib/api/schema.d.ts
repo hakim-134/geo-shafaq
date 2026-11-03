@@ -109,6 +109,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/missed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The streets the player has not learned, worst first, and the map that plays them. */
+        get: operations["getMissedStreets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/config": {
         parameters: {
             query?: never;
@@ -1120,6 +1137,11 @@ export interface components {
              */
             heading?: number;
         };
+        MissedStreets: {
+            /** @description The player's map of these streets: POST /v1/games plays it, refreshed. */
+            map: string;
+            streets: components["schemas"]["MyStreet"][];
+        };
         MapBest: {
             map: components["schemas"]["MapRef"];
             games: number;
@@ -1823,6 +1845,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MyStreets"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    getMissedStreets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MissedStreets"];
                 };
             };
             401: components["responses"]["Error"];

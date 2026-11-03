@@ -6,14 +6,26 @@
 	import { t } from '#lib/i18n/index.svelte.js';
 	import { session } from '#lib/session.svelte.js';
 
+	// seek: the end of one's own game: the board comes into sight with the player's row in it
 	let {
 		board,
 		players,
-		open = false
-	}: { board: Schemas['ChallengeRow'][]; players: number; open?: boolean } = $props();
+		open = false,
+		seek = false
+	}: {
+		board: Schemas['ChallengeRow'][];
+		players: number;
+		open?: boolean;
+		seek?: boolean;
+	} = $props();
+
+	let box = $state<HTMLElement>();
+	$effect(() => {
+		if (seek) box?.querySelector('.me')?.scrollIntoView({ block: 'center' });
+	});
 </script>
 
-<section class="board">
+<section class="board" bind:this={box}>
 	<h2 class="section-title">{t('boardTitle')} · {fmtNum(players)}</h2>
 	<ol>
 		{#each board as row (row.game)}

@@ -4,12 +4,13 @@
 	// the game is for, in one list. Each street's 🏁 badge opens its panorama on Yandex Maps.
 	import SubPage from '#lib/components/SubPage.svelte';
 	import StreetRow from '#lib/maps/StreetRow.svelte';
+	import MissedLink from '#lib/maps/MissedLink.svelte';
 	import { api, call, type Schemas } from '#lib/api/client.js';
 	import { ensureSession, session } from '#lib/session.svelte.js';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import { fmtNum } from '#lib/format.js';
 
-	type Filter = 'all' | 'learned' | 'not';
+	type Filter = 'all' | 'learned';
 	let data = $state<Schemas['MyStreets'] | null>(null);
 	let failed = $state(false);
 	let filter = $state<Filter>('all');
@@ -30,27 +31,29 @@
 	}
 
 	const learned = $derived(data?.streets.filter((s) => s.learned).length ?? 0);
-	const shown = $derived(
-		(data?.streets ?? []).filter(
-			(s) => filter === 'all' || (filter === 'learned' ? s.learned : !s.learned)
-		)
-	);
+	const shown = $derived((data?.streets ?? []).filter((s) => filter === 'all' || s.learned));
 	const pct = (n: number) => `${(n / Math.max(data?.total ?? 1, 1)) * 100}%`;
 </script>
 
 <SubPage title={t('myStreets')} back={{ href: '/me', label: t('profile') }}>
 	{#if data}
 		<section class="top">
-			<p class="count">
-				<b>{fmtNum(learned)}</b>
-				<span>/ {fmtNum(data.total)} {t('streetsLearnedShort')}</span>
-			</p>
-			<div class="bar" aria-hidden="true">
-				<i class="seen" style:width={pct(data.streets.length)}></i>
-				<i class="got" style:width={pct(learned)}></i>
-			</div>
-			<p class="note">{t('streetsHint')}</p>
+			{#if learned}
+				<p class="count">
+					<b>{fmtNum(learned)}</b>
+					<span>/ {fmtNum(data.total)} {t('streetsLearnedShort')}</span>
+				</p>
+				<div class="bar" aria-hidden="true">
+					<i class="seen" style:width={pct(data.streets.length)}></i>
+					<i class="got" style:width={pct(learned)}></i>
+				</div>
+				<p class="note">{t('streetsHint')}</p>
+			{:else}
+				<p class="first">{t('firstLearnHint')}</p>
+			{/if}
 		</section>
+
+		<div class="missed"><MissedLink count={data.streets.length - learned} /></div>
 
 		{#if data.streets.length}
 			<div class="segmented filter">
@@ -60,14 +63,11 @@
 				<button aria-pressed={filter === 'learned'} onclick={() => (filter = 'learned')}
 					>{t('learnedLabel')} · {learned}</button
 				>
-				<button aria-pressed={filter === 'not'} onclick={() => (filter = 'not')}
-					>{t('notYet')} · {data.streets.length - learned}</button
-				>
 			</div>
 			<ul>
 				{#each shown as s, i (i)}
 					<li>
-						<StreetRow street={s} />
+						<StreetRow street={s} plain />
 					</li>
 				{/each}
 			</ul>
@@ -92,6 +92,9 @@
 		background: var(--surface);
 		border: 1px solid var(--border);
 		box-shadow: 0 4px 0 var(--edge);
+	}
+	.first {
+		font-weight: 600;
 	}
 	.count {
 		display: flex;
@@ -139,8 +142,11 @@
 		font-size: 13.5px;
 		color: var(--muted);
 	}
+	.missed {
+		margin-top: 16px;
+	}
 	.filter {
-		margin: 22px 0 8px;
+		margin: 18px 0 8px;
 	}
 	.filter button {
 		font-size: 13.5px;

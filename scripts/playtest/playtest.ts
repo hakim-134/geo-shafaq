@@ -10,7 +10,9 @@
 // friend comes by the link, the other types the code after "Kodim bor"; the first takes a
 // hint; the rounds go on by the ring, "Hozir", and a hold; the host's "Yana o‘ynash" takes
 // everyone into the next game), places (the map of Uzbekistan → Tashkent → Chilonzor picked → a game
-// there), challenge (a finished game's link → two friends as guests play it → one leaderboard).
+// there), challenge (a finished game's link → two friends as guests play it → one leaderboard),
+// missed (a game guessed far off → "Adashgan ko‘chalarim" → found on the spot, each street leaves the
+// list until none is left).
 //
 // Chrome runs headless with --disable-gpu (local.md §3) and a throwaway profile deleted at the
 // end, so the demo switch never reaches the owner's own Chrome. Screenshots, steps.json (the
@@ -31,7 +33,7 @@ const { values: args } = parseArgs({
 		url: { type: 'string', default: 'http://localhost:8130' },
 		out: { type: 'string', default: 'scripts/playtest/out' },
 		views: { type: 'string', default: 'phone-light,phone-dark,laptop,laptop-dark' },
-		only: { type: 'string', default: 'solo,room,places,challenge' },
+		only: { type: 'string', default: 'solo,room,places,challenge,missed' },
 		chrome: { type: 'string', default: process.env.CHROME ?? '/usr/bin/google-chrome' }
 	}
 });
@@ -652,7 +654,142 @@ async function challenge(browser: Browser, view: View, dir: string) {
 	for (const p of [host, friend, friend2]) await p.page.close();
 }
 
-const JOURNEYS = { solo, room, places, challenge } as const;
+// Streets I miss. Only this laptop's database can say where a panorama is, so the guess that finds
+// a street is sent there from the rounds table; every other guess lands in another country.
+function roundSpot(gameId: string, n: number) {
+	const out = execFileSync(
+		'docker',
+		[
+			'exec',
+			'postgres',
+			'psql',
+			'-U',
+			'postgres',
+			'-d',
+			'shafaq_lcl',
+			'-Atc',
+			`SELECT ST_Y(p.pos), ST_X(p.pos) FROM rounds r JOIN panoramas p ON p.id = r.panorama_id WHERE r.game_id = '${gameId}' AND r.n = ${n}`
+		],
+		{ encoding: 'utf8' }
+	);
+	const [lat, lon] = out.trim().split('|').map(Number);
+	return { lat, lon };
+}
+
+async function missed(browser: Browser, view: View, dir: string) {
+	const J = 'missed';
+	const CHOICE = JSON.stringify({
+		...ROOM_CHOICE,
+		preset: 'easy',
+		hints: { count: 0, per: 'round', kind: 'district', cost: 0 }
+	});
+	const p = new Player(view, 'missed', dir);
+	await p.open(browser, { sg_choice: CHOICE, sg_coach_done: '1' });
+
+	// which rounds' guesses find their street; the others land far away
+	let find = new Set<number>();
+	await p.page.setRequestInterception(true);
+	p.page.on('request', (r) => {
+		const m = r.method() === 'POST' && r.url().match(/\/games\/([^/]+)\/rounds\/(\d+)\/guess$/);
+		if (!m) return r.continue();
+		const n = Number(m[2]);
+		const pos = find.has(n) ? roundSpot(m[1], n) : { lat: 40.5, lon: 60.5 };
+		r.continue({ postData: JSON.stringify({ pos }) });
+	});
+	const left = () =>
+		p.page.evaluate(async () => {
+			const r = await fetch(`${location.protocol}//${location.hostname}:8131/v1/me/missed`, {
+				credentials: 'include'
+			});
+			return ((await r.json()) as { streets: unknown[] }).streets.length;
+		});
+	async function playAll() {
+		for (let i = 1; ; i++) {
+			await p.roundReady();
+			await p.guess();
+			await p.find('.next', 20000);
+			await sleep(1500);
+			await p.tap(await p.find('.next'));
+			if (await p.page.waitForSelector('.final', { timeout: 4000 }).catch(() => null)) break;
+			if (i > 12) throw new Error('the game does not end');
+		}
+		await sleep(2800);
+	}
+
+	p.begin();
+	await p.go('/');
+	await sleep(1500);
+	await p.tap(await p.find('.go .play'));
+	await playAll();
+	const noRepeats = async () => {
+		const plates = await p.page.$$eval('.stop-plate', (l) =>
+			l.map((x) => (x as HTMLElement).innerText)
+		);
+		if (new Set(plates).size !== plates.length)
+			problems.push(`${view.name} missed: a street twice in one game: ${plates.join(' / ')}`);
+	};
+	await noRepeats();
+	const before = await left();
+	if (before !== 3) problems.push(`${view.name} missed: ${before} on the list after 3 far guesses`);
+
+	// from my streets; my map doesn't carry it
+	await p.go('/me');
+	await p.find('figure.city path.shape');
+	await sleep(1200);
+	if (await p.has('a.missed')) problems.push(`${view.name} missed: the way there is under my map`);
+	await p.go('/me/streets');
+	await sleep(1000);
+	await p.shot(J, 'my-streets', 'my streets with the way to the missed streets');
+	await p.tap(await p.find('a.missed'));
+	await p.page.waitForFunction(() => location.pathname === '/me/missed');
+	await sleep(1000);
+	await p.shot(J, 'list', 'the worst first, one green button');
+
+	// none found: the list stands, nothing cheers
+	await p.tap(await p.findText(/O‘ynash/));
+	await p.page.waitForFunction(() => location.pathname.startsWith('/game/'));
+	await p.roundReady();
+	await p.shot(J, 'round', 'a round on the missed streets: the guess map frames all of Tashkent');
+	await playAll();
+	await p.shot(J, 'end-none', 'nothing found: the headline is what is left');
+	const none = await p.page.$eval('.final-head h1', (h) => (h as HTMLElement).innerText);
+	if (!/3 tasi qoldi/.test(none))
+		problems.push(`${view.name} missed: nothing found says "${none}"`);
+
+	// the first street found: it leaves the list; the home's sign stays where it was
+	find = new Set([1]);
+	await p.tap(await p.findText(/Yana o‘ynash/));
+	await p.page.waitForFunction(() => !document.querySelector('.final'), { timeout: 15000 });
+	await playAll();
+	await p.shot(J, 'end', 'one street left the list');
+	await noRepeats();
+	const after = await left();
+	if (after !== before - 1)
+		problems.push(`${view.name} missed: ${after} on the list, want ${before - 1}`);
+	const sign = await p.page.$eval('.final-head', (h) => (h as HTMLElement).innerText);
+	if (!/Adashgan/.test(sign)) problems.push(`${view.name} missed: the end's sign says "${sign}"`);
+
+	// "Yana o‘ynash": the two left, found: the list is empty, the end says so, no next game
+	find = new Set([1, 2]);
+	await p.tap(await p.findText(/Yana o‘ynash/));
+	await p.page.waitForFunction(() => !document.querySelector('.final'), { timeout: 15000 });
+	await playAll();
+	await p.shot(J, 'end-all-learned', 'none left');
+	await noRepeats();
+	if ((await left()) !== 0) problems.push(`${view.name} missed: the list isn't empty at the end`);
+	if (await p.findText(/Yana o‘ynash/, 800).catch(() => null))
+		problems.push(`${view.name} missed: "Yana o‘ynash" with nothing left to play`);
+	await p.go('/me/missed');
+	await sleep(1000);
+	await p.shot(J, 'empty', 'the list, empty');
+	await p.go('/');
+	await sleep(1200);
+	const home = await p.page.$eval('.where', (a) => (a as HTMLElement).innerText);
+	if (/Adashgan/.test(home)) problems.push(`${view.name} missed: the home's sign became "${home}"`);
+	await p.page.close();
+}
+
+const JOURNEYS = { solo, room, places, challenge, missed } as const;
 
 // Every journey makes new guests, and the API allows 30 an hour per address: a full run makes
 // more. On this laptop the limit is cleared first (Redis database 1, local.md §3).
