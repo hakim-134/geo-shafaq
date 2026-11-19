@@ -15,7 +15,7 @@
 	ensureSession().catch(() => {}); // the top bar shows who is playing
 </script>
 
-<svelte:head><title>{title} — Shafaq Geo</title></svelte:head>
+<svelte:head><title>{title} — GeoShafaq</title></svelte:head>
 
 <TopBar />
 

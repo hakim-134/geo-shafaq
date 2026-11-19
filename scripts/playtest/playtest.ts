@@ -9,7 +9,7 @@
 // host and two friends, each in their own browser, play a room on "O‘rta" to its end: one
 // friend comes by the link, the other types the code after "Kodim bor"; the first takes a
 // hint; the rounds go on by the ring, "Hozir", and a hold; the host's "Yana o‘ynash" takes
-// everyone into the next game), places (the map of Uzbekistan → Tashkent → Chilonzor picked → a game
+// everyone into the next game), places (the home's map zooms in place → Tashkent → Chilonzor chosen → a game
 // there), challenge (a finished game's link → two friends as guests play it → one leaderboard),
 // missed (a game guessed far off → "Adashgan ko‘chalarim" → found on the spot, each street leaves the
 // list until none is left), shop (a street found earns Barg; the shop: too little, then bought and worn;
@@ -341,70 +341,50 @@ async function places(browser: Browser, view: View, dir: string) {
 	await p.open(browser);
 	const J = 'places';
 
+	// the home's own map (2026-11-19): a tap zooms in place, the small square at its top left
+	// goes back, a tap marks a district, the gold "Shu joyni tanlash" chooses it, and the place
+	// above the map becomes it; nothing round the map moves, and "O‘ynash" plays it
 	p.begin();
 	await p.go('/');
+	await p.find('.msvg [data-s]');
 	await sleep(1500);
-	// a laptop: a click on a district of the city map makes it the sign; the page stays
-	if (!view.phone) {
-		const label = await p.find('figure.city text::-p-text(Yashnobod)', 8000);
-		const box = await label.boundingBox();
-		if (box) await p.tapAt(box.x + box.width / 2, box.y + box.height / 2);
-		await sleep(1200);
-		const where = await p.page.evaluate(() => location.pathname);
-		const sign = await p.page.$eval('.where', (a) => (a as HTMLElement).innerText);
-		if (where !== '/' || !/Yashnobod/.test(sign))
-			problems.push(`${view.name} places: the city map's click went to ${where}, sign "${sign}"`);
-		await p.shot(J, 'home-district-picked', 'a click on Yashnobod in the city map: taps');
-		p.begin();
-	}
-	// the sign opens the map of Uzbekistan; Tashkent's badge flies into its tumanlar; a tap
-	// picks Chilonzor; "O‘ynash" plays it
-	await p.tap(await p.find('a.where'));
-	// once (2026-10-29) a laptop's tap on the sign right after a map click didn't go: say so
-	const opened = await p.page
-		.waitForFunction(() => location.pathname.startsWith('/places/'), { timeout: 5000 })
-		.catch(() => null);
-	if (!opened) {
-		problems.push(`${view.name} places: the sign's tap didn't open the place map; tapped again`);
-		await p.tap(await p.find('a.where'));
-		p.taps--;
-		await p.page.waitForFunction(() => location.pathname.startsWith('/places/'));
-	}
-	await p.find('.map path.shape'); // a district's own address goes on to its city's map first
-	await sleep(600);
-	if (!(await p.page.evaluate(() => location.pathname.endsWith('/uzbekistan')))) {
-		await p.tap(await p.find('a.back')); // a district picked on the city map opens its city
-		await p.page.waitForFunction(() => location.pathname.endsWith('/uzbekistan'));
-		p.taps--; // only the way the test came, not a player's tap
-	}
-	await p.find('.map path.shape');
-	await sleep(1200);
+	// where the things round the map stand: the rules line, the key's box (not the key, which
+	// breathes for a new player), the quiet buttons
+	const around = () =>
+		p.page.evaluate(() =>
+			[...document.querySelectorAll('.go, .rules, .quiet button, .chip')].map((e) => {
+				const r = e.getBoundingClientRect();
+				return [r.x, r.y + scrollY, r.width, r.height];
+			})
+		);
+	const moved = (a: number[][], b: number[][]) =>
+		a.length !== b.length || a.some((r, i) => r.some((v, k) => Math.abs(v - b[i][k]) > 4));
+	const still = await around();
 	await p.shot(J, 'map-country');
-	await p.page.screenshot({ path: join(dir, `${p.who}-map-country-full.png`), fullPage: true });
 
-	// Tashkent: a badge on a phone, a shape on a laptop
-	await p.tap(await p.find('.map [aria-label="Toshkent"]'));
-	await p.page.waitForFunction(() => location.pathname.endsWith('/toshkent'));
-	await p.find('.map path.shape');
+	// Tashkent: a round badge on the country
+	await p.tap(await p.find('.bdg[data-s="toshkent"]'));
+	await p.find('.msvg [data-d="chilonzor-tumani"]');
 	await sleep(1200);
-	await p.shot(J, 'map-tashkent');
-	// going close: + twice, every name stays, then back (not counted: the way to a game has none)
-	const press = (nth: number) =>
-		p.page.$$eval('.zoom button', (b, i) => (b[i] as HTMLElement).click(), nth);
-	await press(0);
-	await sleep(500);
-	await press(0);
-	await sleep(800);
-	await p.shot(J, 'map-tashkent-close', 'the map close up: the same places, every name');
-	await press(1);
-	await sleep(500);
-	await press(1);
-	await sleep(800);
-	await p.tap(await p.find('path.shape[aria-label="Chilonzor tumani"]'));
-	await sleep(700);
-	await p.shot(J, 'map-district', 'Chilonzor picked: the bar says what plays');
+	await p.shot(J, 'map-tashkent', 'zoomed in place: the square at the top left goes back');
+	if (moved(still, await around()))
+		problems.push(`${view.name} places: something round the map moved when it zoomed in`);
 
-	await p.tap(await p.find('.bar .play:not([disabled])'));
+	await p.tap(await p.find('.msvg [data-d="chilonzor-tumani"]'));
+	await sleep(600);
+	await p.shot(J, 'map-district', 'Chilonzor marked: the gold button chooses it');
+	await p.tap(await p.find('.mchoose:not(.off)'));
+	await sleep(1500);
+	const title = await p.page.evaluate(
+		() => document.querySelector('main h1, main .title')?.textContent ?? ''
+	);
+	if (!/Chilonzor/.test(title))
+		problems.push(
+			`${view.name} places: after choosing, the place above the map says "${title.trim()}"`
+		);
+	await p.shot(J, 'chosen', 'Chilonzor chosen: its name and picture above the map');
+
+	await p.tap(await p.find('.go .play:not([disabled])'));
 	const wait = await p.roundReady();
 	await p.shot(J, 'round-in-district', `a street in a district, playable ${wait} s after the tap`);
 	await p.page.close();

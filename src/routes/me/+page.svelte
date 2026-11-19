@@ -42,7 +42,7 @@
 	const streets = $derived(profile?.streets);
 </script>
 
-<svelte:head><title>{me?.user.name ?? t('profile')} — Shafaq Geo</title></svelte:head>
+<svelte:head><title>{me?.user.name ?? t('profile')} — GeoShafaq</title></svelte:head>
 
 <TopBar />
 

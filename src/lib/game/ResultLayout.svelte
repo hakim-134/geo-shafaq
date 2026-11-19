@@ -243,4 +243,107 @@
 			}
 		}
 	}
+	/* ---------- the new look (P1111 1.1): only a round's result has it so far ----------
+	   The panel is a raised surface (white by day, lapis by night); on a phone it rises over
+	   the map's foot with a rounded top, on a laptop it stands at the left and its story sits
+	   in the middle of its height, the key right under it. Yandex's map is never filtered. */
+	:global(:root.look2) .result {
+		background: var(--panel);
+		color: var(--ink);
+		grid-template-columns: 500px minmax(0, 1fr);
+	}
+	:global(:root.look2) .panel {
+		position: relative;
+		z-index: 1;
+		justify-content: center;
+		background: var(--panel);
+		border-right: none;
+		box-shadow: 12px 0 30px var(--shade);
+		animation: slide-in 0.45s var(--out);
+	}
+	:global(:root.look2[data-theme='dark']) .panel {
+		background: linear-gradient(180deg, var(--panel-2), var(--ground-top) 75%);
+	}
+	:global(:root.look2) .body {
+		flex: 0 1 auto;
+		padding: 32px 36px 8px;
+	}
+	:global(:root.look2) .actions {
+		padding: 22px 36px max(26px, env(safe-area-inset-bottom));
+		border-top: none;
+	}
+	/* the legend: one small card in the map's corner, clear of Yandex's box (top left) and its
+	   logo and terms (bottom right); the markers are the map's own */
+	:global(:root.look2) .legend {
+		left: 12px;
+		bottom: 12px;
+		gap: 4px;
+		padding: 8px 12px 8px 10px;
+		border-radius: 14px;
+		background: #fff9ec;
+		box-shadow:
+			0 3px 0 rgba(11, 59, 68, 0.18),
+			0 6px 14px rgba(0, 0, 0, 0.15);
+	}
+	:global(:root.look2) .legend span {
+		height: 24px;
+		gap: 8px;
+		padding: 0;
+		border-radius: 0;
+		background: none;
+		box-shadow: none;
+		color: #0b3b44; /* on the milk card over Yandex's map, which is light in both themes */
+		font-size: 13px;
+		font-weight: 700;
+		white-space: nowrap;
+	}
+	:global(:root.look2) .legend img {
+		width: 18px;
+		height: auto;
+		margin: -3px 0 0;
+	}
+
+	@media (max-width: 760px) {
+		/* the panel's rounded top meets the map's foot: the two small corners beside it take
+		   the colour of Yandex's land, so the map seems to run on under the panel, while the
+		   map's own box (and its logo and terms) ends where the panel begins */
+		:global(:root.look2) .result:not(.stage):not(.scroll) {
+			background: #fbf9f3;
+		}
+		/* over Yandex's terms line, not on it; one row, so it lies under the pins' margin and
+		   never on a pin */
+		:global(:root.look2) .legend {
+			left: 10px;
+			bottom: 26px;
+			flex-direction: row;
+			gap: 14px;
+			padding: 5px 10px 5px 8px;
+		}
+		:global(:root.look2) .legend span {
+			height: 22px;
+			font-size: 12.5px;
+		}
+		:global(:root.look2) .panel {
+			justify-content: flex-start;
+			max-height: 72vh;
+			max-height: 72dvh;
+			border-radius: 26px 26px 0 0;
+			box-shadow: 0 -10px 30px var(--shade);
+			animation: rise-up 0.5s var(--out);
+		}
+		:global(:root.look2) .panel::before {
+			display: none;
+		}
+		/* on a short phone the story scrolls under the key: its foot fades, so a line cut in
+		   half reads as "more below", not as a fault */
+		:global(:root.look2) .body {
+			flex: 1 1 auto;
+			padding: 18px 16px 18px;
+			-webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+			mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
+		}
+		:global(:root.look2) .actions {
+			padding: 10px 16px max(14px, env(safe-area-inset-bottom));
+		}
+	}
 </style>

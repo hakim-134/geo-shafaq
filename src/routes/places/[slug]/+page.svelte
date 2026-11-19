@@ -192,7 +192,7 @@
 </script>
 
 <svelte:head
-	><title>{place && !country ? tx(place.name) : t('placesTitle')} — Shafaq Geo</title></svelte:head
+	><title>{place && !country ? tx(place.name) : t('placesTitle')} — GeoShafaq</title></svelte:head
 >
 
 <TopBar />

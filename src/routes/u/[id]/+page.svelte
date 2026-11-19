@@ -50,7 +50,7 @@
 	}
 </script>
 
-<svelte:head><title>{profile?.user.name ?? ''} — Shafaq Geo</title></svelte:head>
+<svelte:head><title>{profile?.user.name ?? ''} — GeoShafaq</title></svelte:head>
 
 <TopBar />
 

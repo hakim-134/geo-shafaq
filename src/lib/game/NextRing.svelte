@@ -108,4 +108,33 @@
 		min-width: 0;
 		line-height: 1.15;
 	}
+	/* ---------- the new look (P1111 1.1): a room's round result ---------- */
+	:global(:root.look2) .next-ring {
+		color: var(--ink);
+	}
+	:global(:root.look2) .track {
+		stroke: var(--panel-2);
+	}
+	:global(:root.look2) .fill {
+		stroke: var(--key);
+		stroke-width: 5;
+	}
+	:global(:root.look2) .soon .fill {
+		stroke: var(--gold);
+	}
+	:global(:root.look2) .ring b {
+		font-family: var(--f-disp);
+		font-weight: 900;
+		display: inline-block;
+		transform: var(--lean);
+		font-size: 21px;
+	}
+	:global(:root.look2) .label {
+		font-family: var(--f-disp);
+		font-weight: 800;
+		display: inline-block;
+		transform: var(--lean);
+		font-size: 16px;
+		color: var(--ink-2);
+	}
 </style>

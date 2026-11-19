@@ -88,6 +88,45 @@
 		map?.setType(yandexType(layer));
 	});
 
+	// What the map frames: the round's points, clear of what lies over the map's edges.
+	let framed: LatLon[] = [];
+	function frame(m: YMap) {
+		const points = framed;
+		m.container.fitToViewport();
+		if (points.length === 1) m.setCenter([points[0].lat, points[0].lon], 15);
+		else if (points.length)
+			// any zoom, not only whole steps: the flags fill the map, on a phone too. The
+			// margins: Yandex's box and the flags' poles above the points, the key and the logo
+			// under them; less on a short map (a result on a phone), or the pins pile up
+			m.setBounds(bounds(boxOf(points)), {
+				zoomMargin: m.container.getSize()[1] < 400 ? [64, 44, 66, 44] : [104, 56, 84, 56],
+				preciseZoom: true,
+				checkZoomRange: true
+			});
+	}
+
+	// The panel beside the map settles after the map is drawn (its lines come in with the
+	// reveal), and the map's box changes with it: frame the points again, or a pin is left
+	// outside the picture.
+	$effect(() => {
+		const m = map;
+		if (!m) return;
+		let last = el.clientWidth + 'x' + el.clientHeight;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const ro = new ResizeObserver(() => {
+			const now = el.clientWidth + 'x' + el.clientHeight;
+			if (now === last) return;
+			last = now;
+			clearTimeout(timer);
+			timer = setTimeout(() => frame(m), 150);
+		});
+		ro.observe(el);
+		return () => {
+			ro.disconnect();
+			clearTimeout(timer);
+		};
+	});
+
 	$effect(() => {
 		const m = map;
 		const list = pairs;
@@ -112,17 +151,8 @@
 			points.push({ lat: s, lon: w }, { lat: n, lon: e });
 		}
 
-		m.container.fitToViewport();
-		if (points.length === 1) m.setCenter([points[0].lat, points[0].lon], 15);
-		else if (points.length)
-			// any zoom, not only whole steps: the flags fill the map, on a phone too. The
-			// margins: Yandex's box and the flags' poles above the points, the key and the logo
-			// under them; less on a short map (a room's result on a phone), or the pins pile up
-			m.setBounds(bounds(boxOf(points)), {
-				zoomMargin: m.container.getSize()[1] < 400 ? [64, 44, 44, 44] : [104, 56, 84, 56],
-				preciseZoom: true,
-				checkZoomRange: true
-			});
+		framed = points;
+		frame(m);
 
 		if (reveal && list.length) {
 			revealPairs(m, list, ringKm, add, () => mine === run);

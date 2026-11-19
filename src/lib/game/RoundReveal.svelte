@@ -1,13 +1,14 @@
 <script lang="ts">
-	// One round's result: how close (a word and up to three stars), the score counting up,
-	// how far off, and the place's own sign. It plays when go turns true (the real pin has
-	// landed on the map). Solo games and rooms both use it; a room adds its table below.
+	// One round's result: how close (a word and up to three stars), the score as the hero,
+	// counting up, how far off, and the place learned on its plaque. It plays when go turns
+	// true (the real pin has landed on the map). Solo games and rooms both use it; a room adds
+	// its table below.
 	import type { Snippet } from 'svelte';
 	import type { LatLon, Schemas } from '#lib/api/client.js';
 	import Coin from '#lib/barg/Coin.svelte';
 	import Stars from './Stars.svelte';
 	import ScoreCount from './ScoreCount.svelte';
-	import StreetPlate from './StreetPlate.svelte';
+	import PlacePlaque from './PlacePlaque.svelte';
 	import Confetti from './Confetti.svelte';
 	import { crowdGap, fmtDistance, starsFor, verdictKey } from '#lib/format.js';
 	import { t } from '#lib/i18n/index.svelte.js';
@@ -25,7 +26,7 @@
 		late?: boolean;
 		place: Schemas['PlaceInfo'];
 		actual: LatLon;
-		heading?: number; // the round's first heading: the plate's panorama link faces it
+		heading?: number; // the round's first heading: the plaque's panorama link faces it
 		crowd?: number; // the average distance of the round's guesses: the ring on the map
 		go: boolean;
 		earned?: Schemas['Earned'][]; // Barg this guess earned
@@ -62,6 +63,23 @@
 	const learned = $derived(guessed && km != null && km <= 0.5 && !!place.street);
 	const title = $derived(late ? t('late') : guessed ? t(verdictKey(score)) : t('noGuess'));
 
+	/** A sentence around a distance, cut so the distance can be set in display lettering. */
+	function around(text: string, d: string): [string, string, string] {
+		const i = text.indexOf(d);
+		return i < 0 ? [text, '', ''] : [text.slice(0, i), d, text.slice(i + d.length)];
+	}
+	const far = $derived.by(() => {
+		if (!guessed || km == null) return null;
+		const d = fmtDistance(km);
+		return around(t('kmAway', { d }), d);
+	});
+	const vs = $derived.by(() => {
+		if (vsCrowd == null) return null;
+		if (vsCrowd === 0) return [t('crowdSame'), '', ''] as [string, string, string];
+		const d = fmtDistance(Math.abs(vsCrowd));
+		return around(t(vsCrowd > 0 ? 'crowdCloser' : 'crowdFarther', { d }), d);
+	});
+
 	let party = $state(false);
 	$effect(() => {
 		if (!go) return;
@@ -73,64 +91,71 @@
 	});
 </script>
 
-<div class="reveal" class:go>
+<div class="reveal" class:go class:board={!!children}>
 	<div class="head">
-		<div>
-			<div class="round">
+		<div class="titles">
+			<div class="kicker">
 				{t('roundN', { n })}{#if rounds}&nbsp;/ {rounds}{/if}
 			</div>
-			<h2 class="verdict" class:perfect>{title}</h2>
+			<h2 class="verdict d" class:perfect>{title}</h2>
 		</div>
 		<Stars n={stars} {go} delay={200} />
 	</div>
 
 	<ScoreCount {score} {base} {hints} {cost} max={5000} {go} delay={350} />
-	<p class="far">
-		{#if guessed && km != null}
-			<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
-				><path d="M4 12h16M4 12l3-3M4 12l3 3M20 12l-3-3M20 12l-3 3" /></svg
-			>
-			{t('kmAway', { d: fmtDistance(km) })}
-		{:else}
-			{t('noPin')}
-		{/if}
-	</p>
-	{#if vsCrowd != null}
-		<p class="crowd">
-			<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><circle cx="12" cy="12" r="8" /></svg
-			>
-			{#if vsCrowd === 0}
-				{t('crowdSame')}
+
+	<div class="facts">
+		<p class="far" class:nopin={!far}>
+			{#if far}
+				<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+					><path d="M4 12h16M4 12l3.5-3.5M4 12l3.5 3.5M20 12l-3.5-3.5M20 12l-3.5 3.5" /></svg
+				>
+				<span>{far[0]}<b class="d">{far[1]}</b>{far[2]}</span>
 			{:else}
-				{t(vsCrowd > 0 ? 'crowdCloser' : 'crowdFarther', { d: fmtDistance(Math.abs(vsCrowd)) })}
+				<svg viewBox="0 0 24 24" class="icon none" aria-hidden="true"
+					><circle cx="12" cy="12" r="8" /><path d="M6.5 17.5l11-11" /></svg
+				>
+				<span>{t('noPin')}</span>
 			{/if}
 		</p>
-	{/if}
+		{#if vs}
+			<p class="crowd">
+				<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+					><circle cx="12" cy="12" r="8" /></svg
+				>
+				<span>{vs[0]}<b class="d">{vs[1]}</b>{vs[2]}</span>
+			</p>
+		{/if}
+	</div>
+
 	{#if learned}
-		<p class="learned-line">
-			<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
-				><path d="m5 12.5 4.5 4.5L19 7.5" /></svg
+		<p class="earned">
+			<span class="tick" aria-hidden="true"
+				><svg viewBox="0 0 24 24"><path d="m5.5 12.5 4 4L18.5 7.5" /></svg></span
 			>
-			{t('streetLearned')}
-			{#if forStreet}<span class="plus">+{forStreet.amount} <Coin size={16} /></span>{/if}
+			<span class="what">{t('streetLearned')}</span>
+			{#if forStreet}<span class="plus d">+{forStreet.amount} <Coin size={18} /></span>{/if}
 		</p>
 	{/if}
 	{#each others as e (e.reason)}
 		{#if e.reason === 'district'}
-			<p class="district-plate">
-				{t('districtWon', { name: e.note ?? '' })}
-				<span class="plus">+{e.amount} <Coin size={18} /></span>
+			<p class="district">
+				<span class="what">{t('districtWon', { name: e.note ?? '' })}</span>
+				<span class="plus d">+{e.amount} <Coin size={20} /></span>
 			</p>
 		{:else}
-			<p class="learned-line">
-				{t('reason_challenge')}
-				<span class="plus">+{e.amount} <Coin size={16} /></span>
+			<p class="earned">
+				<span class="tick" aria-hidden="true"
+					><svg viewBox="0 0 24 24"><path d="m5.5 12.5 4 4L18.5 7.5" /></svg></span
+				>
+				<span class="what">{t('reason_challenge')}</span>
+				<span class="plus d">+{e.amount} <Coin size={18} /></span>
 			</p>
 		{/if}
 	{/each}
 
 	<div class="where">
-		<StreetPlate {place} at={actual} {heading} land={go} delay={450} />
+		<PlacePlaque {place} at={actual} {heading} land={go} delay={450} />
 	</div>
 
 	{@render children?.()}
@@ -139,139 +164,215 @@
 {#if party}<Confetti />{/if}
 
 <style>
-	.district-plate {
-		margin: 12px 0;
+	.reveal {
 		display: flex;
-		align-items: center;
+		flex-direction: column;
+		gap: 12px;
+		color: var(--ink);
+	}
+	.head {
+		display: flex;
+		align-items: flex-start;
 		justify-content: space-between;
 		gap: 10px;
-		padding: 10px 14px;
-		border-radius: 12px;
-		background: linear-gradient(135deg, #f7d66a, #e8a90c);
-		color: #1b2a44;
-		font-family: var(--display);
+	}
+	.titles {
+		min-width: 0;
+	}
+	.kicker {
+		font-family: var(--f-disp);
 		font-weight: 800;
-		font-size: 15px;
-		box-shadow: 0 3px 0 #a97c06;
+		transform: var(--lean);
+		transform-origin: 0 75%;
+		font-size: 13px;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--ink-3);
+		font-variant-numeric: tabular-nums;
 	}
-	.reveal:not(.go) .district-plate {
-		opacity: 0;
+	.verdict {
+		margin-top: 3px;
+		font-size: clamp(24px, 7.2vw, 28px);
+		line-height: 1.05;
+		color: var(--ink);
+		overflow-wrap: normal;
 	}
-	.go .district-plate {
-		animation: pop-in 0.5s var(--pop) 1s both;
+	/* a perfect round: the key's green, standing on the stacked shadow */
+	.verdict.perfect {
+		color: var(--key);
+		text-shadow:
+			0 2px 0 var(--key-lip),
+			0 6px 14px rgba(29, 182, 80, 0.3);
+	}
+	/* the stars' size is the panel's, not the component's default: a phone keeps room for a
+	   long verdict ("Очень близко!") on one line */
+	.head :global(.stars) {
+		flex: none;
+		margin-top: -2px;
+		--s: 32px !important;
+	}
+
+	.facts {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		margin-top: -2px;
+	}
+	.far,
+	.crowd,
+	.earned {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		font-size: 16px;
+		font-weight: 600;
+		line-height: 1.25;
+	}
+	.facts b {
+		font-weight: 900;
+	}
+	.icon {
+		width: 22px;
+		height: 22px;
+		flex: none;
+	}
+	.far .icon {
+		color: var(--red);
+		stroke-width: 2.6;
+	}
+	.far .icon.none {
+		color: var(--ink-3);
+		stroke-width: 2.2;
+	}
+	.crowd .icon {
+		fill: rgba(246, 188, 47, 0.22);
+		stroke: var(--gold);
+		stroke-width: 2.6;
+	}
+
+	/* what the round taught: a green tick, the words, and the leaf coins in gold numbers */
+	.earned .tick {
+		width: 22px;
+		height: 22px;
+		flex: none;
+		display: grid;
+		place-items: center;
+		border-radius: 50%;
+		background: linear-gradient(180deg, var(--key-hi), var(--key-lo));
+		box-shadow: 0 2px 0 var(--key-lip);
+	}
+	.tick svg {
+		width: 15px;
+		height: 15px;
+		fill: none;
+		stroke: #fff;
+		stroke-width: 3.4;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+	.earned .what {
+		font-weight: 800;
 	}
 	.plus {
 		flex: none;
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
+		font-size: 17px;
+		color: var(--gold-on-panel);
 	}
-	.learned-line {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-weight: 800;
-		color: var(--green-ink);
-	}
-	.reveal:not(.go) .learned-line {
-		opacity: 0;
-	}
-	.go .learned-line {
-		animation: pop-in 0.4s var(--pop) 0.9s both;
-	}
-	:global(:root[data-theme='dark']) .learned-line {
-		color: var(--green);
-	}
-	.learned-line .icon {
-		width: 20px;
-		height: 20px;
-		stroke-width: 3;
-	}
-	.reveal {
-		display: flex;
-		flex-direction: column;
-		gap: 14px;
-	}
-	.head {
+	/* a whole district learned: a gold bar, the biggest thing a round can give */
+	.district {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 12px;
+		gap: 10px;
+		padding: 10px 14px;
+		border-radius: var(--r-s);
+		background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+		color: var(--gold-ink);
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.6),
+			0 3px 0 var(--gold-lo);
+		font-family: var(--f-disp);
+		font-weight: 900;
+		font-size: 16px;
+		line-height: 1.15;
 	}
-	.round {
-		font-size: 14px;
-		font-weight: 600;
-		color: var(--muted);
+	.district .plus {
+		color: var(--gold-ink);
+		font-size: 18px;
 	}
-	.verdict {
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 28px;
-		line-height: 1.1;
-		letter-spacing: -0.02em;
-	}
+
 	/* nothing gives the answer away before the real pin lands */
 	.reveal:not(.go) .verdict,
-	.reveal:not(.go) .far,
-	.reveal:not(.go) .crowd,
-	.reveal:not(.go) .where {
+	.reveal:not(.go) .facts,
+	.reveal:not(.go) .where,
+	.reveal:not(.go) .earned,
+	.reveal:not(.go) .district {
 		visibility: hidden;
 	}
 	.go .verdict {
-		animation: pop-in 0.45s var(--pop) both;
+		animation: verdict-in 0.5s var(--spring) both;
+	}
+	@keyframes verdict-in {
+		from {
+			opacity: 0;
+			transform: scale(0.6) rotate(-4deg);
+		}
 	}
 	.go .far {
-		animation: rise 0.35s 0.3s var(--settle) both;
+		animation: rise 0.35s 0.3s var(--out) both;
 	}
 	.go .crowd {
-		animation: rise 0.35s 0.45s var(--settle) both;
+		animation: rise 0.35s 0.45s var(--out) both;
 	}
-	.verdict.perfect {
-		color: var(--green-ink);
+	.go .earned {
+		animation: pop-in 0.4s var(--spring) 0.9s both;
 	}
-	:global(:root[data-theme='dark']) .verdict.perfect {
-		color: var(--green);
-	}
-	.far {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-weight: 600;
-		font-size: 15px;
-		margin-top: -4px;
-	}
-	.far .icon {
-		color: var(--red);
-	}
-	.crowd {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-weight: 600;
-		font-size: 15px;
-		margin-top: -8px;
-	}
-	.crowd .icon {
-		width: 24px;
-		height: 24px;
-		flex: none;
-		fill: rgba(232, 169, 12, 0.18);
-		stroke: #e8a90c;
-		stroke-width: 2.5;
+	.go .district {
+		animation: pop-in 0.5s var(--spring) 1s both;
 	}
 	.where {
 		padding-top: 4px;
 	}
+
+	/* a room's result on a phone: the players' rows are the story, and all of them must stand
+	   above the key. So the player's own distance is left to their row, which has it, the
+	   score is a size smaller, and the lines sit closer. */
 	@media (max-width: 760px) {
-		.reveal {
-			gap: 12px;
+		.reveal.board {
+			gap: 8px;
 		}
-		/* the stars say how good it was: the room's table gets the height */
-		.reveal :global(.score .bar) {
+		.reveal.board .far:not(.nopin) {
 			display: none;
 		}
+		.reveal.board :global(.score .value) {
+			font-size: clamp(52px, 15vw, 60px);
+		}
+	}
+
+	/* a laptop: the panel is tall, the lettering grows with it */
+	@media (min-width: 761px) {
+		.reveal {
+			gap: 14px;
+		}
+		.kicker {
+			font-size: 14px;
+		}
 		.verdict {
-			font-size: 24px;
+			font-size: 34px;
+		}
+		.head :global(.stars) {
+			--s: 42px !important;
+		}
+		.far,
+		.crowd,
+		.earned {
+			font-size: 17px;
+		}
+		.where {
+			padding-top: 8px;
 		}
 	}
 </style>

@@ -136,6 +136,8 @@
 	}
 
 	// ---------- each round opens with its number ----------
+	// a plaque that pops in and leaves by itself: a beat, not a wall in front of the street
+	const INTRO_MS = 1300;
 	let intro = $state<number | null>(null);
 	let introFor = -1;
 	let introTimer: ReturnType<typeof setTimeout> | undefined;
@@ -144,7 +146,7 @@
 		introFor = n;
 		intro = n;
 		clearTimeout(introTimer);
-		introTimer = setTimeout(() => (intro = null), 1500);
+		introTimer = setTimeout(() => (intro = null), INTRO_MS);
 	});
 
 	/** Opens a round's panorama; resolves with where a Yandex viewer landed. */
@@ -283,6 +285,10 @@
 
 	const layerKey = (l: Layer): Key => l;
 
+	// the big key's words, by length: "Отметить на карте" shrinks a little to stay on one line
+	// at 360 px instead of wrapping (the CSS turns the length into a size)
+	const openLabel = $derived(guessed ? (guessLabel ?? t('sending')) : t('openMapGuess'));
+
 	onDestroy(() => {
 		stopTimer();
 		clearTimeout(introTimer);
@@ -304,13 +310,13 @@
 	style:--danger={dangerLevel}
 ></div>
 
-<!-- top: status on the left, the clock in the middle (a room's in its players' chip), pause
-     (a room's menu) on the right -->
+<!-- top: status on the left, the clock (a room's rides in its players' chip), pause (a room's
+     menu) on the right; all of them small dark capsules, so the street keeps the screen -->
 <div class="hud" class:hide={status === 'off'}>
 	<div class="hud-left">
-		<div class="status" class:many>
+		<div class="status cap" class:many>
 			<div class="st-round">
-				<span class="st-n"
+				<span class="st-n d"
 					>{n ?? 0}{#if rounds}<small>/{rounds}</small>{/if}</span
 				>
 				{#if rounds && rounds <= 20}
@@ -323,7 +329,7 @@
 				{/if}
 			</div>
 			<div class="st-score">
-				<span class="st-n">{fmtNum(total)}</span>
+				<span class="st-n d">{fmtNum(total)}</span>
 				<span class="st-label">{t('points')}</span>
 			</div>
 		</div>
@@ -331,21 +337,23 @@
 	</div>
 
 	{#if clockOn && left !== null && !hud}
-		<div
-			class="clock"
-			class:warn={playing && left <= 15 && left > 10}
-			class:low={playing && left <= 10}
-			role="timer"
-		>
-			<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
-				><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2M9.5 2.5h5" /></svg
+		<div class="clock-spot">
+			<div
+				class="clock cap"
+				class:warn={playing && left <= 15 && left > 10}
+				class:low={playing && left <= 10}
+				role="timer"
 			>
-			<span>{fmtClock(left)}</span>
+				<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+					><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2M9.5 2.5h5" /></svg
+				>
+				<span class="d">{fmtClock(left)}</span>
+			</div>
 		</div>
 	{/if}
 
 	<button
-		class="round-btn pause"
+		class="round-btn pause cap"
 		onclick={() => (menuOpen = true)}
 		aria-label={onleave ? t('menu') : t('pause')}
 	>
@@ -368,30 +376,31 @@
 		>
 			<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
 				><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2M9.5 2.5h5" /></svg
-			>{fmtClock(left)}
+			><span class="d">{fmtClock(left)}</span>
 		</span>
 	{/if}
 {/snippet}
 
+<!-- the round's opener: a leaning plaque with a gold line -->
 {#if intro !== null}
-	<div class="intro" aria-live="polite">
-		<span class="intro-n"
-			>{t('roundN', { n: intro })}{#if rounds}<small> / {rounds}</small>{/if}</span
-		>
-		<span class="intro-q">{t('whereAreYou')}</span>
+	<div class="intro" aria-live="polite" style:--intro-ms={`${INTRO_MS}ms`}>
+		<div class="plaque">
+			<span class="intro-n d">{t('roundN', { n: intro })}</span>
+			<span class="intro-q d">{t('whereAreYou')}</span>
+		</div>
 	</div>
 {/if}
 
 {#if hints.length && playing}
 	{@const h = hints.at(-1)!}
-	<div class="hint-banner" class:low={showCompass && compass.style === 'modern'}>
+	<div class="hint-banner cap" class:low={showCompass && compass.style === 'modern'}>
 		<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
 			><path
 				d="M9 18h6M10 21.5h4M12 2.5a6.5 6.5 0 0 0-3.8 11.8V16.5h7.6v-2.2A6.5 6.5 0 0 0 12 2.5z"
 			/></svg
 		>
 		<!-- the place's own name says what it is: "Yashnobod tumani", not "Tuman: Yashnobod tumani" -->
-		{h.kind === 'circle' ? t('hintCircle') : tx(h.text)}
+		<span>{h.kind === 'circle' ? t('hintCircle') : tx(h.text)}</span>
 	</div>
 {/if}
 
@@ -405,7 +414,7 @@
 {#if coach === 'look' && playing && intro === null}
 	<div class="coach-look" aria-live="polite">
 		<span class="finger" aria-hidden="true">👆</span>
-		<span class="coach-text">{t('coachLook')}</span>
+		<span class="coach-text cap">{t('coachLook')}</span>
 	</div>
 {/if}
 
@@ -414,7 +423,7 @@
 	<div class="rail" class:lifted={mapOpen}>
 		{#if rules.hints.count > 0}
 			<button
-				class="round-btn hint"
+				class="round-btn hint cap"
 				onclick={hint}
 				disabled={!playing || hintsLeft <= 0}
 				aria-label={t('hint')}
@@ -425,14 +434,14 @@
 						d="M9 18h6M10 21.5h4M12 2.5a6.5 6.5 0 0 0-3.8 11.8V16.5h7.6v-2.2A6.5 6.5 0 0 0 12 2.5z"
 					/></svg
 				>
-				{#if hintsLeft > 0}<span class="badge">{hintsLeft}</span>{/if}
-				{#if hintCost > 0 && hintsLeft > 0}<span class="cost">−{Math.round(hintCost * 100)}%</span
+				{#if hintsLeft > 0}<span class="badge d">{hintsLeft}</span>{/if}
+				{#if hintCost > 0 && hintsLeft > 0}<span class="cost d">−{Math.round(hintCost * 100)}%</span
 					>{/if}
 			</button>
 		{/if}
 		{#if rules.movement !== 'nmpz'}
 			<button
-				class="round-btn"
+				class="round-btn cap"
 				onclick={backToStart}
 				disabled={!playing}
 				aria-label={t('backToStart')}
@@ -446,31 +455,32 @@
 	</div>
 {/if}
 
-<!-- phones: the big button at the bottom; the map comes up from it -->
+<!-- phones: the one key at the bottom; the map comes up from it -->
 {#if (playing || guessed) && !mapOpen}
 	<div class="bottom">
 		{#if guess && playing}
-			<button class="btn btn-sky reopen" onclick={openMap} aria-label={t('map')}>
+			<button class="btn reopen" onclick={openMap} aria-label={t('map')}>
 				<svg viewBox="0 0 24 24"
 					><path d="M3 6.5 9 4l6 2.5L21 4v13.5L15 20l-6-2.5L3 20z" /><path
 						d="M9 4v13.5M15 6.5V20"
 					/></svg
 				>
 			</button>
-			<button class="btn btn-primary go" onclick={guessNow}>
+			<button class="btn btn-primary go" onclick={guessNow} style:--n={t('guess').length}>
 				<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
-				{t('guess')}
+				<span class="label">{t('guess')}</span>
 			</button>
 		{:else}
 			<button
-				class="btn btn-sky go open-map"
+				class="btn btn-primary go open-map"
 				class:breathe={coach === 'map'}
+				class:waiting={guessed}
 				onclick={openMap}
 				disabled={!playing && !guessed}
+				style:--n={openLabel.length}
 			>
 				{#if guessed}
 					{#if status === 'sending'}<span class="spinner"></span>{/if}
-					{guessLabel ?? t('sending')}
 				{:else}
 					<svg viewBox="0 0 24 24"
 						><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z" /><circle
@@ -479,8 +489,8 @@
 							r="2.3"
 						/></svg
 					>
-					{t('openMapGuess')}
 				{/if}
+				<span class="label">{openLabel}</span>
 			</button>
 		{/if}
 	</div>
@@ -493,6 +503,7 @@
 	<button class="scrim" aria-label={t('close')} onclick={() => (mapOpen = false)}></button>
 {/if}
 
+<!-- the guess map: a sheet from the bottom on a phone, a small map in the corner on a computer -->
 <div
 	class="minimap"
 	class:open={mapOpen}
@@ -501,11 +512,12 @@
 	role="region"
 	aria-label={t('map')}
 >
+	<i class="grab-bar" aria-hidden="true"></i>
 	<div class="map-head">
 		<button class="grab" onclick={() => (mapOpen = false)} aria-label={t('close')}>
 			<svg viewBox="0 0 24 24" class="icon"><path d="m6 9 6 6 6-6" /></svg>
 		</button>
-		<span class="map-title">{t('whereAreYou')}</span>
+		<span class="map-title d">{t('whereAreYou')}</span>
 		{#if rules.mapLabels}
 			<button class="layer-btn" onclick={nextLayer} title={t('mapLook')}>
 				<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
@@ -538,12 +550,19 @@
 	</div>
 	<button class="btn btn-primary btn-guess" disabled={!guess || !playing} onclick={guessNow}>
 		{#if guessLabel && !playing}
-			{guessLabel}
+			<span class="label">{guessLabel}</span>
 		{:else if guess}
 			<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
-			{t('guess')}
+			<span class="label">{t('guess')}</span>
 		{:else}
-			{t('tapTheMap')}
+			<svg viewBox="0 0 24 24" class="tap"
+				><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z" /><circle
+					cx="12"
+					cy="10"
+					r="2.3"
+				/></svg
+			>
+			<span class="label">{t('tapTheMap')}</span>
 		{/if}
 	</button>
 </div>
@@ -593,6 +612,10 @@
 </Sheet>
 
 <style>
+	/* The round in the new look (P1111 1.1). Only rounds use this file, and the game and room
+	   pages switch html.look2 on for them, so its tokens (--cap-*, --gold*, --key*, --panel*)
+	   are always there. The capsules carry no backdrop blur: the panorama is a live canvas and
+	   blur costs frames on cheap phones, so their solid lapis does the work. */
 	.pano,
 	.pano :global(.pano-layer) {
 		position: absolute;
@@ -616,11 +639,11 @@
 		z-index: 10;
 	}
 
-	/* low time: red creeps in from the edges, like low health in a game */
+	/* ---------- low time: the screen's edges glow red and beat, like low health ---------- */
 	.danger {
 		position: fixed;
 		inset: 0;
-		z-index: 999;
+		z-index: 999; /* under the HUD and the keys: the glow frames them, never muddies them */
 		pointer-events: none;
 		opacity: 0;
 		transition: opacity 0.5s;
@@ -631,20 +654,23 @@
 		inset: 0;
 		background: radial-gradient(
 			ellipse at center,
-			transparent 50%,
-			rgba(206, 17, 38, 0.35) 78%,
-			rgba(150, 0, 20, 0.75) 100%
+			transparent 64%,
+			color-mix(in srgb, var(--red) 22%, transparent) 86%,
+			color-mix(in srgb, var(--red) 55%, transparent) 100%
 		);
-		box-shadow: inset 0 0 140px rgba(206, 17, 38, 0.55);
-		animation: heartbeat 1.1s ease-in-out infinite;
+		box-shadow:
+			inset 0 0 90px 18px var(--red-glow),
+			inset 0 0 0 3px color-mix(in srgb, var(--red) 55%, transparent);
+		animation: breath 1.2s ease-in-out infinite;
 	}
 	.danger.on {
 		opacity: calc(0.45 + 0.55 * var(--danger, 0));
 	}
+	/* ten seconds and under: a heartbeat, two quick beats and a rest */
 	.danger.fast::after {
-		animation-duration: 0.6s;
+		animation: heart 1s ease-out infinite;
 	}
-	@keyframes heartbeat {
+	@keyframes breath {
 		0%,
 		100% {
 			opacity: 0.55;
@@ -653,15 +679,30 @@
 			opacity: 1;
 		}
 	}
+	@keyframes heart {
+		0%,
+		45%,
+		100% {
+			opacity: 0.5;
+		}
+		10% {
+			opacity: 1;
+		}
+		22% {
+			opacity: 0.7;
+		}
+		32% {
+			opacity: 1;
+		}
+	}
 
-	/* ---------- the HUD: dark glass over the street, white text, no labels in capitals ---------- */
+	/* ---------- the HUD ---------- */
 	.hud {
 		position: fixed;
 		top: max(12px, env(safe-area-inset-top));
 		left: 12px;
 		right: 12px;
 		display: flex;
-		justify-content: space-between;
 		align-items: flex-start;
 		gap: 10px;
 		pointer-events: none;
@@ -679,26 +720,19 @@
 		gap: 8px;
 		align-items: stretch;
 		flex-wrap: wrap;
+		min-width: 0;
 		pointer-events: none;
 	}
 	.hud-left > :global(*) {
 		pointer-events: auto;
 	}
-	.status,
-	.round-btn,
-	.clock,
-	.hud-left :global(.chip) {
-		background: var(--hud);
-		color: #fff;
-		backdrop-filter: blur(10px);
-		-webkit-backdrop-filter: blur(10px);
-		box-shadow: 0 3px 0 var(--hud-edge);
-	}
+
+	/* the status: the round with its dots | the score */
 	.status {
 		display: flex;
 		align-items: stretch;
-		border-radius: 18px;
-		padding: 6px 4px;
+		border-radius: var(--r-m);
+		padding: 8px 2px 9px;
 	}
 	.status > div {
 		display: flex;
@@ -708,34 +742,34 @@
 		min-width: 0;
 	}
 	.st-round {
-		border-right: 1px solid rgba(255, 255, 255, 0.16);
+		border-right: 1px solid var(--cap-line);
+		box-shadow: 1px 0 0 var(--cap-line);
 	}
 	.st-n {
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 19px;
-		line-height: 1.15;
-		font-variant-numeric: tabular-nums;
-		letter-spacing: -0.01em;
+		font-size: 26px;
+		line-height: 1;
+		color: var(--cap-ink);
+		text-shadow: 0 2px 0 var(--cap-lip);
+		white-space: nowrap;
 	}
 	.st-n small {
-		font-size: 13px;
-		font-weight: 700;
-		opacity: 0.6;
+		font-size: 16px;
+		color: var(--cap-ink-2);
 		margin-left: 1px;
 	}
 	.st-label {
+		margin-top: 4px;
 		font-size: 12px;
-		font-weight: 500;
-		opacity: 0.7;
-		line-height: 1.2;
+		font-weight: 600;
+		line-height: 1;
+		color: var(--cap-ink-2);
 	}
 	.dots {
 		display: flex;
 		gap: 4px;
-		margin-top: 4px;
+		margin-top: 7px;
 		flex-wrap: wrap;
-		max-width: 110px;
+		max-width: 116px; /* ten dots a row: twenty rounds stay two rows, clear of the compass */
 	}
 	.dots i {
 		width: 8px;
@@ -743,40 +777,60 @@
 		border-radius: 50%;
 		background: rgba(255, 255, 255, 0.22);
 	}
+	/* the round being played: gold, with a soft ring that breathes */
 	.dots i.now {
-		background: #fff;
+		background: var(--gold);
+		box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 35%, transparent);
 		animation: now 1.6s ease-in-out infinite;
 	}
 	@keyframes now {
 		50% {
-			box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.25);
+			box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--gold) 25%, transparent);
 		}
 	}
+	/* a round played, by how it went: the result's own colours */
 	.dots i.hi {
-		background: #36c853;
+		background: var(--key-hi);
 	}
 	.dots i.mid {
-		background: #f5b81c;
+		background: var(--gold-lo);
 	}
 	.dots i.lo {
-		background: #f04157;
+		background: var(--red);
 	}
 	.many .round-word {
 		display: none;
 	}
-	/* a room's chip, given through the hud snippet */
-	.hud-left :global(.chip) {
-		border-radius: 18px;
-		padding: 6px 14px;
+
+	/* a room's players' chip, given through the hud snippet: a capsule like the status (the
+	   room page gives it .chip, which the new look draws as glass on the ground: this wins) */
+	.hud .hud-left :global(.chip) {
+		border-radius: var(--r-m);
+		padding: 0 14px;
 		display: flex;
 		align-items: center;
 		gap: 8px;
+		background: var(--cap-bg);
+		color: var(--cap-ink);
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.16),
+			inset 0 0 0 1px var(--cap-line),
+			0 3px 0 var(--cap-lip),
+			0 10px 20px rgba(0, 0, 0, 0.25);
+		overflow: hidden;
 	}
-	.hud-left :global(.chip-value) {
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 17px;
+	.hud .hud-left :global(.chip > .icon) {
+		color: var(--cap-ink-2);
+		opacity: 1;
+	}
+	.hud .hud-left :global(.chip-value) {
+		display: inline-block;
+		font-family: var(--f-disp);
+		font-weight: 900;
+		transform: var(--lean);
+		font-size: 22px;
 		font-variant-numeric: tabular-nums;
+		text-shadow: 0 2px 0 var(--cap-lip);
 	}
 
 	/* in a room's chip the clock fills the chip's right end, so its gold and red are the clock's */
@@ -784,243 +838,341 @@
 		align-self: stretch;
 		display: flex;
 		align-items: center;
-		gap: 5px;
-		margin: -6px -14px -6px 0;
-		padding: 0 14px 0 10px;
-		border-left: 1px solid rgba(255, 255, 255, 0.16);
-		border-radius: 0 18px 18px 0;
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 17px;
-		font-variant-numeric: tabular-nums;
+		gap: 6px;
+		margin: 0 -14px 0 2px;
+		padding: 0 14px 0 12px;
+		border-left: 1px solid var(--cap-line);
+		font-size: 22px;
+		text-shadow: 0 2px 0 var(--cap-lip);
 		transition: background 0.3s;
 	}
 	.chip-clock .icon {
 		width: 18px;
 		height: 18px;
-		opacity: 0.8;
-	}
-	.chip-clock.warn {
-		background: #b07a00;
-		border-color: transparent;
-	}
-	.chip-clock.low {
-		background: var(--red);
-		border-color: transparent;
-		animation: flash 0.5s ease-in-out infinite alternate;
-	}
-	@keyframes flash {
-		to {
-			filter: brightness(1.3);
-		}
+		stroke-width: 2.6;
+		color: var(--cap-ink-2);
 	}
 
-	.clock {
+	/* the clock: white, then gold at 15 s, then red and beating at 10 s */
+	.clock-spot {
 		position: absolute;
 		left: 50%;
 		top: 0;
 		transform: translateX(-50%);
+	}
+	.clock {
 		display: flex;
 		align-items: center;
 		gap: 8px;
 		height: 52px;
-		padding: 0 18px 0 14px;
-		border-radius: 26px;
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 22px;
-		font-variant-numeric: tabular-nums;
+		padding: 0 20px 0 16px;
+		border-radius: 999px;
+		font-size: 30px;
+		text-shadow: 0 2px 0 var(--cap-lip);
+		transition: background 0.3s;
 	}
 	.clock .icon {
-		opacity: 0.8;
+		width: 20px;
+		height: 20px;
+		stroke-width: 2.6;
+		color: var(--cap-ink-2);
+	}
+	.clock.warn,
+	.chip-clock.warn {
+		background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+		color: var(--gold-ink);
+		text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
 	}
 	.clock.warn {
-		background: #b07a00;
-		animation: tick 1s ease-in-out infinite;
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.6),
+			0 3px 0 var(--gold-lo),
+			0 10px 20px rgba(0, 0, 0, 0.25);
+	}
+	.clock.warn .icon,
+	.chip-clock.warn .icon {
+		color: var(--gold-ink);
+	}
+	.clock.low,
+	.chip-clock.low {
+		background: linear-gradient(180deg, #f2384a, #b5101f);
+		color: #fff;
+		text-shadow: 0 2px 0 rgba(70, 0, 10, 0.6);
 	}
 	.clock.low {
-		background: var(--red);
-		animation: tick 0.5s ease-in-out infinite alternate;
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.3),
+			0 3px 0 #6e0612,
+			0 0 30px var(--red-glow);
+		animation: beat 1s var(--spring) infinite;
 	}
-	@keyframes tick {
-		50% {
-			transform: translateX(-50%) scale(1.1);
+	.clock.low .icon,
+	.chip-clock.low .icon {
+		color: #fff;
+	}
+	.chip-clock.low {
+		animation: flash 1s ease-out infinite;
+	}
+	@keyframes beat {
+		0%,
+		45%,
+		100% {
+			transform: scale(1);
+		}
+		10% {
+			transform: scale(1.1);
+		}
+		22% {
+			transform: scale(1.02);
+		}
+		32% {
+			transform: scale(1.08);
+		}
+	}
+	@keyframes flash {
+		10%,
+		32% {
+			filter: brightness(1.35);
 		}
 	}
 
+	/* the HUD's square and round keys: capsules with a lip that go down when pressed */
 	.round-btn {
 		position: relative;
-		width: 52px;
-		height: 52px;
+		width: 56px;
+		height: 56px;
 		border: none;
-		border-radius: 18px;
+		border-radius: var(--r-m);
 		display: grid;
 		place-items: center;
 		transition:
-			transform 0.08s,
-			box-shadow 0.08s;
+			transform 0.1s var(--out),
+			box-shadow 0.1s var(--out),
+			opacity 0.15s;
 	}
 	.round-btn .icon {
-		width: 24px;
-		height: 24px;
+		width: 26px;
+		height: 26px;
+		stroke-width: 2.5;
 	}
 	.round-btn:active:not(:disabled) {
-		transform: translateY(2px);
-		box-shadow: 0 1px 0 var(--hud-edge);
+		transform: translateY(3px);
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.16),
+			inset 0 0 0 1px var(--cap-line),
+			0 0 0 var(--cap-lip),
+			0 4px 10px rgba(0, 0, 0, 0.25);
 	}
 	.round-btn:disabled {
-		opacity: 0.45;
 		cursor: default;
 	}
-	.round-btn .badge {
-		position: absolute;
-		top: -6px;
-		right: -6px;
-		min-width: 22px;
+	.round-btn:disabled .icon {
+		opacity: 0.4;
+	}
+	.pause {
+		margin-left: auto;
+		width: 52px;
+		height: 52px;
+		border-radius: 50%;
+	}
+	.pause .icon {
+		width: 22px;
 		height: 22px;
-		padding: 0 6px;
-		border-radius: 11px;
-		background: var(--star);
-		color: #3a2600;
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 12px;
+		stroke-width: 3;
+	}
+	/* the hint: a gold bulb, how many are left on a gold badge, its price under it */
+	.round-btn.hint .icon {
+		color: var(--gold);
+		fill: color-mix(in srgb, var(--gold) 22%, transparent);
+	}
+	.round-btn.hint:disabled {
+		opacity: 0.6;
+	}
+	.round-btn.hint:disabled .icon {
+		color: var(--cap-ink-2);
+		fill: none;
+	}
+	.badge,
+	.cost {
+		position: absolute;
 		display: grid;
 		place-items: center;
-		box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+		color: var(--gold-ink);
+		background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+		box-shadow:
+			0 2px 0 var(--gold-lo),
+			0 0 0 2px var(--lapis);
+		white-space: nowrap;
 	}
-	/* the hint's price: the gold of the result's "−20% 💡", not red ("wrong") */
-	.round-btn .cost {
-		position: absolute;
-		bottom: -7px;
+	.badge {
+		transform: none; /* a round badge stays round */
+		top: -7px;
+		right: -7px;
+		min-width: 24px;
+		height: 24px;
+		padding: 0 6px;
+		border-radius: 12px;
+		font-size: 14px;
+	}
+	.cost {
+		bottom: -9px;
 		left: 50%;
 		transform: translateX(-50%);
-		padding: 1px 6px;
+		height: 20px;
+		padding: 0 6px;
 		border-radius: 8px;
-		background: var(--star);
-		color: #3a2600;
-		font-size: 11px;
-		font-weight: 800;
-		white-space: nowrap;
-		box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
-	}
-	.round-btn.hint:not(:disabled) .icon {
-		color: #ffd75e;
+		font-size: 12px;
 	}
 
-	/* ---------- each round's number ---------- */
+	/* ---------- the round's opener: a slanted plaque that pops in and goes by itself ---------- */
 	.intro {
 		position: fixed;
-		left: 50%;
-		top: 38%;
+		left: 0;
+		right: 0;
+		top: 34%;
 		z-index: 1001;
-		transform: translate(-50%, -50%);
+		display: flex;
+		justify-content: center;
+		pointer-events: none;
+		animation: intro var(--intro-ms, 1.3s) linear both;
+	}
+	.plaque {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		gap: 6px;
-		pointer-events: none;
-		color: #fff;
-		text-align: center;
-		animation: intro 1.5s var(--settle) both;
+		padding: 14px 34px 16px;
+		border-radius: 12px;
+		transform: var(--lean); /* its words lean with it */
+		background: linear-gradient(180deg, var(--plaque-a), var(--plaque-b));
+		box-shadow:
+			inset 0 2px 0 rgba(255, 255, 255, 0.18),
+			inset 0 -3px 0 rgba(0, 0, 0, 0.25),
+			0 0 0 2px var(--gold),
+			0 0 0 5px var(--cap-bg),
+			0 6px 0 3px var(--plaque-lip),
+			0 18px 40px rgba(0, 0, 0, 0.45);
+	}
+	.plaque > span {
+		transform: none;
+		white-space: nowrap;
 	}
 	.intro-n {
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 44px;
+		font-size: 46px;
 		line-height: 1;
-		letter-spacing: -0.02em;
-		padding: 14px 26px 16px;
-		border-radius: 20px;
-		background: var(--sign-blue);
-		box-shadow:
-			inset 0 0 0 3px var(--sign-blue),
-			inset 0 0 0 5px #fff,
-			0 6px 0 rgba(0, 0, 0, 0.3);
-	}
-	.intro-n small {
-		font-size: 24px;
-		opacity: 0.7;
+		color: #fff;
+		text-shadow: 0 3px 0 var(--stack);
 	}
 	.intro-q {
-		font-family: var(--display);
-		font-weight: 700;
 		font-size: 20px;
-		text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+		line-height: 1.1;
+		color: var(--gold);
+		text-shadow: 0 2px 0 var(--stack);
 	}
+	/* in with a spring (an overshoot), a beat to read it, then up and away */
 	@keyframes intro {
 		0% {
 			opacity: 0;
-			transform: translate(-50%, -50%) scale(0.5);
+			transform: scale(0.4);
 		}
-		18% {
+		14% {
 			opacity: 1;
-			transform: translate(-50%, -50%) scale(1.08);
+			transform: scale(1.08);
 		}
-		28% {
-			transform: translate(-50%, -50%) scale(1);
+		24% {
+			transform: scale(0.98);
+		}
+		32% {
+			transform: scale(1);
 		}
 		78% {
 			opacity: 1;
-			transform: translate(-50%, -50%) scale(1);
+			transform: none;
 		}
 		100% {
 			opacity: 0;
-			transform: translate(-50%, -80%) scale(0.9);
+			transform: translateY(-28px) scale(0.92);
 		}
 	}
 
+	/* ---------- a hint taken: a capsule with a gold ring naming it ---------- */
 	.hint-banner {
 		position: fixed;
-		top: calc(max(12px, env(safe-area-inset-top)) + 64px);
+		top: calc(max(12px, env(safe-area-inset-top)) + 70px);
 		left: 50%;
 		transform: translateX(-50%);
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		background: var(--sky);
-		color: #fff;
-		padding: 10px 16px;
-		border-radius: 14px;
+		min-height: 44px;
+		padding: 8px 18px 8px 12px;
+		border-radius: 22px;
 		font-weight: 700;
-		box-shadow: 0 3px 0 var(--sky-edge);
-		z-index: 1001; /* over the phone's scrim: the open guess map doesn't dim it */
+		font-size: 16px;
+		line-height: 1.2;
 		white-space: nowrap;
-		animation: pop-in 0.35s var(--pop);
+		z-index: 1001; /* over the phone's scrim: the open guess map doesn't dim it */
+		box-shadow:
+			inset 0 0 0 2px var(--gold),
+			0 3px 0 var(--cap-lip),
+			0 10px 20px rgba(0, 0, 0, 0.25);
+		animation: pop-in 0.35s var(--spring);
+	}
+	.hint-banner .icon {
+		width: 20px;
+		height: 20px;
+		color: var(--gold);
+		fill: color-mix(in srgb, var(--gold) 22%, transparent);
 	}
 	.hint-banner.low {
-		top: calc(max(12px, env(safe-area-inset-top)) + 108px);
+		top: calc(max(12px, env(safe-area-inset-top)) + 112px);
 	}
+
+	/* the compass sits in a capsule's place under the status (its drawings are its own) */
 	.compass-spot {
 		position: fixed;
 		left: 12px;
-		top: calc(max(12px, env(safe-area-inset-top)) + 72px);
+		top: calc(max(12px, env(safe-area-inset-top)) + 82px);
 		z-index: 999;
 		pointer-events: none;
 	}
+	.compass-spot :global(.dial),
+	.compass-spot :global(.strip) {
+		background: var(--cap-bg);
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
+	}
+	.compass-spot :global(.dial) {
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.16),
+			inset 0 0 0 1px var(--cap-line),
+			0 3px 0 var(--cap-lip),
+			0 10px 20px rgba(0, 0, 0, 0.25);
+	}
 	.compass-spot.modern {
 		left: 50%;
-		top: calc(max(12px, env(safe-area-inset-top)) + 64px);
+		top: calc(max(12px, env(safe-area-inset-top)) + 68px);
 		transform: translateX(-50%);
 	}
 
-	/* ---------- first game ---------- */
+	/* ---------- the first game ---------- */
 	.coach-look {
 		position: fixed;
-		left: 50%;
+		left: 0;
+		right: 0;
 		top: 50%;
-		transform: translate(-50%, -50%);
+		transform: translateY(-50%);
 		z-index: 1001;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 14px;
+		gap: 16px;
 		pointer-events: none;
-		animation: rise 0.4s var(--settle);
+		animation: rise 0.4s var(--out);
 	}
 	.finger {
-		font-size: 54px;
-		filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.45));
+		font-size: 56px;
+		filter: drop-shadow(0 4px 0 var(--stack-2)) drop-shadow(0 8px 12px rgba(0, 0, 0, 0.35));
 		animation: swipe 1.8s ease-in-out infinite;
 	}
 	@keyframes swipe {
@@ -1032,40 +1184,44 @@
 			transform: translateX(60px) rotate(12deg);
 		}
 	}
-	.coach-text {
-		max-width: calc(100vw - 40px);
-	}
 	.coach-text,
 	.coach-map {
 		padding: 10px 18px;
-		border-radius: 14px;
-		background: var(--hud);
-		color: #fff;
-		font-weight: 700;
-		font-size: 16px;
+		border-radius: 999px;
+		font-family: var(--f-disp);
+		font-weight: 800;
+		font-size: 17px;
 		text-align: center;
-		backdrop-filter: blur(10px);
-		-webkit-backdrop-filter: blur(10px);
 	}
+	.coach-text {
+		max-width: calc(100vw - 40px);
+	}
+	/* the step after: a gold tip pointing at the key */
+	/* left of the rail, so the thumb's keys stay free */
 	.coach-map {
 		position: fixed;
-		left: 50%;
-		bottom: calc(max(14px, env(safe-area-inset-bottom)) + 76px);
-		transform: translateX(-50%);
+		left: 12px;
+		bottom: calc(max(12px, env(safe-area-inset-bottom)) + 92px);
 		z-index: 1001;
-		white-space: nowrap;
+		max-width: calc(100vw - 92px);
 		pointer-events: none;
-		animation: rise 0.4s var(--settle);
+		color: var(--gold-ink);
+		background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.6),
+			0 3px 0 var(--gold-lo),
+			0 10px 20px rgba(0, 0, 0, 0.25);
+		animation: rise 0.4s var(--out);
 	}
 	.coach-map::after {
 		content: '';
 		position: absolute;
-		left: 50%;
-		bottom: -7px;
-		margin-left: -7px;
-		border: 7px solid transparent;
+		left: 36px;
+		bottom: -9px;
+		margin-left: -8px;
+		border: 8px solid transparent;
 		border-bottom: 0;
-		border-top-color: var(--hud);
+		border-top-color: var(--gold-lo);
 	}
 	@media (min-width: 761px) {
 		.coach-map {
@@ -1077,10 +1233,11 @@
 	}
 	@keyframes breathe {
 		50% {
-			transform: scale(1.05);
+			transform: scale(1.04);
 			filter: brightness(1.12);
 		}
 	}
+	/* on the map: a gold ripple where to tap */
 	.coach-pin {
 		position: absolute;
 		left: 50%;
@@ -1089,14 +1246,15 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 10px;
+		gap: 12px;
 		pointer-events: none;
 	}
 	.coach-pin i {
-		width: 46px;
-		height: 46px;
+		width: 48px;
+		height: 48px;
 		border-radius: 50%;
-		border: 4px solid var(--sky);
+		border: 4px solid var(--gold);
+		box-shadow: 0 0 0 2px var(--lapis);
 		animation: ripple 1.4s ease-out infinite;
 	}
 	@keyframes ripple {
@@ -1111,16 +1269,18 @@
 	}
 	.coach-pin span {
 		padding: 8px 14px;
-		border-radius: 12px;
-		background: var(--lapis);
+		border-radius: 999px;
+		background: var(--cap-bg);
 		color: #fff;
-		font-weight: 700;
-		font-size: 14px;
+		font-family: var(--f-disp);
+		font-weight: 800;
+		font-size: 15px;
 		white-space: nowrap;
+		box-shadow: 0 3px 0 var(--cap-lip);
 	}
 
-	/* ---------- the thumb's buttons: bottom left on a computer (the map is on the right),
-	   above the big button on the right on a phone ---------- */
+	/* ---------- the thumb's keys: bottom left on a computer (the map is on the right),
+	   above the big key on the right on a phone ---------- */
 	.rail {
 		position: fixed;
 		left: 16px;
@@ -1128,10 +1288,19 @@
 		z-index: 1000;
 		display: flex;
 		flex-direction: column;
-		gap: 14px;
+		gap: 18px; /* room for the hint's price tag between the two */
 	}
 
-	/* ---------- the bottom button (phones) ---------- */
+	/* ---------- the keys' words: one line, slanted capitals; a long label shrinks to fit ---------- */
+	.label {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		padding-right: 0.12em; /* the slant leans past the box */
+	}
+
+	/* ---------- the bottom key (phones) ---------- */
 	.bottom {
 		position: fixed;
 		left: 12px;
@@ -1142,147 +1311,228 @@
 		gap: 10px;
 	}
 	.bottom .btn {
-		height: 60px;
-		font-size: 17px;
-		border-radius: 18px;
+		height: 64px;
+		border-radius: var(--r-m);
 	}
 	.bottom .go {
 		flex: 1;
 		min-width: 0;
+		gap: 10px;
+		padding: 0 16px;
+		/* 22 px, or smaller when the words are long: about 0.72 em a letter fits the key */
+		font-size: clamp(15px, calc((100vw - 96px) / (var(--n, 16) * 0.74)), 22px);
 	}
+	.bottom .reopen + .go {
+		font-size: clamp(15px, calc((100vw - 170px) / (var(--n, 16) * 0.74)), 22px);
+	}
+	.bottom .btn svg {
+		width: 26px;
+		height: 26px;
+		stroke-width: 2.6;
+	}
+	/* the small map key beside "guess": a lapis capsule square, not a second main key */
 	.bottom .reopen {
+		--b-a: #13778a;
+		--b-b: var(--plaque-a);
+		--b-c: var(--plaque-b);
+		--b-ink: #fff;
+		--b-lip: var(--plaque-lip);
 		width: 64px;
 		padding: 0;
 	}
-	.bottom .btn svg {
-		width: 24px;
-		height: 24px;
+	/* sending, or waiting for the others: a quiet lapis strip with the words, not a green key
+	   (a tap still opens the map, to look at one's own pin) */
+	.bottom .open-map.waiting,
+	.bottom .open-map:disabled {
+		font-family: var(--f-text);
+		font-weight: 700;
+		font-variation-settings: normal;
+		text-transform: none;
+		letter-spacing: 0;
+		font-size: 17px;
+		--b-a: var(--cap-bg);
+		--b-b: var(--cap-bg);
+		--b-c: var(--cap-bg);
+		--b-ink: #fff;
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.12),
+			inset 0 0 0 1px var(--cap-line),
+			0 10px 20px rgba(0, 0, 0, 0.25);
+		margin-bottom: 0;
+		transform: translateY(6px);
+		text-shadow: none;
 	}
-	.open-map:disabled {
-		--b-bg: var(--hud);
-		--b-edge: var(--hud-edge);
-		opacity: 1;
-		font-family: var(--body);
-		font-weight: 600;
+	.bottom .open-map:disabled {
 		cursor: default;
 	}
+	.spinner {
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		border: 3px solid rgba(255, 255, 255, 0.3);
+		border-top-color: #fff;
+		animation: spin 0.8s linear infinite;
+		flex: none;
+	}
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
 
-	/* ---------- the guess map ---------- */
+	/* ---------- the guess map: a small map in the corner (computers) ---------- */
 	.scrim {
+		display: none;
+	}
+	.grab-bar,
+	.grab,
+	.map-title {
 		display: none;
 	}
 	.minimap {
 		position: fixed;
 		right: 16px;
-		bottom: 16px;
+		bottom: 18px;
 		z-index: 1000;
-		width: 360px;
+		width: 362px;
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
-		transition: width 0.25s var(--settle);
+		gap: 10px;
+		transition: width 0.3s var(--out);
 	}
 	.minimap.hidden {
 		visibility: hidden;
 	}
-	.minimap:not(.pinned):not(:hover) {
-		opacity: 0.9;
-	}
 	.minimap:hover,
 	.minimap.pinned {
-		width: min(620px, calc(100vw - 32px));
+		width: min(625px, calc(100vw - 32px));
 	}
 	.map-head {
 		display: flex;
 		align-items: center;
-		gap: 6px;
-	}
-	.grab,
-	.map-title {
-		display: none;
+		justify-content: flex-end;
+		gap: 8px;
 	}
 	.layer-btn,
 	.size-btn {
-		height: 36px;
+		height: 38px;
 		border: none;
-		border-radius: 12px;
-		background: var(--hud);
-		color: #fff;
-		font-size: 13px;
-		font-weight: 600;
+		border-radius: var(--r-s);
+		background: var(--cap-bg);
+		color: var(--cap-ink);
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.16),
+			inset 0 0 0 1px var(--cap-line),
+			0 3px 0 var(--cap-lip),
+			0 6px 14px rgba(0, 0, 0, 0.2);
+		font-size: 14px;
+		font-weight: 700;
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
 		padding: 0 12px;
-		backdrop-filter: blur(10px);
-		-webkit-backdrop-filter: blur(10px);
+		transition: transform 0.1s var(--out);
 	}
-	.layer-btn {
-		margin-left: auto;
+	.layer-btn:active:not(.static),
+	.size-btn:active {
+		transform: translateY(2px);
 	}
 	.layer-btn.static {
 		cursor: default;
 	}
 	.layer-btn .icon,
 	.size-btn .icon {
-		width: 17px;
-		height: 17px;
+		width: 18px;
+		height: 18px;
 	}
 	.size-btn {
-		width: 36px;
+		width: 38px;
 		padding: 0;
 		justify-content: center;
 	}
+	.size-btn[aria-pressed='true'] {
+		color: var(--gold);
+	}
+	/* the map in a lapis frame with a lip; Yandex's map stays light by night, never filtered */
 	.map-box {
 		position: relative;
 		height: 260px;
-		border-radius: 18px;
+		border-radius: var(--r-m);
 		overflow: hidden;
+		background: #eef0ee;
 		box-shadow:
-			0 0 0 3px rgba(255, 255, 255, 0.9),
-			0 12px 30px rgba(0, 0, 0, 0.4);
-		transition: height 0.25s var(--settle);
-		background: #dfe3e0;
+			0 0 0 3px var(--lapis),
+			0 0 0 5px rgba(190, 240, 240, 0.35),
+			0 8px 0 3px var(--cap-lip),
+			0 18px 36px rgba(0, 0, 0, 0.35);
+		transition: height 0.3s var(--out);
 	}
 	.minimap:hover .map-box,
 	.minimap.pinned .map-box {
-		height: min(460px, calc(100vh - 220px));
+		height: min(464px, calc(100vh - 230px));
 	}
-	.btn-guess {
+	.minimap .btn-guess {
 		width: 100%;
-		height: 56px;
-		font-size: 16px;
+		height: 58px;
+		margin-top: 6px;
+		gap: 12px;
+		font-size: 21px;
 	}
-	.btn-guess:disabled {
-		--b-bg: var(--hud);
-		--b-edge: var(--hud-edge);
-		opacity: 1;
-		color: rgba(255, 255, 255, 0.85);
-		font-family: var(--body);
-		font-weight: 600;
+	.minimap .btn-guess svg {
+		width: 24px;
+		height: 24px;
+		stroke-width: 2.8;
+	}
+	/* before a pin: not a key at all yet, a flat lapis strip that says what to do */
+	.minimap .btn-guess:disabled {
+		--b-a: var(--cap-bg);
+		--b-b: var(--cap-bg);
+		--b-c: var(--cap-bg);
+		--b-ink: var(--cap-ink-2);
 		cursor: default;
+		font-family: var(--f-text);
+		font-weight: 700;
+		font-variation-settings: normal;
+		text-transform: none;
+		letter-spacing: 0;
+		font-size: 16px;
+		box-shadow:
+			inset 0 0 0 1px var(--cap-line),
+			0 8px 18px rgba(0, 0, 0, 0.2);
+		margin-bottom: 0;
+		transform: translateY(5px);
+	}
+	.minimap .btn-guess:disabled svg {
+		width: 20px;
+		height: 20px;
+		stroke-width: 2.2;
 	}
 
-	/* ---------- the pause menu ---------- */
+	/* ---------- the pause menu (inside the shared sheet, which follows the look's tokens) ---------- */
 	.menu {
 		display: flex;
 		flex-direction: column;
-		gap: 16px;
+		gap: 18px;
 	}
 	.menu > .btn {
 		width: 100%;
 	}
 	.menu-row .field-label {
 		margin-bottom: 8px;
+		color: var(--ink-2);
+	}
+	.menu :global(.segmented button[aria-pressed='true']) {
+		color: var(--ink);
+		font-weight: 800;
 	}
 	.keys {
 		font-size: 13px;
-		color: var(--muted);
+		color: var(--ink-3);
 	}
 
 	/* ---------- phones ---------- */
 	@media (max-width: 760px) {
-		/* pinch to zoom; Yandex's own zoom buttons would sit under the big button */
+		/* pinch to zoom; Yandex's own zoom buttons would sit under the big key */
 		.pano :global([class*='panorama-control__zoom']) {
 			display: none !important;
 		}
@@ -1290,16 +1540,42 @@
 			left: 10px;
 			right: 10px;
 			top: max(10px, env(safe-area-inset-top));
+			gap: 8px;
 		}
-		/* a room's row holds the pill, the players' chip with the clock and the menu: snug */
+		/* the clock between the status and pause, near the right: there's no room to centre it */
+		.clock-spot {
+			position: static;
+			transform: none;
+			margin-left: auto;
+		}
+		.clock-spot + .pause {
+			margin-left: 0;
+		}
+		.clock {
+			height: 48px;
+			padding: 0 14px 0 12px;
+			font-size: 25px;
+			gap: 6px;
+		}
+		.clock .icon {
+			width: 17px;
+			height: 17px;
+		}
+		.status {
+			padding: 7px 0 8px;
+		}
 		.status > div {
-			padding: 0 8px;
+			padding: 0 10px;
 		}
 		.st-n {
-			font-size: 17px;
+			font-size: 23px;
+		}
+		.st-n small {
+			font-size: 15px;
 		}
 		.dots {
 			gap: 3px;
+			margin-top: 6px;
 		}
 		.dots i {
 			width: 7px;
@@ -1316,55 +1592,70 @@
 		.hud-left {
 			gap: 6px;
 			flex-wrap: nowrap;
-			min-width: 0;
 		}
 		.status,
 		.pause {
 			flex-shrink: 0;
 		}
-		.hud-left :global(.chip) {
+		.hud .hud-left :global(.chip) {
 			min-width: 0;
-			padding: 6px 10px;
+			padding: 0 10px;
 			gap: 6px;
 		}
-		.hud-left :global(.chip > *) {
+		.hud .hud-left :global(.chip-value) {
+			font-size: 20px;
+		}
+		.hud .hud-left :global(.chip > *) {
 			flex-shrink: 0;
 		}
-		.hud-left :global(.chip > svg) {
+		.hud .hud-left :global(.chip > svg) {
 			flex-shrink: 1;
 			min-width: 0;
 		}
 		.chip-clock {
 			margin-right: -10px;
-			padding: 0 10px 0 8px;
+			padding: 0 10px 0 9px;
+			font-size: 20px;
 		}
 		.chip-clock .icon {
 			display: none;
 		}
-		.clock {
-			height: 46px;
-			font-size: 19px;
-			padding: 0 14px 0 12px;
-		}
-		.round-btn {
+		.pause {
 			width: 48px;
 			height: 48px;
 		}
+		.round-btn:not(.pause) {
+			width: 54px;
+			height: 54px;
+		}
 		.compass-spot {
 			left: 10px;
-			top: calc(max(10px, env(safe-area-inset-top)) + 68px);
+			top: calc(max(10px, env(safe-area-inset-top)) + 66px);
 		}
 		.compass-spot.modern {
+			left: 50%;
 			top: calc(max(10px, env(safe-area-inset-top)) + 60px);
 			transform: translateX(-50%) scale(0.85);
 		}
+		/* beside the compass, under the status: centred in what's left of the width */
 		.hint-banner {
+			top: calc(max(10px, env(safe-area-inset-top)) + 70px);
+			left: 72px;
+			right: 10px;
+			transform: none;
+			width: max-content;
+			max-width: calc(100vw - 82px);
+			margin: 0 auto;
 			white-space: normal;
-			max-width: calc(100vw - 32px);
-			top: calc(max(10px, env(safe-area-inset-top)) + 62px);
+			font-size: 15px;
 		}
 		.hint-banner.low {
-			top: calc(max(10px, env(safe-area-inset-top)) + 104px);
+			left: 10px;
+			top: calc(max(10px, env(safe-area-inset-top)) + 108px);
+			max-width: calc(100vw - 20px);
+		}
+		.intro-n {
+			font-size: 42px;
 		}
 		.keys {
 			display: none;
@@ -1375,28 +1666,26 @@
 		.rail {
 			left: auto;
 			right: 10px;
-			bottom: calc(max(14px, env(safe-area-inset-bottom)) + 80px);
+			bottom: calc(max(12px, env(safe-area-inset-bottom)) + 92px);
 		}
 		.rail.lifted {
 			display: none;
 		}
-		/* the map is a sheet from the bottom; the street stays in sight above it */
+
+		/* the map is a sheet that springs up from the bottom; the street stays in sight above it */
 		.scrim {
 			display: block;
 			position: fixed;
 			inset: 0;
 			z-index: 1000;
 			border: none;
-			background: rgba(8, 14, 26, 0.35);
+			background: rgba(2, 30, 36, 0.42);
 			animation: fade 0.2s;
 		}
 		@keyframes fade {
 			from {
 				opacity: 0;
 			}
-		}
-		.minimap:not(.pinned):not(:hover) {
-			opacity: 1;
 		}
 		.minimap,
 		.minimap:hover,
@@ -1405,57 +1694,97 @@
 			right: 0;
 			bottom: 0;
 			width: auto;
-			height: 74vh;
-			height: 74dvh;
-			opacity: 1;
+			height: 76vh;
+			height: 76dvh;
 			z-index: 1001;
-			padding: 6px 12px max(12px, env(safe-area-inset-bottom));
-			border-radius: 26px 26px 0 0;
-			background: var(--surface);
-			color: var(--text);
-			box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.35);
+			gap: 0;
+			padding: 8px 12px max(14px, env(safe-area-inset-bottom));
+			border-radius: 28px 28px 0 0;
+			background: var(--panel);
+			color: var(--ink);
+			box-shadow:
+				0 -1px 0 var(--panel-line),
+				0 -18px 40px rgba(0, 0, 0, 0.35);
 			transform: translateY(105%);
 			visibility: hidden;
 			transition:
-				transform 0.32s var(--settle),
+				transform 0.32s var(--out),
 				visibility 0s 0.32s;
+		}
+		:global(:root.look2[data-theme='dark']) .minimap {
+			background: linear-gradient(180deg, var(--panel-2), var(--ground-top) 70%);
 		}
 		.minimap.open {
 			transform: none;
 			visibility: visible;
 			transition:
-				transform 0.32s var(--settle),
+				transform 0.5s var(--spring),
 				visibility 0s;
 		}
+		.grab-bar {
+			display: block;
+			flex: none;
+			width: 44px;
+			height: 5px;
+			border-radius: 3px;
+			margin: 0 auto 8px;
+			background: color-mix(in srgb, var(--ink) 20%, transparent);
+		}
 		.map-head {
-			gap: 8px;
-			padding: 0 0 8px;
+			justify-content: flex-start;
+			gap: 10px;
+			height: 48px;
+			margin-bottom: 10px;
 		}
 		.grab {
 			display: grid;
 			place-items: center;
+			flex: none;
 			width: 44px;
-			height: 40px;
+			height: 44px;
 			border: none;
-			border-radius: 12px;
-			background: var(--surface-2);
-			color: var(--text);
+			border-radius: 14px;
+			background: var(--panel-2);
+			color: var(--ink);
+			box-shadow:
+				inset 0 0 0 1px var(--panel-line),
+				0 2px 0 var(--panel-line);
+		}
+		.grab .icon {
+			width: 22px;
+			height: 22px;
+			stroke-width: 2.6;
+		}
+		.grab:active {
+			transform: translateY(2px);
 		}
 		.map-title {
 			display: block;
 			flex: 1;
-			font-family: var(--display);
-			font-weight: 700;
-			font-size: 16px;
+			min-width: 0;
+			font-size: 27px;
+			line-height: 1.1;
+			color: var(--ink);
 			white-space: nowrap;
 			overflow: hidden;
 			text-overflow: ellipsis;
+			padding-right: 0.15em;
 		}
 		.layer-btn {
-			margin-left: 0;
-			height: 40px;
-			background: var(--surface-2);
-			color: var(--text);
+			flex: none;
+			height: 44px;
+			border-radius: 14px;
+			padding: 0 14px 0 12px;
+			font-size: 15px;
+			background: var(--panel-2);
+			color: var(--ink);
+			box-shadow:
+				inset 0 0 0 1px var(--panel-line),
+				0 2px 0 var(--panel-line);
+		}
+		.layer-btn .icon {
+			width: 20px;
+			height: 20px;
 		}
 		.size-btn {
 			display: none;
@@ -1465,18 +1794,30 @@
 		.minimap.pinned .map-box {
 			flex: 1;
 			height: auto;
-			box-shadow: inset 0 0 0 1px var(--border);
+			min-height: 0;
+			margin-bottom: 16px;
+			box-shadow:
+				0 0 0 1px var(--panel-line),
+				0 4px 0 color-mix(in srgb, var(--ink) 12%, transparent);
 		}
-		.btn-guess {
-			height: 60px;
+		.minimap .btn-guess {
+			flex: none;
+			height: 64px;
+			margin-top: 0;
+			font-size: 22px;
+		}
+		.minimap .btn-guess svg {
+			width: 26px;
+			height: 26px;
+		}
+		/* before a pin, on the sheet: an empty slot where the key will land, with the words that
+		   say how to get it; nothing here looks pressable */
+		.minimap .btn-guess:disabled {
+			background: transparent;
+			--b-ink: var(--ink-3);
 			font-size: 17px;
-			border-radius: 18px;
-			margin-top: 4px;
-		}
-		.btn-guess:disabled {
-			--b-bg: var(--surface-2);
-			--b-edge: var(--edge);
-			color: var(--muted);
+			box-shadow: inset 0 0 0 2px var(--panel-line);
+			transform: translateY(6px);
 		}
 	}
 </style>

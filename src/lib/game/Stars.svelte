@@ -75,4 +75,29 @@
 		filter: drop-shadow(0 2px 0 rgba(150, 95, 0, 0.45));
 		animation: pop-in 0.42s var(--pop) both;
 	}
+	/* ---------- the new look (P1111 1.1): only a round's result has it so far ----------
+	   gold with a lip under it, popping in with a small twist; the empty ones stay quiet */
+	:global(:root.look2) svg {
+		fill: var(--panel-2);
+		stroke: var(--panel-line);
+		stroke-width: 1.2;
+	}
+	:global(:root.look2) svg.mid {
+		margin-bottom: calc(var(--s) * 0.16);
+	}
+	:global(:root.look2) svg.on {
+		fill: var(--gold);
+		stroke: var(--gold-hi);
+		stroke-width: 0.8;
+		filter: drop-shadow(0 3px 0 var(--gold-lo));
+		animation: star-twist 0.6s var(--spring) both;
+	}
+	@keyframes star-twist {
+		0% {
+			transform: scale(0) rotate(-30deg);
+		}
+		100% {
+			transform: none;
+		}
+	}
 </style>

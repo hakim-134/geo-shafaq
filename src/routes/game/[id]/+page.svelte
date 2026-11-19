@@ -15,6 +15,7 @@
 	} from '#lib/api/client.js';
 	import { PanoError } from '#lib/pano/index.js';
 	import RoundView, { type Status } from '#lib/game/RoundView.svelte';
+	import { newLook } from '#lib/look.svelte.js';
 	import ResultMap, { type Pair } from '#lib/map/ResultMap.svelte';
 	import { savedLayer, type BBox } from '#lib/map/map.js';
 	import MapSign from '#lib/maps/MapSign.svelte';
@@ -55,6 +56,9 @@
 	let finalPick = $state<number | null>(null); // a round chosen in the final table
 	let landed = $state(false); // the real pin is on the result map: the result plays
 	let rv = $state<ReturnType<typeof RoundView>>();
+
+	// the new look is on a round and its result; the end of a game keeps the old one for now
+	newLook(() => phase !== 'final' && phase !== 'error');
 
 	const endless = $derived(game?.rules.rounds === 0);
 	const total = $derived(game?.total ?? 0);
@@ -416,7 +420,7 @@
 </script>
 
 <svelte:window onkeydown={onKey} />
-<svelte:head><title>{game ? tx(game.map.name) : ''} — Shafaq Geo</title></svelte:head>
+<svelte:head><title>{game ? tx(game.map.name) : ''} — GeoShafaq</title></svelte:head>
 
 <div class="game">
 	{#if game && game.status === 'playing'}
@@ -486,7 +490,7 @@
 			/>
 			{#snippet actions()}
 				<button class="btn btn-primary next" onclick={afterResult}>
-					{result!.gameOver ? t('finish') : t('next')}
+					<span class="lbl">{result!.gameOver ? t('finish') : t('next')}</span>
 					<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></svg>
 				</button>
 				{#if endless}
@@ -720,6 +724,23 @@
 	.next {
 		height: 60px;
 		font-size: 17px;
+	}
+	/* the new look (P1111 1.1): the result's one key, the look's own green key, bigger on a laptop */
+	:global(:root.look2) .next {
+		height: 64px;
+		font-size: clamp(18px, 5.6vw, 22px);
+		white-space: nowrap;
+	}
+	:global(:root.look2) .next svg {
+		width: 26px;
+		height: 26px;
+		stroke-width: 3;
+	}
+	@media (min-width: 761px) {
+		:global(:root.look2) .next {
+			height: 70px;
+			font-size: 25px;
+		}
 	}
 
 	/* ---------- the end of a game ---------- */

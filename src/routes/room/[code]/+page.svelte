@@ -28,6 +28,7 @@
 	import Sheet from '#lib/components/Sheet.svelte';
 	import RulesForm from '#lib/game/RulesForm.svelte';
 	import Loader from '#lib/game/Loader.svelte';
+	import { newLook } from '#lib/look.svelte.js';
 	import ResultLayout from '#lib/game/ResultLayout.svelte';
 	import RoundReveal from '#lib/game/RoundReveal.svelte';
 	import StreetPlate from '#lib/game/StreetPlate.svelte';
@@ -57,6 +58,8 @@
 	let rv = $state<ReturnType<typeof RoundView>>();
 
 	const st = $derived<RoomState | null>(link?.state ?? null);
+	// the new look is on a round and its result; the lobby and the podium keep the old one for now
+	newLook(() => !!st?.joined && (st.phase === 'playing' || st.phase === 'result'));
 	const code = $derived(st?.code ?? (page.params.code ?? '').toUpperCase());
 	const players = $derived(st?.players ?? []);
 	const me = $derived(players.find((p) => p.id === st?.you));
@@ -489,7 +492,7 @@
 			}
 		} else if (navigator.share && window.isSecureContext) {
 			await navigator
-				.share({ title: 'Shafaq Geo', text: share.text, url: share.url })
+				.share({ title: 'GeoShafaq', text: share.text, url: share.url })
 				.catch(() => {});
 		}
 	}
@@ -576,7 +579,7 @@
 
 <svelte:window onkeydown={onKey} ononline={wake} onpointerdown={unlockAudio} />
 <svelte:document onvisibilitychange={wake} />
-<svelte:head><title>{t('room')} {code} — Shafaq Geo</title></svelte:head>
+<svelte:head><title>{t('room')} {code} — GeoShafaq</title></svelte:head>
 
 {#if loadError || link?.gone}
 	<TopBar />
@@ -843,7 +846,7 @@
 									onclick={() => hostAct('/v1/rooms/{code}/next')}
 									disabled={busy}
 								>
-									{t('now')}
+									<span class="lbl">{t('now')}</span>
 									<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></svg>
 								</button>
 							{/if}
@@ -854,7 +857,7 @@
 							onclick={() => hostAct('/v1/rooms/{code}/next')}
 							disabled={busy}
 						>
-							{gameOver ? t('finish') : t('next')}
+							<span class="lbl">{gameOver ? t('finish') : t('next')}</span>
 							<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" /></svg>
 						</button>
 					{:else}
@@ -1499,6 +1502,101 @@
 		width: 20px;
 		height: 20px;
 		opacity: 0.8;
+	}
+
+	/* ---------- the new look (P1111 1.1): a round and its result ----------
+	   The players' chip rides in the round's HUD as one of its capsules; it outranks the look's
+	   quiet glass .chip, which is for buttons on the ground */
+	:global(:root.look2) .players-chip {
+		background: var(--cap-bg);
+		color: var(--cap-ink);
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.16),
+			inset 0 0 0 1px var(--cap-line),
+			0 3px 0 var(--cap-lip),
+			0 10px 20px rgba(0, 0, 0, 0.25);
+		backdrop-filter: blur(12px) saturate(1.3);
+		-webkit-backdrop-filter: blur(12px) saturate(1.3);
+	}
+	:global(:root.look2) .players-chip .chip-value {
+		display: inline-block;
+		font-family: var(--f-disp);
+		font-weight: 900;
+		transform: var(--lean);
+	}
+	/* the round's table: a row per player on the panel's second tone, the points in display
+	   lettering, the hint's cost the same gold chip as the score's "−20% 💡" */
+	:global(:root.look2) .table {
+		gap: 6px;
+	}
+	:global(:root.look2) .table li {
+		padding: 7px 10px 7px 8px;
+		border-radius: var(--r-s);
+		background: var(--panel-2);
+		color: var(--ink);
+		font-size: 15px;
+	}
+	:global(:root.look2) .table li.me {
+		background: var(--panel-2);
+		box-shadow: inset 0 0 0 2px var(--sky);
+	}
+	:global(:root.look2) .table .pos,
+	:global(:root.look2) .table b {
+		display: inline-block;
+		font-family: var(--f-disp);
+		font-weight: 900;
+		transform: var(--lean);
+		font-variant-numeric: tabular-nums;
+	}
+	:global(:root.look2) .table .pos {
+		color: var(--ink-3);
+	}
+	:global(:root.look2) .table .avatar {
+		background: var(--panel);
+	}
+	:global(:root.look2) .table .name {
+		font-weight: 700;
+	}
+	:global(:root.look2) .table .km {
+		color: var(--ink-3);
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+	}
+	:global(:root.look2) .table .pill {
+		padding: 1px 8px;
+		border-radius: 8px;
+		background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+		color: var(--gold-ink);
+		box-shadow: 0 2px 0 var(--gold-lo);
+		font-weight: 800;
+	}
+	:global(:root.look2) .table b {
+		font-size: 17px;
+		color: var(--ink);
+	}
+	/* the ring's row: the host's pause a square ghost, "Hozir" the green key */
+	:global(:root.look2) .ring-row {
+		min-height: 64px;
+	}
+	:global(:root.look2) .hold-btn {
+		width: 58px !important;
+		height: 58px;
+	}
+	:global(:root.look2) .now-btn {
+		height: 58px;
+		font-size: 19px;
+		white-space: nowrap;
+	}
+	:global(:root.look2) .next {
+		height: 64px;
+		font-size: clamp(18px, 5.6vw, 22px);
+		white-space: nowrap;
+	}
+	@media (min-width: 761px) {
+		:global(:root.look2) .next {
+			height: 70px;
+			font-size: 25px;
+		}
 	}
 
 	/* the sheets */

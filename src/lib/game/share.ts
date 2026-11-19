@@ -47,7 +47,7 @@ export function challengeShare(game: Game, code: string): Share {
 export async function nativeShare(s: Share): Promise<boolean> {
 	if (!navigator.share || !window.isSecureContext) return false;
 	try {
-		await navigator.share({ title: 'Shafaq Geo', text: s.text, url: s.url });
+		await navigator.share({ title: 'GeoShafaq', text: s.text, url: s.url });
 	} catch (e) {
 		if ((e as Error).name !== 'AbortError') return false;
 	}

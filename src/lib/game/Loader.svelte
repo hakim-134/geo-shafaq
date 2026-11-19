@@ -82,4 +82,44 @@
 		gap: 10px;
 		justify-content: center;
 	}
+
+	/* the new look (P1111 1.1): the lapis ground, no girih, the words in the game's lettering.
+	   A room still shows this loader in the old look while it connects, so only under look2. */
+	:global(:root.look2) .loader {
+		background:
+			radial-gradient(120% 70% at 50% 45%, var(--ground-glow), transparent 60%),
+			linear-gradient(180deg, var(--ground-top), var(--ground-bot));
+		color: var(--on-ground);
+	}
+	:global(:root.look2) .loader::before {
+		display: none;
+	}
+	:global(:root.look2) .mark {
+		filter: drop-shadow(0 6px 0 var(--stack-2)) drop-shadow(0 14px 18px rgba(0, 0, 0, 0.3));
+		animation-timing-function: var(--out);
+	}
+	:global(:root.look2) .text {
+		font-family: var(--f-disp);
+		font-weight: 900;
+		transform: var(--lean);
+		font-size: 22px;
+		line-height: 1.2;
+		text-shadow:
+			0 2px 0 var(--stack),
+			0 5px 0 var(--stack-2);
+	}
+	:global(:root.look2) .dots i {
+		width: 12px;
+		height: 12px;
+		background: var(--gold);
+		box-shadow: 0 2px 0 var(--gold-lo);
+	}
+	:global(:root.look2) .dots i:nth-child(2) {
+		background: #fff;
+		box-shadow: 0 2px 0 var(--stack-2);
+	}
+	:global(:root.look2) .dots i:nth-child(3) {
+		background: var(--key);
+		box-shadow: 0 2px 0 var(--key-lip);
+	}
 </style>

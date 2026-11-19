@@ -78,7 +78,7 @@
 </script>
 
 <svelte:head
-	><title>{ch ? t('challengedBy', { name: ch.by.name }) : ''} — Shafaq Geo</title></svelte:head
+	><title>{ch ? t('challengedBy', { name: ch.by.name }) : ''} — GeoShafaq</title></svelte:head
 >
 
 <TopBar />

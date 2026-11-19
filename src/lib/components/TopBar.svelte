@@ -19,7 +19,7 @@
 <header class="topbar">
 	<a class="brand" href="/">
 		<img src="/mark.svg" alt="" width="32" height="32" />
-		<span>Shafaq<b>Geo</b></span>
+		<span>Geo<b>Shafaq</b></span>
 	</a>
 	<div class="right">
 		<div class="lang">

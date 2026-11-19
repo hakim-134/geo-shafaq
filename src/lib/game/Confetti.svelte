@@ -1,7 +1,12 @@
 <script lang="ts">
 	// A short shower of eight-point stars (the girih's star) and paper bits in the flag's
 	// colours: a perfect round, a new best. Gone after two seconds; nothing with reduced motion.
-	const colors = ['#0099b5', '#1eb53a', '#ce1126', '#f5b81c', '#ffffff'];
+	// in the new look (P1111 1.1) the look's own colours: gold, white, the key's green
+	const look2 =
+		typeof document !== 'undefined' && document.documentElement.classList.contains('look2');
+	const colors = look2
+		? ['#f4b92e', '#ffe08a', '#fff9ec', '#18a84c', '#22b4bf']
+		: ['#0099b5', '#1eb53a', '#ce1126', '#f5b81c', '#ffffff'];
 	const bits = Array.from({ length: 34 }, (_, i) => ({
 		x: Math.random() * 100,
 		d: Math.random() * 0.5,

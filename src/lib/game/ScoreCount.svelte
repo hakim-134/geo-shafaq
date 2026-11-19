@@ -95,7 +95,7 @@
 		</div>
 	{/if}
 	<div class="line">
-		<span class="value">{fmtNum(shown)}</span>
+		<span class="value d">{fmtNum(shown)}</span>
 		<span class="of">/ {fmtNum(max)} {t('points')}</span>
 	</div>
 	<div class="bar"><div style:width={`${bar}%`}></div></div>
@@ -186,6 +186,83 @@
 		}
 		.big .value {
 			font-size: 46px;
+		}
+	}
+	/* ---------- the new look (P1111 1.1): only a round's result has it so far ----------
+	   The score is the hero: huge slanted digits with the gradient and the stacked shadow.
+	   The stars say how good it was, so there is no bar. */
+	:global(:root.look2) .cost {
+		gap: 8px;
+		height: 24px;
+		margin: 2px 0 0;
+		font-size: 15px;
+		color: var(--ink-3);
+	}
+	:global(:root.look2) .before {
+		text-decoration: line-through 2px;
+	}
+	/* a solid gold chip with a lip; it outranks the look's quiet .chip on the ground */
+	:global(:root.look2) .cost .chip {
+		height: 24px;
+		padding: 0 8px;
+		border: none;
+		border-radius: 8px;
+		background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+		color: var(--gold-ink);
+		box-shadow: 0 2px 0 var(--gold-lo);
+		font-size: 13px;
+		font-weight: 800;
+	}
+	:global(:root.look2) .line {
+		column-gap: 10px;
+		row-gap: 0;
+	}
+	:global(:root.look2) .value {
+		font-size: clamp(64px, 20vw, 78px);
+		line-height: 0.95;
+		letter-spacing: -0.03em;
+		padding-right: 6px;
+		white-space: nowrap;
+		color: var(--score-a);
+		text-shadow: 0 3px 0 var(--score-stack);
+	}
+	/* the gradient in the letters, where the browser can clip a background to text; elsewhere
+	   the solid colour and the stacked shadow above */
+	@supports (background-clip: text) or (-webkit-background-clip: text) {
+		:global(:root.look2) .value {
+			background: linear-gradient(180deg, var(--score-a) 35%, var(--score-b));
+			-webkit-background-clip: text;
+			background-clip: text;
+			color: transparent;
+			text-shadow: none;
+			filter: drop-shadow(0 3px 0 var(--score-stack)) drop-shadow(0 10px 16px var(--shade));
+		}
+	}
+	:global(:root.look2) .of {
+		font-family: var(--f-disp);
+		font-weight: 800;
+		display: inline-block;
+		transform: var(--lean);
+		font-size: 17px;
+		color: var(--ink-3);
+		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
+	}
+	:global(:root.look2) .bar {
+		display: none;
+	}
+	@media (min-width: 761px) {
+		:global(:root.look2) .value {
+			font-size: 104px;
+		}
+		:global(:root.look2) .of {
+			font-size: 18px;
+		}
+	}
+	/* a short phone: the number gives a little height to the rest */
+	@media (max-width: 760px) and (max-height: 700px) {
+		:global(:root.look2) .value {
+			font-size: 64px;
 		}
 	}
 </style>

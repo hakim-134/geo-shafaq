@@ -1790,6 +1790,16 @@ export interface components {
             city?: components["schemas"]["Text"];
             region?: components["schemas"]["Text"];
             metro?: components["schemas"]["Metro"];
+            /**
+             * @description The smallest place the round was in (a district, a city, a region). With `parent` it is the place's picture: `GET /v1/places/{parent}/map` draws the parent's parts, and this one is filled in. Missing in results saved before 2026-11-12.
+             * @example bektemir-tumani
+             */
+            slug?: string;
+            /**
+             * @description The place `slug` is a part of.
+             * @example toshkent
+             */
+            parent?: string;
         };
         Metro: {
             name: components["schemas"]["Text"];
