@@ -9,6 +9,7 @@
 	import Stars from './Stars.svelte';
 	import ScoreCount from './ScoreCount.svelte';
 	import PlacePlaque from './PlacePlaque.svelte';
+	import PlaceInParent from '#lib/maps/PlaceInParent.svelte';
 	import Confetti from './Confetti.svelte';
 	import { crowdGap, fmtDistance, starsFor, verdictKey } from '#lib/format.js';
 	import { t } from '#lib/i18n/index.svelte.js';
@@ -140,6 +141,8 @@
 	{#each others as e (e.reason)}
 		{#if e.reason === 'district'}
 			<p class="district">
+				<!-- the district's face: the biggest moment names its place by its picture too -->
+				{#if place.slug}<span class="face"><PlaceInParent place={place.slug} on="panel" /></span>{/if}
 				<span class="what">{t('districtWon', { name: e.note ?? '' })}</span>
 				<span class="plus d">+{e.amount} <Coin size={20} /></span>
 			</p>
@@ -302,6 +305,20 @@
 	.district .plus {
 		color: var(--gold-ink);
 		font-size: 18px;
+	}
+	.district .what {
+		flex: 1;
+	}
+	/* on a milk square, so the gold district stands out of the gold bar */
+	.district .face {
+		flex: none;
+		width: 48px;
+		height: 48px;
+		margin: -4px 0 -4px -6px;
+		padding: 4px;
+		border-radius: 10px;
+		background: var(--panel);
+		box-shadow: 0 2px 0 var(--gold-lo);
 	}
 
 	/* nothing gives the answer away before the real pin lands */

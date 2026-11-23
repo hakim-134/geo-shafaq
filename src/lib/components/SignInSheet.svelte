@@ -15,7 +15,7 @@
 
 	const qr = $derived(
 		account.tg
-			? renderSVG(account.tg.url, { border: 1, blackColor: '#13233f', whiteColor: '#fff' })
+			? renderSVG(account.tg.url, { border: 1, blackColor: '#0b3b44', whiteColor: '#fff' })
 			: ''
 	);
 	const hasGoogle = $derived(!!account.config?.googleClientId);
@@ -53,7 +53,7 @@
 							d="M21.4 4.3 2.9 11.4c-1.2.5-1.2 1.2-.2 1.5l4.7 1.5 1.8 5.6c.2.6.4.8.9.8.4 0 .6-.2.9-.5l2.3-2.2 4.8 3.5c.9.5 1.5.2 1.7-.8l3.1-14.7c.3-1.3-.5-1.9-1.5-1.5zM8.8 14.1l9.1-5.7c.4-.3.8-.1.5.2l-7.8 7-.3 3.3-1.5-4.8z"
 						/></svg
 					>
-					{t('signInTelegram')}
+					<span class="lbl">{t('signInTelegram')}</span>
 				</a>
 				<div class="waiting" class:on={tapped}>
 					<span class="spinner"></span>
@@ -88,7 +88,7 @@
 		<div class="pair">
 			<div class="who">
 				<span class="avatar">{o.user.avatar}</span>
-				<b>{o.user.name}</b>
+				<b class="d">{o.user.name}</b>
 				<span
 					>{t('nGames', { n: o.stats.games })} · {t('best').toLowerCase()}
 					{fmtNum(o.stats.best)}</span
@@ -99,29 +99,32 @@
 			>
 			<div class="who">
 				<span class="avatar">{session.me?.user.avatar}</span>
-				<b>{session.me?.user.name}</b>
+				<b class="d">{session.me?.user.name}</b>
 				<span>{t('thisAccount')}</span>
 			</div>
 		</div>
 		<p class="fine">{t('mergeNote')}</p>
 		<div class="actions">
 			<button class="btn btn-primary" onclick={acceptMerge} disabled={account.busy}
-				>{t('mergeYes')}</button
+				><span class="lbl">{t('mergeYes')}</span></button
 			>
-			<button class="btn btn-ghost" onclick={() => (account.merge = null)}>{t('cancel')}</button>
+			<button class="btn btn-ghost" onclick={() => (account.merge = null)}
+				><span class="lbl">{t('cancel')}</span></button
+			>
 		</div>
 	{/if}
 </Sheet>
 
 <style>
+	/* in a Sheet: ink on milk; Telegram's button keeps Telegram's own blue */
 	.lead {
-		color: var(--muted);
+		color: var(--ink-2);
 		font-size: 15px;
 		margin-bottom: 20px;
 	}
 	.wide {
 		width: 100%;
-		height: 56px;
+		height: 58px;
 	}
 	.tg-icon {
 		width: 22px;
@@ -135,7 +138,7 @@
 		gap: 10px;
 		margin-top: 12px;
 		font-size: 14px;
-		color: var(--muted);
+		color: var(--ink-3);
 	}
 	.waiting.on {
 		display: flex;
@@ -149,16 +152,17 @@
 		gap: 16px;
 		margin-top: 16px;
 		padding: 12px;
-		border-radius: 14px;
-		border: 1.5px dashed var(--border);
+		border-radius: var(--r-s);
+		background: var(--panel-2);
 	}
 	.qr-code {
 		width: 104px;
 		height: 104px;
 		flex: none;
-		border-radius: 8px;
+		border-radius: 10px;
 		overflow: hidden;
 		background: #fff;
+		box-shadow: 0 2px 0 var(--panel-lip);
 	}
 	.qr-code :global(svg) {
 		display: block;
@@ -167,25 +171,26 @@
 	}
 	.qr p {
 		font-size: 13.5px;
-		color: var(--muted);
+		color: var(--ink-2);
 	}
 	.muted {
-		color: var(--muted);
+		color: var(--ink-3);
 	}
 	.or {
 		display: flex;
 		align-items: center;
 		gap: 12px;
 		margin: 18px 0;
-		color: var(--muted);
+		color: var(--ink-3);
 		font-size: 13px;
+		font-weight: 600;
 	}
 	.or::before,
 	.or::after {
 		content: '';
 		flex: 1;
 		height: 1px;
-		background: var(--border);
+		background: var(--panel-line);
 	}
 	.google {
 		display: flex;
@@ -195,7 +200,7 @@
 	.fine {
 		margin-top: 18px;
 		font-size: 12.5px;
-		color: var(--muted);
+		color: var(--ink-3);
 		line-height: 1.45;
 	}
 	.pair {
@@ -213,29 +218,30 @@
 		text-align: center;
 		gap: 4px;
 		padding: 14px 8px;
-		border-radius: 16px;
-		background: var(--bg);
+		border-radius: var(--r-s);
+		background: var(--panel-2);
 	}
 	.who .avatar {
 		width: 52px;
 		height: 52px;
 		font-size: 28px;
-		background: var(--surface);
+		background: var(--panel);
+		box-shadow: 0 2px 0 var(--panel-lip);
 	}
 	.who b {
-		font-family: var(--display);
-		font-size: 14px;
 		max-width: 100%;
+		font-size: 15px;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 	.who span:last-child {
 		font-size: 12px;
-		color: var(--muted);
+		color: var(--ink-3);
 	}
 	.arrow {
-		color: var(--green);
+		color: var(--key);
+		stroke-width: 2.6;
 	}
 	.actions {
 		margin-top: 20px;

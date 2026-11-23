@@ -312,7 +312,7 @@ async function solo(browser: Browser, view: View, dir: string) {
 	await sleep(800);
 	await p.shot(J, 'end-scrolled');
 
-	const share = await p.findText(/Do‘stni chaqirish/, 3000).catch(() => null);
+	const share = await p.findText(/Do‘stni chaqirish/i, 3000).catch(() => null);
 	if (share) {
 		await p.tap(share);
 		await sleep(1200);
@@ -352,7 +352,7 @@ async function places(browser: Browser, view: View, dir: string) {
 	// breathes for a new player), the quiet buttons
 	const around = () =>
 		p.page.evaluate(() =>
-			[...document.querySelectorAll('.go, .rules, .quiet button, .chip')].map((e) => {
+			[...document.querySelectorAll('.go, .rules, .chip')].map((e) => {
 				const r = e.getBoundingClientRect();
 				return [r.x, r.y + scrollY, r.width, r.height];
 			})
@@ -376,7 +376,7 @@ async function places(browser: Browser, view: View, dir: string) {
 	await p.tap(await p.find('.mchoose:not(.off)'));
 	await sleep(1500);
 	const title = await p.page.evaluate(
-		() => document.querySelector('main h1, main .title')?.textContent ?? ''
+		() => document.querySelector('main h1.title, main h1')?.textContent ?? ''
 	);
 	if (!/Chilonzor/.test(title))
 		problems.push(
@@ -404,13 +404,13 @@ async function room(browser: Browser, view: View, dir: string) {
 	await host.go('/');
 	await sleep(1500);
 	// one quiet button opens a room at once (before 2026-10-28: a switch, then a sign)
-	await host.tap(await host.findText(/Do‘stlar bilan/));
+	await host.tap(await host.findText(/Do‘stlar bilan/i));
 	await host.page.waitForFunction(() => location.pathname.startsWith('/room/'), { timeout: 15000 });
 	await sleep(1500);
 	await host.shot(J, 'lobby-alone', 'the host, ready to invite: taps since the home');
 	// the invite: the phone's share sheet (none in a headless Chrome: our own sheet), or the
 	// laptop's copy
-	await host.tap(await host.findText(/Do‘stlarni chaqirish|Nusxa olindi/));
+	await host.tap(await host.find('.invite-btn'));
 	await sleep(700);
 	await host.shot(J, 'invite', 'after the big invite button: taps since the home');
 	await host.page.keyboard.press('Escape');
@@ -426,7 +426,7 @@ async function room(browser: Browser, view: View, dir: string) {
 	friend2.begin();
 	await friend2.go('/');
 	await sleep(1500);
-	await friend2.tap(await friend2.findText(/^\s*Kodim bor\s*$/));
+	await friend2.tap(await friend2.findText(/^\s*Kodim bor\s*$/i));
 	await sleep(400);
 	await friend2.page.keyboard.type(code.toLowerCase(), { delay: 90 });
 	await friend2.page.waitForFunction(() => location.pathname.startsWith('/room/'), {
@@ -512,7 +512,7 @@ async function room(browser: Browser, view: View, dir: string) {
 		if (n > 12) throw new Error('the room does not end');
 	}
 	// "Do‘stni chaqirish" from the room's end: its link's board has everyone who played here
-	await friend.tap(await friend.findText(/Do‘stni chaqirish/));
+	await friend.tap(await friend.find('.share-btn'));
 	await sleep(1500);
 	await friend.shot(J, 'challenge', "a room's end: the link for friends who weren't here");
 	const link = await friend.page.$eval('input.link', (i) => (i as HTMLInputElement).value);
@@ -566,7 +566,7 @@ async function challenge(browser: Browser, view: View, dir: string) {
 			}
 			if (i === 1) {
 				await p.shot(J, 'result-1');
-				if (p === friend2 && !(await p.has('.learned-line')))
+				if (p === friend2 && !(await p.has('.reveal .earned')))
 					problems.push(`${view.name} friend2: a guess on the spot, no "Ko‘cha o‘rganildi"`);
 			}
 			await p.tap(await p.find('.next'));
@@ -585,7 +585,7 @@ async function challenge(browser: Browser, view: View, dir: string) {
 		for (const el of document.querySelectorAll<HTMLElement>('.result, .body'))
 			if (el.scrollHeight > el.clientHeight) el.scrollTop = el.scrollHeight;
 	});
-	await host.tap(await host.findText(/Do‘stni chaqirish/));
+	await host.tap(await host.findText(/Do‘stni chaqirish/i));
 	await sleep(1200);
 	await host.shot(J, 'share', 'the link to send');
 	const link = await host.page.$eval('input.link', (i) => (i as HTMLInputElement).value);
@@ -627,7 +627,9 @@ async function challenge(browser: Browser, view: View, dir: string) {
 		if (rows !== want) problems.push(`${view.name} ${p.who}: ${rows} on the board, want ${want}`);
 		await p.go('/');
 		await sleep(1500);
-		const counts = await p.page.$eval('.meta', (m) => (m as HTMLElement).innerText);
+		const counts = await p.page.evaluate(
+				() => (document.querySelector('.count') as HTMLElement | null)?.innerText ?? ''
+			);
 		const wantCount = p === friend2 ? /1 \/ \d+/ : /^(?!.*0 \/)/s;
 		if (!wantCount.test(counts)) problems.push(`${view.name} ${p.who}: the home says "${counts}"`);
 		await p.shot(J, 'home', p === friend2 ? 'one street learned' : 'none learned: no 0 / 177');
@@ -703,7 +705,7 @@ async function missed(browser: Browser, view: View, dir: string) {
 	await p.tap(await p.find('.go .play'));
 	await playAll();
 	const noRepeats = async () => {
-		const plates = await p.page.$$eval('.stop-plate', (l) =>
+		const plates = await p.page.$$eval('.stop-name b', (l) =>
 			l.map((x) => (x as HTMLElement).innerText)
 		);
 		if (new Set(plates).size !== plates.length)
@@ -717,17 +719,17 @@ async function missed(browser: Browser, view: View, dir: string) {
 	await p.go('/me');
 	await p.find('figure.city path.shape');
 	await sleep(1200);
-	if (await p.has('a.missed')) problems.push(`${view.name} missed: the way there is under my map`);
+	if (await p.has('nav.missed a')) problems.push(`${view.name} missed: the way there is under my map`);
 	await p.go('/me/streets');
 	await sleep(1000);
 	await p.shot(J, 'my-streets', 'my streets with the way to the missed streets');
-	await p.tap(await p.find('a.missed'));
+	await p.tap(await p.find('nav.missed a'));
 	await p.page.waitForFunction(() => location.pathname === '/me/missed');
 	await sleep(1000);
 	await p.shot(J, 'list', 'the worst first, one green button');
 
 	// none found: the list stands, nothing cheers
-	await p.tap(await p.findText(/O‘ynash/));
+	await p.tap(await p.findText(/O‘ynash/i));
 	await p.page.waitForFunction(() => location.pathname.startsWith('/game/'));
 	await p.roundReady();
 	await p.shot(J, 'round', 'a round on the missed streets: the guess map frames all of Tashkent');
@@ -739,7 +741,7 @@ async function missed(browser: Browser, view: View, dir: string) {
 
 	// the first street found: it leaves the list; the home's sign stays where it was
 	find = new Set([1]);
-	await p.tap(await p.findText(/Yana o‘ynash/));
+	await p.tap(await p.findText(/Yana o‘ynash/i));
 	await p.page.waitForFunction(() => !document.querySelector('.final'), { timeout: 15000 });
 	await playAll();
 	await p.shot(J, 'end', 'one street left the list');
@@ -752,20 +754,20 @@ async function missed(browser: Browser, view: View, dir: string) {
 
 	// "Yana o‘ynash": the two left, found: the list is empty, the end says so, no next game
 	find = new Set([1, 2]);
-	await p.tap(await p.findText(/Yana o‘ynash/));
+	await p.tap(await p.findText(/Yana o‘ynash/i));
 	await p.page.waitForFunction(() => !document.querySelector('.final'), { timeout: 15000 });
 	await playAll();
 	await p.shot(J, 'end-all-learned', 'none left');
 	await noRepeats();
 	if ((await left()) !== 0) problems.push(`${view.name} missed: the list isn't empty at the end`);
-	if (await p.findText(/Yana o‘ynash/, 800).catch(() => null))
+	if (await p.findText(/Yana o‘ynash/i, 800).catch(() => null))
 		problems.push(`${view.name} missed: "Yana o‘ynash" with nothing left to play`);
 	await p.go('/me/missed');
 	await sleep(1000);
 	await p.shot(J, 'empty', 'the list, empty');
 	await p.go('/');
 	await sleep(1200);
-	const home = await p.page.$eval('.where', (a) => (a as HTMLElement).innerText);
+	const home = await p.page.$eval('header.place', (a) => (a as HTMLElement).innerText);
 	if (/Adashgan/.test(home)) problems.push(`${view.name} missed: the home's sign became "${home}"`);
 	await p.page.close();
 }
@@ -917,7 +919,7 @@ async function shop(browser: Browser, view: View, dir: string) {
 		for (const el of document.querySelectorAll<HTMLElement>('.result, .body'))
 			if (el.scrollHeight > el.clientHeight) el.scrollTop = el.scrollHeight;
 	});
-	await host.tap(await host.findText(/Do‘stni chaqirish/));
+	await host.tap(await host.findText(/Do‘stni chaqirish/i));
 	await sleep(1200);
 	const link = await host.page.$eval('input.link', (i) => (i as HTMLInputElement).value);
 	await host.page.keyboard.press('Escape');
@@ -957,7 +959,7 @@ async function shop(browser: Browser, view: View, dir: string) {
 		await friend.guess(10, 10);
 		await friend.find('.next', 20000);
 		await sleep(3500);
-		plate = await friend.has('.district-plate');
+		plate = await friend.has('.reveal .district');
 		if (!plate) {
 			await friend.tap(await friend.find('.next'));
 			await sleep(800);
@@ -969,7 +971,7 @@ async function shop(browser: Browser, view: View, dir: string) {
 	// a room: the frame in the lobby
 	await host.go('/');
 	await sleep(1500);
-	await host.tap(await host.findText(/Do‘stlar bilan/));
+	await host.tap(await host.findText(/Do‘stlar bilan/i));
 	await host.page.waitForFunction(() => location.pathname.startsWith('/room/'), { timeout: 15000 });
 	await sleep(1500);
 	const code = host.page.url().split('/room/')[1].slice(0, 5);

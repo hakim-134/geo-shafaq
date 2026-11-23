@@ -3,7 +3,7 @@
 	// caps over the name. It is the same object by day and by night, like a tile on a wall.
 	// Under it, the nearest metro and the panorama link. With land, it rises in after the score:
 	// the round's lesson is the thing that lands.
-	// At its left end, the place's picture (place-in-parent): the district filled gold inside its
+	// At its left end, the place's face (place-in-parent): the district filled gold inside its
 	// city's shape, so the player sees where it is, not only what it is called.
 	import type { LatLon, Schemas } from '#lib/api/client.js';
 	import { fmtDistance } from '#lib/format.js';
@@ -40,8 +40,8 @@
 
 <div class="place">
 	<div class="plaque" class:land style:animation-delay={`${delay}ms`}>
-		{#if place.slug && place.parent}
-			<div class="pic"><PlaceInParent parent={place.parent} fill={[place.slug]} /></div>
+		{#if place.slug}
+			<div class="pic"><PlaceInParent place={place.slug} /></div>
 		{/if}
 		<div class="words">
 			{#if top}<span class="top">{top}</span>{/if}
@@ -76,9 +76,9 @@
 	   gold place is what the eye finds */
 	.pic {
 		/* the parent drawn faint, so the gold place is what the eye finds */
-		--tile-a: var(--plaque-tile, rgba(255, 255, 255, 0.16));
-		--tile-b: var(--plaque-tile, rgba(255, 255, 255, 0.16));
-		--seam: var(--plaque-tline, rgba(190, 240, 240, 0.5));
+		--pip-tile: var(--plaque-tile, rgba(255, 255, 255, 0.16));
+		--pip-seam: var(--plaque-tline, rgba(190, 240, 240, 0.5));
+		--pip-ring: var(--gold);
 		flex: none;
 		width: 60px;
 		height: 60px;
@@ -166,7 +166,7 @@
 	.under a {
 		font-size: 14px;
 		font-weight: 600;
-		color: var(--sky-ink);
+		color: var(--link);
 		text-decoration: none;
 	}
 	.metro {

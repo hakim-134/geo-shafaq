@@ -22,7 +22,7 @@
 	{#if share}
 		<p class="text">{share.text}</p>
 		<input
-			class="link"
+			class="field link"
 			readonly
 			value={share.url}
 			aria-label={t('link')}
@@ -35,12 +35,12 @@
 						d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"
 					/></svg
 				>
-				{t('copyLinkBtn')}
+				<span class="lbl">{t('copyLinkBtn')}</span>
 			</button>
 			<a class="btn btn-telegram" href={telegramShare(share)} target="_blank" rel="noopener"
 				><svg viewBox="0 0 24 24"
 					><path d="M21 4 3 11l6 2.5M21 4l-4 16-8-6.5M21 4 9 13.5V19l3-3.5" /></svg
-				>Telegram</a
+				><span class="lbl">Telegram</span></a
 			>
 		</div>
 	{/if}
@@ -50,26 +50,22 @@
 	.text {
 		white-space: pre-line;
 		font-size: 15px;
+		color: var(--ink-2);
 		margin-bottom: 14px;
 	}
 	.link {
-		width: 100%;
 		height: 50px;
-		padding: 0 14px;
-		border: 2px solid var(--border);
-		border-radius: 14px;
-		background: var(--bg);
-		color: var(--text);
 		font-size: 15px;
-		font-weight: 600;
+		background: var(--panel-2);
 	}
 	.btns {
-		margin-top: 16px;
+		margin-top: 18px;
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		gap: 10px;
 	}
 	.btns .btn {
 		padding: 0 12px;
+		font-size: 17px;
 	}
 </style>

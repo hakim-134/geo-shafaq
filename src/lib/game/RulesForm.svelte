@@ -1,7 +1,9 @@
 <script lang="ts">
 	// The game's settings: three rows of big tiles (difficulty, rounds, time), and the rest
 	// under one closed "Ko‘proq": hints, movement and the compass.
-	// No sentences: a tile says what it is. The home's, and a room host's between games.
+	// No sentences: a tile says what it is. The home's, and a room host's between games; it
+	// lives in a Sheet, so it is ink on milk: milk tiles with a lip, the chosen one a green rim
+	// and a tick, the numbers in the leaning display letters.
 	import { t, type Key } from '#lib/i18n/index.svelte.js';
 	import { fmtClock } from '#lib/format.js';
 	import {
@@ -58,7 +60,7 @@
 					class="tile big"
 					aria-pressed={choice.rounds === n}
 					aria-label={n ? undefined : t('roundsEndless')}
-					onclick={() => (choice.rounds = n)}>{n || '∞'}</button
+					onclick={() => (choice.rounds = n)}><span class="d">{n || '∞'}</span></button
 				>
 			{/each}
 		</div>
@@ -72,7 +74,8 @@
 					class="tile"
 					class:big={s > 0}
 					aria-pressed={choice.timeSec === s}
-					onclick={() => (choice.timeSec = s)}>{s ? fmtClock(s) : t('timeNone')}</button
+					onclick={() => (choice.timeSec = s)}
+					>{#if s}<span class="d">{fmtClock(s)}</span>{:else}{t('timeNone')}{/if}</button
 				>
 			{/each}
 		</div>
@@ -94,7 +97,7 @@
 							onclick={() => choice.hints.count--}
 							><svg viewBox="0 0 24 24" class="icon"><path d="M6 12h12" /></svg></button
 						>
-						<b>{choice.hints.count || t('hintsNone')}</b>
+						<b class="d">{choice.hints.count || t('hintsNone')}</b>
 						<button
 							aria-label="+"
 							disabled={choice.hints.count >= MAX_HINTS}
@@ -171,8 +174,12 @@
 		display: flex;
 		flex-direction: column;
 		gap: 16px;
+		color: var(--ink);
 	}
-	/* big tiles, three to a row: one tap each, the thumb's size */
+	.form .field-label {
+		color: var(--ink-2);
+	}
+	/* big tiles, three or four to a row: one tap each, the thumb's size */
 	.tiles {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);
@@ -182,12 +189,13 @@
 		grid-template-columns: repeat(4, 1fr);
 	}
 	.tile {
+		position: relative;
 		min-height: 58px;
 		padding: 6px 4px;
-		border: 2px solid var(--border);
-		border-radius: 16px;
-		background: var(--surface);
-		color: var(--text);
+		border: 2px solid var(--panel-line);
+		border-radius: var(--r-s);
+		background: var(--panel);
+		color: var(--ink);
 		font-weight: 700;
 		font-size: 15px;
 		display: flex;
@@ -195,23 +203,21 @@
 		align-items: center;
 		justify-content: center;
 		gap: 6px;
-		box-shadow: 0 3px 0 var(--edge);
+		box-shadow: 0 3px 0 var(--panel-lip);
 		transition:
-			transform 0.1s,
+			transform 0.1s var(--out),
 			border-color 0.15s,
 			background 0.15s;
 	}
 	.tile:active {
 		transform: translateY(2px);
-		box-shadow: 0 1px 0 var(--edge);
+		box-shadow: 0 1px 0 var(--panel-lip);
 	}
-	/* the chosen one: a green rim and a tick (design.md), in every row, light and dark */
-	.tile {
-		position: relative;
-	}
+	/* the chosen one: a green rim and a tick, in every row, light and dark */
 	.tile[aria-pressed='true'] {
-		border-color: var(--green);
-		background: color-mix(in srgb, var(--green) 10%, var(--surface));
+		border-color: var(--key);
+		background: color-mix(in srgb, var(--key) 10%, var(--panel));
+		box-shadow: 0 3px 0 color-mix(in srgb, var(--key-lip) 45%, var(--panel-lip));
 	}
 	.tile[aria-pressed='true']::after,
 	.form .segmented button[aria-pressed='true']::after {
@@ -219,27 +225,32 @@
 		position: absolute;
 		top: -7px;
 		right: -7px;
-		width: 20px;
-		height: 20px;
+		width: 22px;
+		height: 22px;
 		border-radius: 50%;
-		background: var(--green);
+		background: var(--key);
+		box-shadow: 0 2px 0 var(--key-lip);
 		color: #fff;
-		font: 800 12px/20px var(--body);
+		font: 800 12px/22px var(--f-text);
 		text-align: center;
+		animation: pop-in 0.3s var(--spring);
 	}
 	.form .segmented button {
 		position: relative;
 	}
 	.form .segmented button[aria-pressed='true'] {
-		box-shadow: inset 0 0 0 2px var(--green);
-		color: var(--text);
+		box-shadow:
+			inset 0 0 0 2px var(--key),
+			0 2px 0 var(--panel-lip);
+		color: var(--ink);
 	}
 	.tile.big {
-		font-family: var(--display);
-		font-size: 22px;
+		font-size: 24px;
+	}
+	.tile .d {
 		font-variant-numeric: tabular-nums;
 	}
-	/* difficulty as bars, like a signal: one green, two yellow, three red */
+	/* difficulty as bars, like a signal: one green, two gold, three red */
 	.bars {
 		display: flex;
 		align-items: flex-end;
@@ -249,7 +260,7 @@
 	.bars i {
 		width: 6px;
 		border-radius: 2px;
-		background: var(--surface-2);
+		background: var(--panel-2);
 	}
 	.bars i:nth-child(1) {
 		height: 7px;
@@ -261,10 +272,10 @@
 		height: 16px;
 	}
 	.easy .bars i.on {
-		background: var(--green);
+		background: var(--key);
 	}
 	.normal .bars i.on {
-		background: var(--star);
+		background: var(--gold);
 	}
 	.hard .bars i.on {
 		background: var(--red);
@@ -277,9 +288,12 @@
 		gap: 6px;
 		min-height: 44px;
 		border-radius: 12px;
-		color: var(--muted);
-		font-weight: 600;
+		color: var(--ink-3);
+		font-weight: 700;
 		cursor: pointer;
+	}
+	.more summary:hover {
+		color: var(--ink);
 	}
 	.more summary::-webkit-details-marker {
 		display: none;
@@ -313,17 +327,22 @@
 		gap: 4px;
 		padding: 3px;
 		border-radius: 12px;
-		background: var(--surface-2);
+		background: var(--panel-2);
 	}
 	.stepper button {
-		width: 38px;
-		height: 34px;
+		width: 40px;
+		height: 36px;
 		border: none;
 		border-radius: 9px;
-		background: var(--surface);
-		color: var(--text);
+		background: var(--panel);
+		color: var(--ink);
+		box-shadow: 0 2px 0 var(--panel-lip);
 		display: grid;
 		place-items: center;
+	}
+	.stepper button:active:not(:disabled) {
+		transform: translateY(1px);
+		box-shadow: none;
 	}
 	.stepper button:disabled {
 		opacity: 0.4;
@@ -331,22 +350,24 @@
 	.stepper .icon {
 		width: 16px;
 		height: 16px;
-		stroke-width: 2.4;
+		stroke-width: 2.6;
 	}
 	.stepper b {
 		min-width: 64px;
 		text-align: center;
-		font-family: var(--display);
-		font-size: 15px;
+		font-size: 17px;
 	}
 	.hint-rules {
 		margin-top: 10px;
 		padding: 12px;
 		border-radius: 14px;
-		background: var(--bg);
+		background: var(--panel-2);
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
+	}
+	.hint-rules .segmented {
+		background: color-mix(in srgb, var(--panel-2), var(--ink) 6%);
 	}
 	.field-label.sub {
 		margin: 4px 0 0;

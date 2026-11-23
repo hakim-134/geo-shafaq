@@ -10,7 +10,13 @@ import { trailOf } from '#lib/barg/skins.js';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 export type YMap = any;
 
-export const COLORS = { guess: '#0099b5', actual: '#1eb53a', line: '#ce1126', crowd: '#e8a90c' };
+export const COLORS = {
+	guess: '#0099b5',
+	actual: '#1eb53a',
+	line: '#ce1126',
+	crowd: '#e8a90c',
+	hint: '#f4b92e' // the faces' gold (--gold)
+};
 
 export type BBox = [number, number, number, number]; // west, south, east, north
 
@@ -298,7 +304,9 @@ export async function hintCircle(center: LatLon, radiusKm: number): Promise<any>
 	);
 }
 
-/** A hint naming a district or region: its area, shaded, with a dashed red border. */
+/** A hint naming a district or region: its area in the colours of its face in the hint's
+ *  pill, a light gold wash with a solid gold edge (red would say "wrong"), the edge on a
+ *  white one so it reads on satellite too. */
 export async function hintArea(geometry: GeoJSON.Geometry): Promise<any[]> {
 	const ymaps = await loadYmaps('uz');
 	return polygons(geometry).map(
@@ -307,10 +315,9 @@ export async function hintArea(geometry: GeoJSON.Geometry): Promise<any[]> {
 				[ring(p[0])],
 				{},
 				{
-					fillColor: COLORS.line + '1a',
-					strokeColor: COLORS.line,
-					strokeWidth: 2.5,
-					strokeStyle: 'dash',
+					fillColor: COLORS.hint + '2e',
+					strokeColor: ['#ffffffcc', COLORS.hint],
+					strokeWidth: [5, 2.5],
 					interactivityModel: 'default#transparent'
 				}
 			)

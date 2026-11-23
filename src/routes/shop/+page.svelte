@@ -1,7 +1,8 @@
 <script lang="ts">
 	// The shop (PLAN 9.4): looks for earned Barg, at fixed prices. Nothing random, no timers, nothing
-	// that plays better: the prices are what they are. A tap shows the thing big with one button: buy
-	// (and it goes on at once), wear, or how much is still missing.
+	// that plays better: the prices are what they are. Each thing is a milk tile with how it looks
+	// and its price; a tap shows it big with one key: buy (and it goes on at once), wear, or, when
+	// Barg is short, how much is still missing and how to earn it. Never a dead button.
 	import SubPage from '#lib/components/SubPage.svelte';
 	import Sheet from '#lib/components/Sheet.svelte';
 	import Coin from '#lib/barg/Coin.svelte';
@@ -78,29 +79,53 @@
 	}
 </script>
 
-<SubPage title={t('shopTitle')} back={{ href: '/me', label: t('profile') }}>
-	{#if shop}
-		<a class="balance" href="/me/wallet">
-			<Coin size={30} />
-			<b>{fmtNum(shop.balance)}</b>
-			<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
+<!-- the purse shows from the first Barg: never a "0" chip (what isn't earned stays out of sight) -->
+{#snippet purse()}
+	{#if shop?.balance}
+		<a class="purse chip" href="/me/wallet" aria-label={t('walletTitle')}>
+			<Coin size={26} />
+			<b class="d">{fmtNum(shop.balance)}</b>
 		</a>
+	{/if}
+{/snippet}
 
+<SubPage title={t('shopTitle')} back={{ href: '/me', label: t('profile') }} aside={purse} wide>
+	{#if shop}
+		<p class="honest">{t('shopNote')}</p>
 		<div class="kinds">
 			{#each KINDS as kind (kind)}
-				<section class:wide={kind === 'frame'}>
+				<section class={kind}>
 					<h2 class="section-title">{t(`kind_${kind}` as Key)}</h2>
 					<div class="grid">
 						{#each shop.items.filter((i) => i.kind === kind) as it (it.id)}
-							<button class="tile" class:worn={it.worn} onclick={() => (openId = it.id)}>
-								<ItemPreview item={it} />
+							{@const short = !it.owned && it.price > shop.balance}
+							<button
+								class="tile on-panel"
+								class:worn={it.worn}
+								data-item={it.id}
+								onclick={() => (openId = it.id)}
+							>
+								<span class="well"><ItemPreview item={it} /></span>
 								<span class="name">{t(`item_${it.id}` as Key)}</span>
 								{#if it.worn}
-									<span class="state on">{t('shopWorn')}</span>
+									<span class="state on">
+										<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+											><path d="m5 12.5 4.5 4.5L19 7.5" /></svg
+										>{t('shopWorn')}
+									</span>
 								{:else if it.owned}
 									<span class="state">{t('shopOwned')}</span>
 								{:else}
-									<span class="price"><Coin size={16} /> {fmtNum(it.price)}</span>
+									<span class="price" class:short>
+										<Coin size={18} /><b class="d">{fmtNum(it.price)}</b>
+										{#if short}
+											<svg viewBox="0 0 24 24" class="icon lock" aria-hidden="true"
+												><rect x="5" y="11" width="14" height="10" rx="2.5" /><path
+													d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"
+												/></svg
+											>
+										{/if}
+									</span>
 								{/if}
 							</button>
 						{/each}
@@ -109,20 +134,27 @@
 			{/each}
 		</div>
 	{:else if failed}
-		<p class="note">{t('err_network')}</p>
-		<button class="btn btn-ghost" onclick={load}>{t('retry')}</button>
+		<div class="empty-state">
+			<p>{t('err_network')}</p>
+			<button class="btn btn-chip" onclick={load}>{t('retry')}</button>
+		</div>
 	{:else}
 		<span class="spinner"></span>
 	{/if}
 </SubPage>
 
 <Sheet open={!!open} onclose={() => (openId = '')} title={open ? t(`full_${open.id}` as Key) : ''}>
-	{#if open}
+	{#if open && shop}
 		<div class="sheet">
-			<div class:pop={popping}><ItemPreview item={open} big /></div>
+			<div class="stage" class:pop={popping}><ItemPreview item={open} size="big" /></div>
 			{#if popping}
-				<p class="yours">{t('shopWorn')}</p>
+				<p class="yours d">{t('shopWorn')}!</p>
 			{:else if open.worn}
+				<p class="worn-line">
+					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+						><path d="m5 12.5 4.5 4.5L19 7.5" /></svg
+					>{t('shopWorn')}
+				</p>
 				<button
 					class="btn btn-ghost act"
 					disabled={busy}
@@ -136,16 +168,27 @@
 					disabled={busy}
 					onclick={() => act(() => wear(open!, true))}
 				>
-					{t('shopWear')}
+					<span class="lbl">{t('shopWear')}</span>
 				</button>
 			{:else if missing > 0}
-				<p class="price big"><Coin size={22} /> {fmtNum(open.price)}</p>
-				<p class="note">{t('shopMissing', { n: missing })}</p>
-				<a class="link-btn" href="/me/wallet">{t('earnHow')}</a>
+				<!-- what is missing, as a bar filling up: how close it is, never a dead key -->
+				<div class="short-of">
+					<!-- with no Barg yet, no "0 of 20" and no empty bar: only what it takes -->
+					{#if shop.balance}
+						<div class="have">
+							<span><Coin size={22} /><b class="d">{fmtNum(shop.balance)}</b></span>
+							<span class="of"><Coin size={22} /><b class="d">{fmtNum(open.price)}</b></span>
+						</div>
+						<div class="bar" aria-hidden="true">
+							<i style:width="{Math.max(4, (100 * shop.balance) / open.price)}%"></i>
+						</div>
+					{/if}
+					<p class="need">{t('shopMissing', { n: missing })}</p>
+				</div>
+				<a class="btn btn-ghost act" href="/me/wallet">{t('earnHow')}</a>
 			{:else}
 				<button class="btn btn-primary act" disabled={busy} onclick={() => buy(open!)}>
-					{t('shopBuy')} · <Coin size={22} />
-					{fmtNum(open.price)}
+					<span class="lbl">{t('shopBuy')} · <Coin size={24} /> {fmtNum(open.price)}</span>
 				</button>
 			{/if}
 		</div>
@@ -153,137 +196,233 @@
 </Sheet>
 
 <style>
-	.balance {
+	/* the purse at the head's right: how much Barg, a tap opens the wallet */
+	.purse {
 		display: inline-flex;
 		align-items: center;
-		gap: 8px;
-		min-height: 48px;
-		color: var(--text);
-		text-decoration: none;
+		gap: 7px;
+		height: 44px;
+		padding: 0 14px 0 9px;
+		border-radius: 999px;
+		transition: transform 0.1s var(--out);
 	}
-	.balance b {
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 28px;
+	.purse:active {
+		transform: scale(0.95);
 	}
-	.balance .icon {
-		color: var(--muted);
+	.purse b {
+		font-size: 21px;
+		line-height: 1;
+		color: var(--on-ground);
+	}
+	.honest {
+		margin: -10px 0 4px;
+		font-size: 14.5px;
+		font-weight: 600;
+		color: var(--on-ground-3);
 	}
 	.section-title {
-		margin-top: 22px;
-	}
-	/* a laptop: the frames a whole row, the rest side by side: no row with a hole */
-	@media (min-width: 1024px) {
-		:global(main.sub:has(.kinds)) {
-			max-width: 760px;
-		}
-		.kinds {
-			display: grid;
-			grid-template-columns: 1fr 1fr;
-			column-gap: 24px;
-		}
-		.kinds .wide {
-			grid-column: 1 / -1;
-		}
+		margin: 22px 0 12px;
 	}
 	.grid {
-		margin-top: 10px;
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
-		gap: 10px;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 12px;
 	}
+	/* a thing for sale: a milk tile with a lip, how it looks in a soft well, its name, its price */
 	.tile {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 4px;
-		padding: 10px 4px 12px;
-		border-radius: 16px;
-		border: 2px solid var(--border);
-		background: var(--surface);
-		color: var(--text);
-		transition: transform 0.1s;
+		gap: 6px;
+		min-width: 0;
+		padding: 8px 8px 12px;
+		border: none;
+		border-radius: 20px;
+		background: var(--panel);
+		box-shadow:
+			0 3px 0 var(--panel-lip),
+			0 10px 20px var(--shade);
+		transition: transform 0.12s var(--out);
 	}
 	.tile:active {
-		transform: scale(0.97);
+		transform: translateY(2px) scale(0.98);
 	}
-	.tile.worn {
-		border-color: var(--sky);
-		background: color-mix(in srgb, var(--sky) 10%, var(--surface));
+	.well {
+		align-self: stretch;
+		display: grid;
+		place-items: center;
+		border-radius: 14px;
+		background: var(--panel-2);
 	}
 	.name {
+		max-width: 100%;
 		font-weight: 700;
-		font-size: 14px;
+		font-size: 15px;
+		line-height: 1.2;
+		color: var(--ink);
+		overflow-wrap: anywhere;
 	}
-	.price {
+	.price,
+	.state {
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
-		font-weight: 700;
+		min-height: 26px;
 		font-size: 14px;
-		font-variant-numeric: tabular-nums;
+		font-weight: 700;
 	}
-	.price.big {
-		font-size: 20px;
-		font-family: var(--display);
-		font-weight: 800;
+	.price b {
+		font-size: 17px;
+		line-height: 1;
+		color: var(--ink);
+	}
+	/* not yet: the price softer, a small lock */
+	.price.short b {
+		color: var(--ink-3);
+	}
+	.price.short :global(.coin) {
+		opacity: 0.6;
+	}
+	.lock {
+		width: 15px;
+		height: 15px;
+		color: var(--ink-3);
+		stroke-width: 2.4;
 	}
 	.state {
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--muted);
+		color: var(--ink-3);
+	}
+	/* what the player wears: gold, the colour of what is theirs */
+	.tile.worn {
+		box-shadow:
+			inset 0 0 0 3px var(--gold),
+			0 3px 0 var(--gold-lo),
+			0 10px 20px var(--shade);
 	}
 	.state.on {
-		color: var(--sky-ink);
+		color: var(--gold-on-panel);
 	}
-	:global(:root[data-theme='dark']) .state.on {
-		color: var(--sky);
+	.state .icon,
+	.worn-line .icon {
+		width: 17px;
+		height: 17px;
+		stroke-width: 3;
 	}
+	/* a laptop: the frames a whole row, pins and trails side by side: no row with a hole */
+	@media (min-width: 900px) {
+		.kinds {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			column-gap: 28px;
+		}
+		.frame {
+			grid-column: 1 / -1;
+		}
+		.frame .grid {
+			grid-template-columns: repeat(5, minmax(0, 1fr));
+		}
+		.grid {
+			gap: 14px;
+		}
+	}
+
+	/* the sheet: the thing big, then one key */
 	.sheet {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 12px;
-		padding-top: 4px;
+		gap: 14px;
+		padding-top: 6px;
+	}
+	.stage {
+		align-self: stretch;
+		display: grid;
+		place-items: center;
+		padding: 10px 0;
+		border-radius: 20px;
+		background: var(--panel-2);
 	}
 	.pop {
-		animation: pop-item 0.7s var(--pop) both;
+		animation: pop-item 0.7s var(--spring) both;
 	}
 	@keyframes pop-item {
 		0% {
-			transform: scale(0.85);
-			filter: brightness(1);
+			transform: scale(0.9);
 		}
 		45% {
-			transform: scale(1.22);
-			filter: brightness(1.25) drop-shadow(0 0 14px #e8a90c);
+			transform: scale(1.08);
+			filter: brightness(1.15) drop-shadow(0 0 14px var(--gold));
 		}
 		100% {
 			transform: scale(1);
-			filter: brightness(1);
 		}
 	}
 	.yours {
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 17px;
-		color: var(--green-ink);
-		min-height: 58px;
+		min-height: 64px;
+		font-size: 24px;
+		line-height: 64px;
+		color: var(--gold-on-panel);
+		animation: pop-in 0.35s var(--spring) both;
 	}
-	:global(:root[data-theme='dark']) .yours {
-		color: var(--green);
+	.worn-line {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-weight: 700;
+		color: var(--gold-on-panel);
 	}
 	.act {
 		width: 100%;
-		height: 58px;
-		font-size: 16px;
-		display: flex;
+	}
+	.btn-primary .lbl {
+		display: inline-flex;
 		align-items: center;
-		justify-content: center;
 		gap: 8px;
 	}
-	.note {
-		color: var(--muted);
+	.btn-primary :global(.coin) {
+		filter: drop-shadow(0 2px 0 var(--key-shade));
+	}
+	.short-of {
+		align-self: stretch;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.have {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+	.have span {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.have b {
+		font-size: 20px;
+		line-height: 1;
+	}
+	.have .of b {
+		color: var(--ink-3);
+	}
+	.bar {
+		height: 14px;
+		border-radius: 7px;
+		background: var(--panel-2);
+		box-shadow: inset 0 0 0 1.5px var(--panel-line);
+		overflow: hidden;
+	}
+	.bar i {
+		display: block;
+		height: 100%;
+		border-radius: 7px;
+		background: linear-gradient(180deg, var(--key-hi), var(--key));
+		box-shadow: inset 0 -2px 0 var(--key-lo);
+	}
+	.need {
 		text-align: center;
+		font-weight: 700;
+		color: var(--ink-2);
 	}
 </style>

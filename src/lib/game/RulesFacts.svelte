@@ -3,13 +3,14 @@
 	// rounds (a flag), how much time (a clock). The home's settings line and a room's lobby.
 	// compact: on a phone the facts share one line with the place's sign (a room's lobby), so
 	// the rounds are a number by the flag and the clock shows only when there is a limit.
+	// Its words take the colour around them: white on the ground, ink on a panel.
 	import { t } from '#lib/i18n/index.svelte.js';
 	import { fmtClock } from '#lib/format.js';
 	import type { Choice } from '#lib/rules.js';
 
 	let { choice, compact = false }: { choice: Choice; compact?: boolean } = $props();
 
-	const diffColor = { easy: 'var(--green)', normal: 'var(--star)', hard: 'var(--red)' };
+	const diffColor = { easy: 'var(--key)', normal: 'var(--gold)', hard: 'var(--red)' };
 	const rounds = $derived(choice.rounds ? t('nRounds', { n: choice.rounds }) : t('endlessShort'));
 	const time = $derived(choice.timeSec ? fmtClock(choice.timeSec) : t('noTimeLimit'));
 </script>
@@ -56,12 +57,13 @@
 	.fact .icon {
 		width: 17px;
 		height: 17px;
-		color: var(--muted);
+		opacity: 0.75;
 	}
 	.diff {
 		width: 12px;
 		height: 12px;
 		border-radius: 50%;
+		box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 22%, transparent);
 	}
 	.short {
 		display: none;

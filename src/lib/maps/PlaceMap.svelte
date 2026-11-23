@@ -13,27 +13,30 @@
 
 <script lang="ts">
 	// A place's map for choosing where to play (P1028 4.2): its regions or districts drawn from
-	// their borders, the way people know the map of Uzbekistan and of Tashkent. Paper where the
-	// player hasn't been, gold as streets are learned, names where they fit (a name is a tap on
-	// its place). A town with panoramas too small to tap (Tashkent on the country's map, a town
-	// in a region) is a dot with its name in a pill; dots that would sit on each other step
-	// apart, a short line back to their place. A tap on a place with places inside flies into
-	// it (ondrill); a tap on one without picks it (onpick). Places without panoramas are hatched
-	// and say "Tez orada". The page says what plays; the map only shows it: `lit` places in sky
-	// blue, `whole` the whole map edged, `marks` as gold stars with their names. With zoomable a
-	// pinch, the wheel, or + and − go close, and a finger or the mouse moves the map: the same
-	// places, never the level below. Close up names are laid out again, every place gets one, with
-	// panoramas or not: a player learns the shapes and names by looking.
+	// their borders, the way people know the map of Uzbekistan and of Tashkent. In the game's look
+	// (decision 0024) it is the home's map: milk tiles with turquoise seams lying on the ground,
+	// gold only as streets are learned (a place only played in stays milk), names where they fit
+	// (a name is a tap on its place). A town with panoramas too small to tap (Tashkent on the country's map, a town in a region) is a
+	// round badge with its name in a pill; badges that would sit on each other step apart, a
+	// short line back to their place. A tap on a place with places inside flies into it
+	// (ondrill); a tap on one without picks it (onpick). Places without panoramas are quiet,
+	// faintly hatched, and say "Tez orada". The page says what plays; the map only shows it, in
+	// the colours the home uses: `lit` places (chosen) ringed gold, `marked` places (tapped, not
+	// yet played) blue, `whole` the whole map edged gold, `marks` as gold stars with their names.
+	// With zoomable a pinch, the wheel, or + and − go close, and a finger or the mouse moves the
+	// map: the same places, never the level below. Close up names are laid out again, every place
+	// gets one, with panoramas or not: a player learns the shapes and names by looking.
 	import type { Schemas } from '#lib/api/client.js';
 	import { t, tx } from '#lib/i18n/index.svelte.js';
 	import Progress from './Progress.svelte';
-	import { fewPlaces, knownTint, shortName } from './progress.js';
+	import { fewPlaces, knownTint, learnedAny, shortName } from './progress.js';
 
 	type Card = Schemas['PlaceCard'];
 	interface Props {
 		drawing: Schemas['PlaceMap'];
 		cards: Card[]; // the drawing's places: names, panoramas, progress
-		lit?: string[];
+		lit?: string[]; // chosen: what plays, ringed gold
+		marked?: string[]; // tapped, not yet played: blue, as the home marks a district
 		whole?: boolean;
 		marks?: Mark[];
 		glow?: string; // a first visit: this place glows under "Shu yerdan boshlang"
@@ -48,6 +51,7 @@
 		drawing,
 		cards,
 		lit = [],
+		marked = [],
 		whole = false,
 		marks = [],
 		glow = '',
@@ -59,12 +63,19 @@
 		crop
 	}: Props = $props();
 
-	const hatch = `hatch-${++maps}`;
+	const id = ++maps;
+	const hatch = `hatch-${id}`;
+	const tile = `tile-${id}`; // the milk tiles' gradient
+	const gold = `gold-${id}`; // the chosen badge's and the stars' gold
+	// the places the bar already names (chosen or marked): the caption keeps quiet about them
+	const named = $derived([...lit, ...marked]);
 	const FONT = 12.5; // a name's size on screen, px
 	const BADGE = 11; // a town's dot radius on screen, px
 
 	const pad = $derived(Math.max(drawing.width, drawing.height) * 0.03);
-	// the frame: the whole place, its own shape (the owner: "see that region with its tumanlar")
+	// the frame: the whole place, its own shape (the owner: "see that region with its tumanlar").
+	// The whole map is as tall as --map-h at most (a screen sets it to the room it has), else
+	// 560 px or 58% of the window
 	const vb = $derived.by(() => {
 		const [x0, y0, x1, y1] = crop ?? [0, 0, drawing.width, drawing.height];
 		return { x: x0 - pad, y: y0 - pad, w: x1 - x0 + 2 * pad, h: y1 - y0 + 2 * pad };
@@ -365,7 +376,7 @@
 	});
 
 	let ctx: CanvasRenderingContext2D | null = null;
-	function textWidth(s: string, size = FONT, font = '--body', weight = 700): number {
+	function textWidth(s: string, size = FONT, font = '--f-text', weight = 700): number {
 		ctx ??= document.createElement('canvas').getContext('2d');
 		if (!ctx) return s.length * size * 0.62;
 		const family = getComputedStyle(document.documentElement).getPropertyValue(font);
@@ -379,7 +390,7 @@
 	const tag = $derived.by(() => {
 		if (!glowItem || !width) return null;
 		const text = t('startHere');
-		const tw = textWidth(text, 13, '--display', 800) * k;
+		const tw = textWidth(text, 13, '--f-disp', 900) * k;
 		const w = tw + 28 * k;
 		const h = 26 * k;
 		if (closer > 1) return null; // it points from the whole map's empty sky
@@ -420,11 +431,12 @@
 		]);
 		for (const m of stars) taken.push([m.x - 10 * k, m.y - 10 * k, m.x + 10 * k, m.y + 10 * k]);
 		if (tag) taken.push([tag.x, tag.y, tag.x + tag.w, tag.y + tag.h]);
-		// close up the + and − stand over the map, in the frame's corner
+		// close up the − and + (a row of two, over the caption) stand over the map, in the frame's
+		// corner
 		if (zoomable && closer > 1)
 			taken.push([
-				frame.x + frame.w - 60 * k,
-				frame.y + frame.h - 134 * k,
+				frame.x + frame.w - 112 * k,
+				frame.y + frame.h - 84 * k,
 				frame.x + frame.w,
 				frame.y + frame.h
 			]);
@@ -471,7 +483,7 @@
 			anywhere = false // a town with no clean spot: any free one (it keeps its name)
 		): boolean {
 			const size = mark?.link ? FONT * 0.8 : district ? FONT * 0.85 : FONT;
-			const w = textWidth(text, size, '--body', 800) * k + (mark?.link ? 0 : 12 * k);
+			const w = textWidth(text, size, '--f-text', 800) * k + (mark?.link ? 0 : 12 * k);
 			const h = size * (mark?.link ? 1.2 : 1.5) * k;
 			const far = !!it; // towns and districts may go out with a line; stars stay by theirs
 			// straight above or below, moved in from the map's edge if it must
@@ -839,7 +851,7 @@
 	let hover = $state<Card | null>(null);
 	let told = $state<Card | null>(null);
 	let toldTimer: ReturnType<typeof setTimeout> | undefined;
-	const shown = $derived(hover && lit.includes(hover.slug) ? told : (hover ?? told));
+	const shown = $derived(hover && named.includes(hover.slug) ? told : (hover ?? told));
 	const enter = (e: PointerEvent, c: Card) => {
 		if (e.pointerType === 'mouse') hover = c;
 	};
@@ -902,13 +914,24 @@
 		bind:this={svgEl}
 		bind:clientWidth={width}
 		bind:clientHeight={height}
-		style:max-width={`calc(min(560px, 58dvh) * ${vb.w / vb.h})`}
+		style:max-width={`calc(var(--map-h, min(560px, 58dvh)) * ${vb.w / vb.h})`}
 		style:aspect-ratio={`${vb.w} / ${vb.h}`}
 		viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
+		style:--tg={`url(#${tile})`}
+		style:--tau={`url(#${gold})`}
 		role="group"
 		aria-label={t('placesTitle')}
 	>
 		<defs>
+			<!-- each tile lit from above, as the home's map -->
+			<linearGradient id={tile} x1="0" y1="0" x2="0" y2="1">
+				<stop offset="0" style:stop-color="var(--tile-a)" />
+				<stop offset="1" style:stop-color="var(--tile-b)" />
+			</linearGradient>
+			<linearGradient id={gold} x1="0" y1="0" x2="0" y2="1">
+				<stop offset="0" style:stop-color="var(--gold-hi)" />
+				<stop offset="1" style:stop-color="var(--gold)" />
+			</linearGradient>
 			<pattern
 				id={hatch}
 				width={8 * k}
@@ -922,16 +945,37 @@
 		</defs>
 		<g class="world" style:transform={zoom || null}>
 			<!-- the shapes alone carry the whole place's glow: the names stay sharp -->
-			<g class="shapes" class:whole>
+			<g class="shapes">
+				<!-- the whole place is what plays: every part stroked wide in gold underneath, so only
+				     the outer half shows, a gold ring round the whole -->
+				{#if whole}
+					<g class="ring" aria-hidden="true">
+						{#each items as it (it.card.slug)}
+							<path d={it.d} />
+						{/each}
+					</g>
+				{/if}
+				<!-- a town under its badge, or a place too small to draw, still fills its spot: no
+				     hole shows the ground (or the ring) through the land -->
+				{#each items.filter((it) => it.badge || !drawn.includes(it)) as it (it.card.slug)}
+					<path
+						d={it.d}
+						class="shape under"
+						class:learned={learnedAny(it.card.progress)}
+						class:soon={it.card.panoramas === 0}
+						style:--known={knownTint(it.card.progress)}
+						aria-hidden="true"
+					/>
+				{/each}
 				{#each drawn.filter((it) => !it.badge) as it (it.card.slug)}
 					{@const on = it.card.panoramas > 0}
 					<path
 						d={it.d}
 						class="shape"
-						class:played={it.card.progress.seen > 0}
+						class:learned={learnedAny(it.card.progress)}
+						class:pk={marked.includes(it.card.slug)}
 						class:soon={!on}
 						class:target={flying === it.card.slug}
-						class:under={it.badge}
 						style:--known={knownTint(it.card.progress)}
 						style:fill={on ? null : `url(#${hatch})`}
 						role="button"
@@ -945,10 +989,15 @@
 						onblur={() => (hover = null)}
 					/>
 				{/each}
-				<!-- the lit places and the hovered one, edged over their neighbours -->
+				<!-- the chosen, the marked and the hovered place, edged over their neighbours -->
 				{#each drawn as it (it.card.slug)}
-					{#if !it.badge && (lit.includes(it.card.slug) || (hover?.slug === it.card.slug && hover.panoramas > 0))}
-						<path d={it.d} class="edge" class:lit={lit.includes(it.card.slug)} />
+					{#if !it.badge && (named.includes(it.card.slug) || (hover?.slug === it.card.slug && hover.panoramas > 0))}
+						<path
+							d={it.d}
+							class="edge"
+							class:lit={lit.includes(it.card.slug)}
+							class:pk={marked.includes(it.card.slug)}
+						/>
 					{/if}
 				{/each}
 			</g>
@@ -970,7 +1019,9 @@
 				{#if dot}
 					<g
 						class="badge"
+						class:learned={learnedAny(it.card.progress)}
 						class:lit={lit.includes(it.card.slug)}
+						class:pk={marked.includes(it.card.slug)}
 						class:glow={glow === it.card.slug}
 						class:gone={stars.length > 0 && !lit.includes(it.card.slug)}
 						role="button"
@@ -988,6 +1039,10 @@
 							<circle cx={it.x} cy={it.y} r={2.5 * k} class="spot" />
 						{/if}
 						<circle cx={dot.x} cy={dot.y} r={(BADGE + 3) * k} class="hit" />
+						<!-- the chosen town calls, as the home's badge does -->
+						{#if lit.includes(it.card.slug)}
+							<circle cx={dot.x} cy={dot.y} r={BADGE * k} class="pulse" />
+						{/if}
 						<circle
 							cx={dot.x}
 							cy={dot.y}
@@ -1010,6 +1065,8 @@
 					class:quiet={!!l.it && l.it.badge && marks.some((m) => !m.link)}
 					class:soon={!!l.it && l.it.card.panoramas === 0}
 					class:few={!!l.it && fewPlaces(l.it.card)}
+					class:pk={!!l.it && marked.includes(l.it.card.slug)}
+					class:au={!!l.it && lit.includes(l.it.card.slug) && (l.pill || l.it.badge)}
 					transform={l.angle ? `rotate(${l.angle} ${l.x} ${l.y})` : undefined}
 					onclick={() => (l.it ? tap(l.it) : l.mark && onmark?.(l.mark))}
 					onpointerenter={(e) => l.it && enter(e, l.it.card)}
@@ -1033,7 +1090,7 @@
 						x={l.x}
 						y={l.y}
 						style:text-anchor={l.anchor}
-						class:on={!!l.it && (lit.includes(l.it.card.slug) || hover?.slug === l.it.card.slug)}
+						class:on={!!l.it && (named.includes(l.it.card.slug) || hover?.slug === l.it.card.slug)}
 						style:font-size={`${l.size * k}px`}
 						style:stroke-width={l.pill ? '0' : `${3 * k}px`}
 						>{#if l.lines}{#each l.lines as ln, i (i)}<tspan
@@ -1083,7 +1140,7 @@
 	{/if}
 	<figcaption class="caption">
 		{#if shown}
-			<b>{tx(shown.name)}</b>
+			<b class="d">{tx(shown.name)}</b>
 			{#if shown.panoramas > 0}<Progress progress={shown.progress} />{:else}<span>{t('soon')}</span
 				>{/if}
 		{/if}
@@ -1091,95 +1148,143 @@
 </figure>
 
 <style>
+	/* the map's lettering is dark ink by day and by night: the tiles are milk in both */
 	.map {
+		--map-ink: #0b3b44;
+		--map-ink-2: #3a5d63;
+		--map-line: rgba(11, 59, 68, 0.75); /* a pill's line back to its place */
+		/* what the player has learned: a light gold wash at the first street learned (the home's
+		   --gold-hi thinned on the milk) to a rich gold when every street is learned; --known
+		   (learned ÷ all, knownTint) says how far along a place is. Played and not learned: milk */
+		--learn-lo: color-mix(in srgb, var(--gold-hi) 60%, var(--tile-a));
+		--learn-hi: color-mix(in srgb, var(--gold) 80%, var(--gold-lo));
 		position: relative;
 		margin: 0;
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
-		animation: rise 0.35s var(--settle) both;
+		animation: rise 0.35s var(--out) both;
+	}
+	/* by night a pill's line crosses the dark ground too: a lighter teal reads on both */
+	:global(:root[data-theme='dark']) .map {
+		--map-line: #73a9ae;
 	}
 	svg {
 		width: 100%;
 		margin: 0 auto;
 		overflow: visible;
-		filter: drop-shadow(0 6px 10px rgba(19, 35, 63, 0.16));
 		-webkit-tap-highlight-color: transparent;
+	}
+	/* the tiles float on a glow and a stacked shadow, as the home's map (the shapes alone: the
+	   names stay sharp) */
+	.shapes {
+		filter: drop-shadow(0 0 18px var(--map-glow)) drop-shadow(0 5px 0 var(--map-shadow));
+	}
+	.ring path {
+		fill: var(--gold);
+		fill-rule: evenodd;
+		stroke: var(--gold);
+		stroke-width: 7px;
+		stroke-linejoin: round;
+		vector-effect: non-scaling-stroke;
+		transition: opacity 0.3s;
 	}
 	.zoomable {
 		touch-action: pan-y;
 	}
-	/* close up: the map fills its space, cut softly at the top and bottom; no shadow to redraw */
+	/* close up: the map fills its space, cut softly at its edges into the ground; no shadow to
+	   redraw while it moves */
 	.close {
 		overflow: clip;
 		mask-image:
 			linear-gradient(to bottom, transparent, #000 12px, #000 calc(100% - 12px), transparent),
 			linear-gradient(to right, transparent, #000 12px, #000 calc(100% - 12px), transparent);
 		mask-composite: intersect;
-	}
-	.close {
 		touch-action: none;
 		cursor: grab;
 	}
 	.close:active {
 		cursor: grabbing;
 	}
-	.close svg,
-	.close .shapes.whole {
+	.close .shapes {
 		filter: none;
 	}
 	.close .caption:not(:has(b)) {
 		display: none;
 	}
+	/* close up the caption is a milk pill over the map */
 	.close .caption {
+		--fg: var(--ink);
+		--fg-2: var(--ink-3);
 		position: absolute;
 		left: 50%;
 		bottom: 8px;
 		translate: -50%;
 		min-height: 0;
-		padding: 2px 12px;
+		padding: 3px 14px;
 		border-radius: 999px;
 		white-space: nowrap;
-		background: var(--surface);
+		background: var(--panel);
+		box-shadow: 0 3px 0 var(--panel-lip);
 	}
+	/* − and +: small milk keys with a lip, like the home's corner square; side by side, low, so
+	   the whole map stays clear of them */
 	.zoom {
 		position: absolute;
 		right: 12px;
 		bottom: 34px;
 		display: flex;
-		flex-direction: column;
-		gap: 6px;
+		flex-direction: row-reverse;
+		gap: 10px;
 		z-index: 1;
 	}
 	.zoom button {
 		display: grid;
 		place-items: center;
-		width: 40px;
-		height: 40px;
-		border-radius: 12px;
-		background: var(--surface);
-		border: 1px solid var(--border);
-		color: var(--text);
-		box-shadow: 0 2px 0 rgba(0, 0, 0, 0.12);
+		width: 42px;
+		height: 42px;
+		border: none;
+		border-radius: 14px;
+		background: var(--panel);
+		color: var(--ink);
+		box-shadow:
+			inset 0 0 0 1px var(--panel-line),
+			0 3px 0 var(--panel-lip),
+			0 8px 16px -6px rgba(0, 0, 0, 0.35);
 		cursor: pointer;
+		transition:
+			transform 0.1s var(--out),
+			box-shadow 0.1s var(--out),
+			opacity 0.15s;
+	}
+	.zoom button:active:not(:disabled) {
+		transform: translateY(2px);
+		box-shadow:
+			inset 0 0 0 1px var(--panel-line),
+			0 1px 0 var(--panel-lip);
 	}
 	.zoom svg {
 		width: 22px;
 		height: 22px;
-		filter: none;
+		stroke-width: 2.8;
 	}
 	.zoom button:disabled {
-		opacity: 0.4;
+		opacity: 0.45;
 		cursor: default;
 	}
 	.world {
 		transform-origin: 0 0;
-		transition: transform 0.43s var(--settle);
+		transition: transform 0.43s var(--out);
 	}
+
+	/* ---------- the tiles ---------- */
+	/* a part's holes are holes (Toshkent viloyati round the city): the server's rings are
+	   even-odd, as `within` reads them */
 	.shape {
-		fill: color-mix(in srgb, var(--star) var(--known), var(--bg));
-		stroke: var(--lapis);
-		stroke-width: 1.3px;
+		fill: var(--tg);
+		fill-rule: evenodd;
+		stroke: var(--seam);
+		stroke-width: 1.2px;
 		vector-effect: non-scaling-stroke;
 		stroke-linejoin: round;
 		cursor: pointer;
@@ -1188,22 +1293,168 @@
 			opacity 0.3s;
 		outline: none;
 	}
-	.shape:hover:not(.soon) {
-		fill: color-mix(
-			in srgb,
-			var(--sky) 14%,
-			color-mix(in srgb, var(--star) var(--known), var(--bg))
-		);
+	/* what the player has learned there: a gold wash, deeper with every street learned */
+	.shape.learned {
+		fill: color-mix(in srgb, var(--learn-hi) var(--known), var(--learn-lo));
 	}
-	/* "Tez orada" borders thin: where two of them zig-zag along a reservoir, no black tangle */
+	.shape:hover:not(.soon, .pk) {
+		fill: color-mix(in srgb, var(--picked) 12%, var(--tile-a));
+	}
+	.shape:focus-visible {
+		stroke: var(--gold);
+		stroke-width: 3px;
+	}
+	/* marked: blue, as the home marks a district */
+	.shape.pk {
+		fill: var(--picked);
+		stroke: var(--picked-line);
+	}
+	/* "Tez orada": the home's quiet tile, faintly hatched, thin borders (where two of them
+	   zig-zag along a reservoir, no tangle) */
 	.shape.soon {
 		cursor: default;
 		stroke-width: 0.6px;
-		stroke: color-mix(in srgb, var(--lapis) 45%, transparent);
+		stroke: color-mix(in srgb, var(--seam) 60%, transparent);
 	}
 	.shape.under {
 		stroke: none;
 		pointer-events: none;
+	}
+	.shape.under.soon {
+		fill: var(--tile-quiet);
+	}
+	.hatch-bg {
+		fill: var(--tile-quiet);
+	}
+	.hatch-line {
+		stroke: color-mix(in srgb, var(--seam) 22%, transparent);
+	}
+	/* the hovered place's edge over its neighbours' seams: blue, what a tap does */
+	.edge {
+		fill: none;
+		stroke: var(--picked);
+		stroke-width: 2.4px;
+		stroke-linejoin: round;
+		vector-effect: non-scaling-stroke;
+		pointer-events: none;
+	}
+	.edge.pk {
+		stroke: var(--picked-line);
+		stroke-width: 2px;
+	}
+	/* the chosen place: a gold ring */
+	.edge.lit {
+		stroke: var(--gold-lo);
+		stroke-width: 3.4px;
+	}
+
+	/* ---------- towns, stars ---------- */
+	.badge {
+		cursor: pointer;
+		outline: none;
+	}
+	.badge .hit {
+		fill: transparent;
+	}
+	.badge .disc {
+		fill: var(--tg);
+		stroke: var(--seam);
+		transition: fill 0.15s;
+	}
+	.badge.learned .disc {
+		fill: color-mix(in srgb, var(--learn-hi) var(--known), var(--learn-lo));
+	}
+	.badge .dot {
+		fill: var(--seam);
+	}
+	.badge:hover .disc,
+	.badge:focus-visible .disc {
+		stroke: var(--picked);
+	}
+	.badge.pk .disc {
+		fill: var(--picked);
+		stroke: #fff;
+	}
+	.badge.pk .dot {
+		fill: #fff;
+	}
+	/* the chosen town: gold with a white rim, calling */
+	.badge.lit .disc {
+		fill: var(--tau);
+		stroke: #fff;
+	}
+	.badge.lit .dot {
+		fill: #fff;
+		stroke: var(--gold-lo);
+		stroke-width: 2px;
+		vector-effect: non-scaling-stroke;
+	}
+	.pulse {
+		fill: none;
+		stroke: var(--gold);
+		stroke-width: 3px;
+		vector-effect: non-scaling-stroke;
+		transform-box: fill-box;
+		transform-origin: center;
+		animation: pulse 2.2s var(--out) infinite;
+		pointer-events: none;
+	}
+	@keyframes pulse {
+		0% {
+			transform: scale(1);
+			opacity: 0.9;
+		}
+		100% {
+			transform: scale(2.3);
+			opacity: 0;
+		}
+	}
+	.badge.glow .disc {
+		animation: beacon 1.6s ease-in-out infinite;
+	}
+	@keyframes beacon {
+		50% {
+			stroke: var(--gold);
+			filter: drop-shadow(0 0 6px var(--gold));
+		}
+	}
+	.badge.gone {
+		display: none;
+	}
+	.star {
+		fill: var(--tau);
+		stroke: var(--gold-lo);
+		stroke-width: 1.2px;
+		stroke-linejoin: round;
+		vector-effect: non-scaling-stroke;
+		pointer-events: none;
+		animation: pop-in 0.35s var(--spring) both;
+	}
+	.leader {
+		stroke: var(--map-line);
+		stroke-width: 1.5px;
+		vector-effect: non-scaling-stroke;
+	}
+	.spot {
+		fill: var(--map-line);
+	}
+
+	/* ---------- names ---------- */
+	text {
+		font-family: var(--f-text);
+		font-weight: 700;
+		text-anchor: middle;
+		dominant-baseline: middle;
+		fill: var(--map-ink);
+		stroke: color-mix(in srgb, var(--tile-a) 85%, transparent);
+		paint-order: stroke;
+		pointer-events: none;
+		opacity: 0.88;
+		transition: opacity 0.2s;
+	}
+	text.on {
+		opacity: 1;
+		font-weight: 800;
 	}
 	.label {
 		cursor: pointer;
@@ -1217,177 +1468,57 @@
 	.label text {
 		pointer-events: visiblePainted;
 	}
+	/* a town's or a narrow place's name: a milk pill, so it reads over any border and over the
+	   ground */
 	.label.pill .hit {
 		pointer-events: all;
-	}
-	/* a town's or an old city's name: a pill, so it reads over any border */
-	.label.pill .hit {
-		fill: var(--surface);
-		stroke: color-mix(in srgb, var(--lapis) 35%, transparent);
-	}
-	.label.star-name .hit {
-		fill: var(--star);
-		stroke: none;
-	}
-	.label.star-name text {
-		fill: #3a2600;
-		opacity: 1;
-	}
-	/* the capital in its region's hole: its name, navy, a tap away */
-	.label.link text {
-		fill: var(--lapis);
-		font-weight: 800;
-		opacity: 1;
-	}
-	:global(:root[data-theme='dark']) .label.link text {
-		fill: var(--text);
+		fill: var(--tile-a);
+		stroke: var(--seam);
 	}
 	.quiet {
 		opacity: 0.3;
 	}
-	.badge.gone {
-		display: none;
-	}
+	/* few panoramas there yet, or none: the name quieter */
 	.label.few text {
-		font-style: italic;
+		fill: var(--map-ink-2);
 	}
 	.label.soon text {
-		fill: var(--muted);
+		fill: var(--map-ink-2);
+		stroke: color-mix(in srgb, var(--tile-quiet) 85%, transparent);
 	}
-	.leader {
-		stroke: var(--lapis);
-		stroke-width: 1.5px;
-		vector-effect: non-scaling-stroke;
+	/* the marked place's name: white on its blue (a pill turns blue with it) */
+	.label.pk text {
+		fill: #fff;
+		stroke: var(--picked);
 	}
-	.spot {
-		fill: var(--lapis);
+	.label.pill.pk .hit {
+		fill: var(--picked);
+		stroke: var(--picked-line);
 	}
-	/* in the dark a pill's line and dot in the light text colour, the pill lightly edged */
-	:global(:root[data-theme='dark']) .leader {
-		stroke: color-mix(in srgb, var(--text) 60%, transparent);
+	/* the chosen town's pill and an old city's star name: gold */
+	.label.pill.au .hit,
+	.label.star-name .hit {
+		fill: var(--tau);
+		stroke: var(--gold-lo);
 	}
-	:global(:root[data-theme='dark']) .spot {
-		fill: color-mix(in srgb, var(--text) 60%, transparent);
-	}
-	:global(:root[data-theme='dark']) .label.pill .hit {
-		stroke: color-mix(in srgb, var(--text) 35%, transparent);
-	}
-	.hatch-bg {
-		fill: var(--surface-2);
-	}
-	.hatch-line {
-		stroke: color-mix(in srgb, var(--muted) 35%, transparent);
-	}
-	/* in the dark the playable places are the raised navy of the page's cards; "Tez orada"
-	   sinks into the background with a fainter hatch, as paper and drab hatch do in the light */
-	:global(:root[data-theme='dark']) .shape {
-		fill: color-mix(in srgb, var(--star) var(--known), var(--surface-2));
-		stroke: color-mix(in srgb, var(--sky) 55%, var(--bg));
-	}
-	:global(:root[data-theme='dark']) .hatch-bg {
-		fill: var(--bg);
-	}
-	:global(:root[data-theme='dark']) .hatch-line {
-		stroke: color-mix(in srgb, var(--muted) 18%, transparent);
-	}
-	/* where the player has been: a gold edge, on the paper and on the night blue */
-	.shape.played {
-		stroke: var(--gold);
-	}
-	:global(:root[data-theme='dark']) .shape.played {
-		fill: color-mix(in srgb, var(--star) var(--known), var(--surface));
-		stroke: var(--star);
-	}
-	.edge {
-		fill: none;
-		stroke: var(--sky);
-		stroke-width: 2.4px;
-		vector-effect: non-scaling-stroke;
-		pointer-events: none;
-	}
-	.edge.lit {
-		fill: color-mix(in srgb, var(--sky) 30%, transparent);
-		stroke-width: 3.4px;
-	}
-	/* the whole place is what plays: its outline glows (the shapes only: names stay sharp) */
-	.shapes.whole {
-		filter: drop-shadow(0 0 1.5px var(--sky)) drop-shadow(0 0 1.5px var(--sky));
-	}
-	.star {
-		fill: var(--star);
-		stroke: #7a5200;
-		stroke-width: 1.2px;
-		vector-effect: non-scaling-stroke;
-		pointer-events: none;
-		animation: pop-in 0.35s var(--pop) both;
-	}
-	.badge {
-		cursor: pointer;
-		outline: none;
-	}
-	.badge .hit {
-		fill: transparent;
-	}
-	.badge .disc {
-		fill: color-mix(in srgb, var(--star) var(--known), var(--surface));
-		stroke: var(--lapis);
-		transition: fill 0.15s;
-	}
-	.badge .dot {
-		fill: var(--lapis);
-	}
-	/* in the dark an unpicked town's ring is the borders' colour: teal is only a pick's */
-	:global(:root[data-theme='dark']) .badge .disc {
-		stroke: color-mix(in srgb, var(--sky) 55%, var(--bg));
-	}
-	:global(:root[data-theme='dark']) .badge .dot {
-		fill: color-mix(in srgb, var(--sky) 55%, var(--bg));
-	}
-	:global(:root[data-theme='dark']) .badge.lit .disc {
-		stroke: var(--sky);
-	}
-	:global(:root[data-theme='dark']) .badge.lit .dot {
-		fill: var(--sky);
-	}
-	.badge:hover .disc,
-	.badge:focus-visible .disc,
-	.badge.lit .disc {
-		stroke: var(--sky);
-		fill: color-mix(in srgb, var(--sky) 35%, var(--surface));
-	}
-	.badge.lit .dot {
-		fill: var(--sky);
-	}
-	.badge.glow .disc {
-		animation: beacon 1.6s ease-in-out infinite;
-	}
-	@keyframes beacon {
-		50% {
-			stroke: var(--star);
-			filter: drop-shadow(0 0 6px var(--star));
-		}
-	}
-	text {
-		font-family: var(--body);
-		font-weight: 700;
-		text-anchor: middle;
-		dominant-baseline: middle;
-		fill: var(--text);
-		stroke: color-mix(in srgb, var(--bg) 85%, transparent);
-		paint-order: stroke;
-		pointer-events: none;
-		opacity: 0.85;
-		transition: opacity 0.2s;
-	}
-	text.on {
+	.label.au text,
+	.label.star-name text {
+		fill: var(--gold-ink);
 		opacity: 1;
+	}
+	/* the capital in its region's hole: on the ground, white */
+	.label.link text {
+		fill: var(--fg);
+		stroke: none;
 		font-weight: 800;
+		opacity: 1;
 	}
 	/* flying into a place: the rest fades, the names go (they would grow huge) */
 	.flying .shape:not(.target),
 	.flying .badge,
 	.flying .star,
-	.flying .edge {
+	.flying .edge,
+	.flying .ring path {
 		opacity: 0.15;
 	}
 	.flying text {
@@ -1395,26 +1526,31 @@
 	}
 	.start-here {
 		pointer-events: none;
-		animation: pop-in 0.4s var(--pop) both;
+		animation: pop-in 0.4s var(--spring) both;
 	}
 	.start-here rect {
-		fill: var(--star);
+		fill: var(--tau);
+		stroke: var(--gold-lo);
+		stroke-width: 1.5px;
+		vector-effect: non-scaling-stroke;
 	}
 	.start-here line {
-		stroke: var(--star);
+		stroke: var(--gold);
 		stroke-dasharray: 2 3;
 		vector-effect: non-scaling-stroke;
 	}
 	.start-here text {
-		font-family: var(--display);
-		font-weight: 800;
-		fill: #3a2600;
+		font-family: var(--f-disp);
+		font-weight: 900;
+		fill: var(--gold-ink);
 		stroke: none;
 		opacity: 1;
 	}
 	.flying .start-here {
 		opacity: 0;
 	}
+	/* under the map: what the mouse is over, or a "Tez orada" place just tapped. It follows the
+	   colour around it (the ground here, a panel wherever a screen puts the map on one) */
 	.caption {
 		display: flex;
 		align-items: center;
@@ -1422,12 +1558,12 @@
 		gap: 12px;
 		min-height: 26px;
 		font-size: 14px;
-		color: var(--muted);
+		font-weight: 600;
+		color: var(--fg-2);
 	}
 	.caption b {
-		font-family: var(--display);
-		font-size: 15px;
-		color: var(--text);
+		font-size: 16px;
+		color: var(--fg);
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.world {
@@ -1435,6 +1571,9 @@
 		}
 		.badge.glow .disc {
 			animation: none;
+		}
+		.pulse {
+			display: none;
 		}
 	}
 </style>

@@ -1,11 +1,21 @@
 <script lang="ts">
-	// The top bar in the new look (P1111 1.1): the name with its gold star ("Geo" in the ground's
-	// ink, "Shafaq" in gold, the letters leaning, the star upright), the language, light or dark,
-	// and the player's face as a gold coin (their name beside it on a laptop). It behaves as
-	// TopBar does; TopBar stays for the screens still in the old look until session 3.
+	// The top bar of every page: the name with its gold star ("Geo" white on the ground,
+	// "Shafaq" in gold, the letters leaning, the star upright), the language, light or dark,
+	// and the player's face as a gold coin.
+	// standalone: the bar is a page's first thing (not inside the home's own column), so it
+	// brings its own side margins, the same as the home's, and the bar stays put between pages.
+	// face: false hides the coin (a page that is already about the player's face).
+	// lead: something before the name, e.g. a back key.
+	import type { Snippet } from 'svelte';
 	import { i18n, langs, setLang, t, type Lang } from '#lib/i18n/index.svelte.js';
 	import { theme, toggleTheme } from '#lib/theme.svelte.js';
 	import { session } from '#lib/session.svelte.js';
+
+	let {
+		standalone = false,
+		face = true,
+		lead
+	}: { standalone?: boolean; face?: boolean; lead?: Snippet } = $props();
 
 	const names: Record<Lang, string> = { uz: 'O‘zbekcha', en: 'English', ru: 'Русский' };
 	const short: Record<Lang, string> = { uz: 'O‘z', en: 'En', ru: 'Ru' };
@@ -19,7 +29,8 @@
 
 <svelte:window onclick={() => (langOpen = false)} />
 
-<header class="bar">
+<header class="bar" class:standalone>
+	{@render lead?.()}
 	<a class="brand" href="/">
 		<!-- the eight-point star: the mark of the new look -->
 		<svg viewBox="0 0 32 32" aria-hidden="true">
@@ -73,7 +84,7 @@
 				>
 			{/if}
 		</button>
-		{#if session.me}
+		{#if face && session.me}
 			<!-- the face alone: the greeting under the bar already says the name, as in the lab -->
 			<a class="me" href="/me" title={t('profile')} aria-label={session.me.user.name}>
 				<span class="avatar coin" data-frame={session.me.user.prefs?.frame}
@@ -95,10 +106,14 @@
 		gap: 8px;
 		flex: none;
 	}
+	.standalone {
+		padding: 0 16px;
+	}
 	.brand {
 		display: flex;
 		align-items: center;
 		gap: 8px;
+		margin-right: auto; /* a lead before it stays at its left */
 		font-size: 23px;
 		letter-spacing: -0.015em;
 		color: var(--on-ground);
@@ -179,7 +194,7 @@
 		box-shadow:
 			inset 0 0 0 1px var(--panel-line),
 			0 4px 0 var(--stack-2),
-			var(--shadow);
+			0 18px 40px var(--shade);
 		display: flex;
 		flex-direction: column;
 		animation: drop 0.25s var(--spring);
@@ -237,6 +252,9 @@
 	@media (min-width: 961px) {
 		.bar {
 			height: 78px;
+		}
+		.standalone {
+			padding: 0 40px;
 		}
 		.brand {
 			font-size: 27px;

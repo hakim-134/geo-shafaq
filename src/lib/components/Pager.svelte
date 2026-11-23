@@ -38,7 +38,7 @@
 					class="num"
 					class:on={p === page}
 					aria-current={p === page ? 'page' : undefined}
-					href={href(p)}>{p}</a
+					href={href(p)}><span class="d">{p}</span></a
 				>
 			{/if}
 		{/each}
@@ -54,11 +54,12 @@
 {/if}
 
 <style>
+	/* on the ground: milk tiles with a lip, the page you are on a gold one */
 	.pager {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 6px;
+		gap: 8px;
 		flex-wrap: wrap;
 	}
 	.num,
@@ -69,35 +70,43 @@
 		border-radius: 14px;
 		display: grid;
 		place-items: center;
-		background: var(--surface);
-		color: var(--text);
-		font-family: var(--display);
-		font-weight: 700;
-		font-size: 15px;
+		background: var(--panel);
+		color: var(--ink);
+		font-family: var(--f-disp);
+		font-weight: 900;
+		font-size: 17px;
+		font-variant-numeric: tabular-nums;
 		text-decoration: none;
-		box-shadow: 0 3px 0 var(--edge);
+		box-shadow:
+			0 3px 0 var(--panel-lip),
+			0 8px 16px var(--shade);
 		transition:
-			transform 0.08s,
-			box-shadow 0.08s;
+			transform 0.1s var(--out),
+			box-shadow 0.1s var(--out);
 	}
 	.num:active,
 	.step:active {
 		transform: translateY(2px);
-		box-shadow: 0 1px 0 var(--edge);
+		box-shadow: 0 1px 0 var(--panel-lip);
 	}
 	.num.on {
-		background: var(--sky);
-		color: #fff;
-		box-shadow: 0 3px 0 var(--sky-edge);
+		background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+		color: var(--gold-ink);
+		box-shadow:
+			0 3px 0 var(--gold-lo),
+			0 8px 16px var(--shade);
+	}
+	.step .icon {
+		stroke-width: 2.6;
 	}
 	.step.off {
-		opacity: 0.35;
+		opacity: 0.4;
 		pointer-events: none;
 	}
 	.gap {
 		width: 22px;
 		text-align: center;
-		color: var(--muted);
-		font-weight: 700;
+		color: var(--on-ground-2);
+		font-weight: 800;
 	}
 </style>

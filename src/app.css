@@ -1,7 +1,32 @@
-/* Shafaq Geo — the colours of the flag (sky, white, green, a thin red) with gold and lapis,
-   on warm paper by day and deep night blue at night. Everything a player presses is a
-   chunky plate with a darker edge under it that sinks when pressed, like a road sign's
-   plate or a game button. Shared parts only; each screen keeps its own styles. */
+/* ==========================================================================================
+   GeoShafaq's look (P1111 1.1, decision 0024): turquoise tile, milk, gold, one green key.
+
+   Chosen by the owner in the look lab on 2026-11-19 ("Turquoise tile", M PLUS Rounded leaning a
+   little, capitals on keys, soft corners, raised, tiles; tmp/look-lab/). Khiva's turquoise is
+   the ground, deep at night; text straight on it is white. Raised things are milk panels, never
+   plain white, with ink text; the map of Uzbekistan lies on the ground as milk tiles. Gold is
+   the chosen place, stars and what the player has learned; the picked blue is a place marked
+   but not yet chosen; green is the real place and the one key to press; red is a miss and low
+   time. Titles, numbers and keys are M PLUS Rounded 1c Black, leaning 8° (it has no italic: the
+   lean is a skew, --lean, on an inline-block: the .d class, or .lbl inside a key); text is Onest.
+   Shared parts only; each screen keeps its own styles.
+
+   THE KIT (what the screens use; each is described where it is defined below)
+     lettering   .d (leaning display letters)  .float (a title floating on the ground)
+                 .kick-tag (the small gold tag over a title)  .section-title (a heading)
+     keys        .btn + .btn-primary (THE one key)  .btn-chip (quiet, on the ground)
+                 .btn-ghost (quiet, on a panel)  .btn-danger (leave, remove; + .sure when it
+                 matters)  .btn-sky (a second strong key, rare)  .btn-telegram (Telegram's own)
+                 .link-btn (a word that acts)  .icon-btn (a square quiet key with an icon)
+                 .chip (a quiet small button on the ground: colours only)  .cap (a capsule
+                 over the panorama)
+     surfaces    .panel (a milk card)  .panel-list (a milk card of rows)  .on-panel (anything
+                 milk of a component's own: the text tokens below switch to ink inside it)
+                 .stats (two to four big numbers with small labels)  .empty-state
+     forms       .field-label  .field-note  .field (a text input)  .segmented (one of a few)
+                 .toggle (on / off: a checkbox)  .slider (a range)
+     small       .avatar (a face) and its frames  .spinner  .toast
+   ========================================================================================== */
 
 *,
 *::before,
@@ -12,75 +37,166 @@
 }
 
 :root {
-	--sky: #0099b5;
-	--sky-ink: #007890;
-	--sky-edge: #00657a;
-	--green: #1eb53a;
-	--green-ink: #15912d;
-	--green-edge: #0f7a24;
-	--red: #ce1126;
-	--gold: #c99a2e;
-	--star: #f5b81c;
-	--lapis: #13233f;
-	--lapis-2: #1c3157;
-	/* road signs, as on Uzbek streets: blue street plates, white town signs, brown for
-	   sights, green for the highways. Each official map is one of them. */
-	--sign-blue: #1d4f9a;
-	--sign-white: #fbfaf6;
-	--sign-brown: #7b4a2b;
-	--sign-green: #17784a;
-	--telegram: #2aabee;
+	/* ---------- the same by day and by night ---------- */
+	--f-disp: 'M PLUS Rounded 1c', 'Arial Rounded MT Bold', system-ui, sans-serif;
+	--f-text: 'Onest', system-ui, sans-serif;
+	--lean: skewX(-8deg);
+	--key-hi: #3fd072;
+	--key: #18a84c;
+	--key-lo: #11903f;
+	--key-lip: #0b6a2e;
+	--key-shade: rgba(6, 80, 32, 0.7);
+	--gold: #f4b92e;
+	--gold-hi: #ffe08a;
+	--gold-lo: #c98a0c;
+	--gold-ink: #3a2600;
+	--red: #e5323f;
+	--red-glow: rgba(229, 50, 63, 0.6);
+	--you: #2fb2f2; /* the player's own pin when alone */
+	--telegram: #2aabee; /* Telegram's own blue: only on Telegram's buttons */
+	--telegram-lip: #1680b8;
+	--cap-ink: #fff; /* capsules over the panorama: the photo has no theme */
+	--cap-ink-2: #b7dcdc;
+	--cap-line: rgba(190, 240, 240, 0.16);
+	--cap-lip: rgba(2, 20, 24, 0.6);
+	--ring-deep: #063a42; /* the dark ring round a gold pin or the guess map's frame */
+	--r: 24px; /* soft corners */
+	--r-s: 16px;
+	--r-m: 18px;
+	--r-l: 26px;
+	--spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+	--out: cubic-bezier(0.22, 1, 0.36, 1);
+	--kick-a: #ffe08a; /* the small gold tag over a title */
+	--kick-b: #f4b92e;
+	--kick-ink: #3a2600;
+	--plaque-seam: #f4b92e;
 
-	--bg: #f4efe4;
-	--surface: #fffdf8;
-	--surface-2: #ebe3d3;
-	--edge: #d9cfbb; /* the edge under a light plate */
-	--text: #13233f;
-	--muted: #6c6a63;
-	--border: rgba(19, 35, 63, 0.13);
-	--shadow: 0 10px 30px rgba(19, 35, 63, 0.14);
-	--hud: rgba(13, 22, 40, 0.78);
-	--hud-edge: rgba(0, 0, 0, 0.35);
+	/* ---------- by day ---------- */
+	--cap-bg: rgba(4, 40, 47, 0.86);
+	--ground-top: #0d808d;
+	--ground-bot: #08606c;
+	--ground-glow: rgba(70, 215, 220, 0.38);
+	--ground-line: rgba(255, 255, 255, 0.22); /* a thin line on the ground */
+	--on-ground: #fff; /* text on the ground */
+	--on-ground-2: #f7fdfd;
+	--on-ground-3: #d6eeee;
+	--panel: #fff9ec; /* raised surfaces: milk, never plain white */
+	--panel-2: #f4ecd8;
+	--panel-line: rgba(11, 59, 68, 0.12);
+	--panel-lip: #e2d6bb; /* the lip under a milk thing */
+	--ink: #0b3b44; /* text on a panel */
+	--ink-2: #3a5d63;
+	--ink-3: #526d72;
+	--tile-a: #fffdf4; /* the map's parts */
+	--tile-b: #f4e8cc;
+	--tile-lit: #fffdf4;
+	--tile-quiet: color-mix(in srgb, var(--tile-b) 68%, var(--ground-top)); /* no panoramas yet */
+	--seam: rgba(10, 96, 108, 0.55);
+	--map-glow: rgba(3, 45, 52, 0.38);
+	--map-shadow: rgba(3, 45, 52, 0.38);
+	--picked: #2457c5; /* a place marked on the map, not yet chosen */
+	--picked-line: #163a8c;
+	--stack: #064e58; /* the stacked shadow titles float on */
+	--stack-2: rgba(3, 40, 48, 0.35);
+	--shade: rgba(2, 30, 36, 0.3); /* soft shadows under raised things */
+	--gold-text: #ffd45e; /* gold lettering on the ground */
+	--gold-on-panel: #9a6400; /* gold lettering on a panel */
+	--link: #0b6e7a; /* a link on a panel */
+	--red-on-ground: #ffd0d4; /* red words on the ground (a danger key) */
+	--chip-bg: rgba(3, 40, 47, 0.2); /* quiet buttons on the ground */
+	--chip-line: rgba(255, 255, 255, 0.34);
+	--chip-ink: #fff;
+	--score-a: #0b3b44; /* the result's number, top to bottom */
+	--score-b: #0f7c8a;
+	--score-stack: #f4b92e;
+	--plaque-a: #0f6272; /* the place's plaque */
+	--plaque-b: #0a4753;
+	--plaque-lip: #052e36;
+	--plaque-kick: #ffd45e;
+	--plaque-tile: rgba(
+		255,
+		255,
+		255,
+		0.16
+	); /* the plaque's picture: the parent faint, the place gold */
+	--plaque-tline: rgba(190, 240, 240, 0.5);
 
-	--display: 'Unbounded', 'Arial Black', sans-serif;
-	--body: 'Onest', system-ui, sans-serif;
-	--radius: 16px;
-
-	/* motion: a pop that overshoots a little, a settle, a bounce for rewards */
-	--pop: cubic-bezier(0.34, 1.56, 0.64, 1);
-	--settle: cubic-bezier(0.2, 0.8, 0.2, 1);
-	--bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
-
-	/* 8-point star lattice (girih), used as a mask so it follows the theme colour */
-	--girih: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 60'%3E%3Cg fill='none' stroke='black' stroke-width='1.1'%3E%3Cpath d='M19 19h22v22H19zM30 14.4 45.6 30 30 45.6 14.4 30z'/%3E%3Cpath d='M30 0v14.4M30 45.6V60M0 30h14.4M45.6 30H60M0 0l19 19M60 0 41 19M0 60l19-19M60 60 41 41'/%3E%3C/g%3E%3C/svg%3E");
 	color-scheme: light;
 }
 
 :root[data-theme='dark'] {
-	--sky: #2bb7d3;
-	--sky-ink: #63cfe4;
-	--sky-edge: #137f96;
-	--green: #36c853;
-	--green-ink: #2aa845;
-	--green-edge: #1a8a33;
-	--red: #f04157;
-	--gold: #e0b44e;
-	--lapis: #1a2c4e;
-	--lapis-2: #233a63;
-	--sign-blue: #2559a8;
-	--sign-white: #e9edf4;
-	--sign-brown: #86532f;
-	--sign-green: #1b8452;
-
-	--bg: #0c1424;
-	--surface: #131e33;
-	--surface-2: #1a2742;
-	--edge: #070d18;
-	--text: #edf1f8;
-	--muted: #94a1b8;
-	--border: rgba(237, 241, 248, 0.12);
-	--shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+	--cap-bg: rgba(3, 30, 36, 0.86);
+	--ring-deep: #0f414a;
+	--ground-top: #0c3b43;
+	--ground-bot: #062830;
+	--ground-glow: rgba(40, 200, 200, 0.14);
+	--ground-line: rgba(220, 250, 250, 0.14);
+	--on-ground: #f2fbfa;
+	--on-ground-2: #c0dddd;
+	--on-ground-3: #97bcbd;
+	--panel: #0f414a;
+	--panel-2: #15505a;
+	--panel-line: rgba(220, 250, 250, 0.12);
+	--panel-lip: #041f25;
+	--ink: #f2fbfa;
+	--ink-2: #c0dddd;
+	--ink-3: #9dc2c3;
+	--tile-a: #efe5cf;
+	--tile-b: #d3c3a0;
+	--tile-lit: #efe5cf;
+	--seam: rgba(10, 96, 108, 0.6);
+	--map-glow: rgba(40, 200, 200, 0.22);
+	--map-shadow: rgba(0, 0, 0, 0.45);
+	--picked: #3f79e6;
+	--picked-line: #1e4fb0;
+	--stack: #021a1f;
+	--stack-2: rgba(0, 0, 0, 0.35);
+	--shade: rgba(0, 0, 0, 0.4);
+	--gold-text: #ffd45e;
+	--gold-on-panel: #ffd45e;
+	--link: #7fd9df;
+	--red-on-ground: #ff9aa3;
+	--chip-bg: rgba(255, 255, 255, 0.07);
+	--chip-line: rgba(220, 250, 250, 0.18);
+	--chip-ink: #f2fbfa;
+	--score-a: #fff;
+	--score-b: #8fe3e0;
+	--score-stack: #021a1f;
+	--plaque-a: #0f6472;
+	--plaque-b: #0b4e5a;
+	--plaque-lip: #032a31;
+	--plaque-kick: #ffe08a;
 	color-scheme: dark;
+}
+
+/* ---------- where you are: the ground or a panel ----------
+   A few shared parts (a ghost key, a field's label, a link, the danger key, the empty state)
+   sit on the ground on one page and on a panel on another. They take these, which say white
+   on the ground and ink on milk: .panel, .panel-list, .on-panel, a Sheet and a round's result
+   switch them. A screen that knows where its text is uses --on-ground or --ink directly. */
+:root {
+	--fg: var(--on-ground);
+	--fg-2: var(--on-ground-2);
+	--fg-3: var(--on-ground-3);
+	--fg-line: var(--ground-line);
+	--fg-link: var(--on-ground);
+	--fg-danger: var(--red-on-ground);
+	--quiet-bg: var(--chip-bg);
+	--quiet-line: var(--chip-line);
+}
+.panel,
+.panel-list,
+.stats,
+.on-panel {
+	--fg: var(--ink);
+	--fg-2: var(--ink-2);
+	--fg-3: var(--ink-3);
+	--fg-line: var(--panel-line);
+	--fg-link: var(--link);
+	--fg-danger: var(--red);
+	--quiet-bg: var(--panel-2);
+	--quiet-line: var(--panel-line);
+	color: var(--ink);
 }
 
 html,
@@ -89,20 +205,23 @@ body {
 }
 
 body {
-	background: var(--bg);
-	color: var(--text);
-	font-family: var(--body);
+	background:
+		radial-gradient(120% 70% at 60% 45%, var(--ground-glow), transparent 60%),
+		linear-gradient(180deg, var(--ground-top), var(--ground-bot)) fixed;
+	background-color: var(--ground-bot);
+	color: var(--on-ground);
+	font-family: var(--f-text);
 	font-size: 15px;
 	line-height: 1.5;
+	font-synthesis: none;
 	-webkit-font-smoothing: antialiased;
 	-webkit-tap-highlight-color: transparent;
-	transition:
-		background 0.25s,
-		color 0.25s;
 }
 
 button,
-input {
+input,
+select,
+textarea {
 	font: inherit;
 	color: inherit;
 }
@@ -117,67 +236,139 @@ a {
 	display: none !important;
 }
 :focus-visible {
-	outline: 3px solid var(--sky);
+	outline: 3px solid var(--gold);
 	outline-offset: 2px;
 }
 
-.girih {
-	position: relative;
-	isolation: isolate;
+/* ---------- lettering ----------
+   Titles, numbers and keys lean forward. The font has no italic, so the lean is a skew of the
+   element (.d; .lbl or .label inside a key). The lean has no weight of its own (:where), so a
+   component that gives the element its own display or transform keeps it: a capsule or a badge
+   puts .d on its words, not on itself. An animation of a .d's transform keeps var(--lean) first
+   in its keyframes. The digits are all one width, so a counting score doesn't jump. */
+.d,
+.btn .lbl,
+.btn .label {
+	font-family: var(--f-disp);
+	font-weight: 900;
+	font-variant-numeric: tabular-nums;
+	letter-spacing: -0.01em;
 }
-.girih::before {
-	content: '';
-	position: absolute;
-	inset: 0;
-	z-index: -1;
-	background: currentColor;
-	opacity: 0.06;
-	-webkit-mask: var(--girih) 0 0 / 60px 60px repeat;
-	mask: var(--girih) 0 0 / 60px 60px repeat;
-	pointer-events: none;
+:where(.d, .btn .lbl, .btn .label) {
+	display: inline-block;
+	transform: var(--lean);
+	transform-origin: 50% 75%;
+}
+:where(.d .d, .btn .lbl .d, .btn .label .d) {
+	transform: none;
+}
+/* a title on the ground floats on a stacked shadow: <h1 class="d float"> */
+.float {
+	text-shadow:
+		0 2px 0 var(--stack),
+		0 5px 0 var(--stack-2),
+		0 12px 24px rgba(0, 0, 0, 0.22);
+}
+/* the small gold tag over a title that names a kind or a level: <span class="kick-tag"> */
+.kick-tag {
+	display: inline-block;
+	max-width: 100%;
+	height: 24px;
+	padding: 0 10px;
+	border-radius: 7px;
+	background: linear-gradient(180deg, var(--kick-a), var(--kick-b));
+	box-shadow: 0 2px 0 var(--gold-lo);
+	color: var(--kick-ink);
+	font-family: var(--f-disp);
+	font-weight: 900;
+	font-size: 12.5px;
+	line-height: 24px;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	transform: var(--lean);
+	transform-origin: 50% 75%;
+}
+/* a section's heading, on the ground (white) or in a panel (ink): <h2 class="section-title"> */
+.section-title {
+	font-family: var(--f-disp);
+	font-weight: 900;
+	font-size: 19px;
+	line-height: 1.2;
+	letter-spacing: -0.01em;
+	color: var(--fg);
+	transform: var(--lean);
+	transform-origin: 0 75%;
 }
 
-/* ---------- buttons: plates with an edge that sink when pressed ---------- */
+/* ---------- keys ----------
+   A key: a button with a light line on top and a lip under it; it goes down when pressed.
+   <button class="btn btn-primary"><span class="lbl">O‘YNASH</span></button>. One green key per
+   screen; the rest are quiet. A plain .btn is a milk key, for a second choice that still
+   needs weight. */
 .btn {
-	--b-bg: var(--surface-2);
-	--b-ink: var(--text);
-	--b-edge: var(--edge);
+	--b-a: var(--panel-2);
+	--b-b: var(--panel-2);
+	--b-c: var(--panel-2);
+	--b-ink: var(--ink);
+	--b-lip: var(--panel-lip);
+	--b-glow: var(--shade);
+	--b-text-shadow: none;
 	position: relative;
-	height: 54px;
-	padding: 0 24px;
+	height: 56px;
+	padding: 0 22px;
 	border: none;
-	border-radius: 16px;
-	background: var(--b-bg);
+	border-radius: var(--r-m);
+	background: linear-gradient(180deg, var(--b-a) 0%, var(--b-b) 48%, var(--b-c) 100%);
 	color: var(--b-ink);
-	box-shadow: 0 4px 0 var(--b-edge);
-	font-family: var(--display);
-	font-weight: 700;
-	font-size: 15px;
-	letter-spacing: 0.01em;
+	box-shadow:
+		inset 0 2px 0 rgba(255, 255, 255, 0.4),
+		inset 0 -2px 0 rgba(0, 0, 0, 0.1),
+		0 5px 0 var(--b-lip),
+		0 12px 20px var(--b-glow);
+	font-family: var(--f-disp);
+	font-weight: 900;
+	font-size: 18px;
+	letter-spacing: 0.02em;
+	text-transform: uppercase;
+	text-shadow: var(--b-text-shadow);
 	text-decoration: none;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	gap: 10px;
-	margin-bottom: 4px; /* room for the edge */
+	margin-bottom: 5px; /* room for the lip */
 	transition:
-		transform 0.08s,
-		box-shadow 0.08s,
+		transform 0.12s var(--out),
+		box-shadow 0.12s var(--out),
 		filter 0.15s,
 		opacity 0.15s;
 	user-select: none;
 	-webkit-user-select: none;
 }
 .btn:hover:not(:disabled) {
-	filter: brightness(1.06);
+	filter: brightness(1.05);
 }
 .btn:active:not(:disabled) {
-	transform: translateY(3px);
-	box-shadow: 0 1px 0 var(--b-edge);
+	transform: translateY(4px);
+	box-shadow:
+		inset 0 2px 0 rgba(255, 255, 255, 0.35),
+		0 1px 0 var(--b-lip),
+		0 4px 8px var(--b-glow);
 }
 .btn:disabled {
-	opacity: 0.5;
+	--b-a: #0a4f59;
+	--b-b: #08454e;
+	--b-c: #063b43;
+	--b-lip: #032a31;
+	--b-ink: rgba(255, 255, 255, 0.55);
+	--b-text-shadow: none;
 	cursor: not-allowed;
+	box-shadow:
+		inset 0 2px 0 rgba(255, 255, 255, 0.12),
+		0 5px 0 var(--b-lip);
 }
 .btn svg,
 .icon {
@@ -190,94 +381,339 @@ a {
 	stroke-linejoin: round;
 	flex: none;
 }
+.btn svg {
+	width: 22px;
+	height: 22px;
+	stroke-width: 2.6;
+}
+/* THE key */
 .btn-primary {
-	--b-bg: var(--green);
+	--b-a: var(--key-hi);
+	--b-b: var(--key);
+	--b-c: var(--key-lo);
 	--b-ink: #fff;
-	--b-edge: var(--green-edge);
+	--b-lip: var(--key-lip);
+	--b-glow: rgba(2, 24, 10, 0.4);
+	--b-text-shadow: 0 2px 0 var(--key-shade);
+	height: 64px;
+	font-size: 22px;
+	margin-bottom: 6px;
+	box-shadow:
+		inset 0 2px 0 rgba(255, 255, 255, 0.55),
+		inset 0 -2px 0 rgba(0, 0, 0, 0.1),
+		0 6px 0 var(--b-lip),
+		0 16px 26px var(--b-glow);
 }
+.btn-primary svg {
+	filter: drop-shadow(0 2px 0 var(--key-shade));
+}
+/* a second strong key, turquoise; rare (a room's "invite" while the host is alone) */
 .btn-sky {
-	--b-bg: var(--sky);
+	--b-a: #22b4bf;
+	--b-b: #0f8f9e;
+	--b-c: #0b7a87;
 	--b-ink: #fff;
-	--b-edge: var(--sky-edge);
+	--b-lip: #05505a;
+	--b-text-shadow: 0 2px 0 rgba(3, 60, 68, 0.7);
 }
-.btn-ghost {
-	--b-bg: transparent;
-	--b-edge: transparent;
-	box-shadow: inset 0 0 0 2px var(--border);
+/* quiet keys: no lip, no gradient, the words in the place's own colour.
+   .btn-chip: on the ground, glass with a light line, white words.
+   .btn-ghost: on a panel (or anywhere: it follows --fg), an outline. */
+.btn-chip,
+.btn-ghost,
+.btn-danger {
+	background: transparent;
+	text-shadow: none;
 	margin-bottom: 0;
 }
-.btn-ghost:hover:not(:disabled) {
-	box-shadow: inset 0 0 0 2px var(--text);
+.btn-chip {
+	--b-ink: var(--chip-ink);
+	background: var(--chip-bg);
+	box-shadow: inset 0 0 0 1.5px var(--chip-line);
+}
+.btn-ghost {
+	--b-ink: var(--fg);
+	box-shadow: inset 0 0 0 2px var(--fg-line);
+}
+.btn-chip:hover:not(:disabled),
+.btn-ghost:hover:not(:disabled),
+.btn-danger:hover:not(:disabled) {
 	filter: none;
+	box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--b-ink) 55%, transparent);
 }
-.btn-ghost:active:not(:disabled) {
-	box-shadow: inset 0 0 0 2px var(--text);
+.btn-chip:active:not(:disabled),
+.btn-ghost:active:not(:disabled),
+.btn-danger:active:not(:disabled) {
 	transform: scale(0.98);
+	box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--b-ink) 55%, transparent);
 }
+/* leaving, removing: red words on a quiet key until it matters; then .sure, a solid red key
+   (the second tap of "are you sure?") */
 .btn-danger {
-	--b-bg: var(--red);
-	--b-ink: #fff;
-	--b-edge: #8e0a1a;
+	--b-ink: var(--fg-danger);
+	box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--fg-danger) 40%, transparent);
 }
-.btn-telegram {
-	--b-bg: var(--telegram);
+.btn-danger.sure {
+	--b-a: #ff5a6a;
+	--b-b: var(--red);
+	--b-c: #cc1c2e;
 	--b-ink: #fff;
-	--b-edge: #1680b8;
-	font-family: var(--body);
+	--b-lip: #8e0a1a;
+	--b-text-shadow: 0 2px 0 rgba(110, 8, 20, 0.6);
+	background: linear-gradient(180deg, var(--b-a) 0%, var(--b-b) 48%, var(--b-c) 100%);
+	margin-bottom: 5px;
+	box-shadow:
+		inset 0 2px 0 rgba(255, 255, 255, 0.4),
+		0 5px 0 var(--b-lip),
+		0 12px 20px var(--b-glow);
+}
+.btn-chip:disabled,
+.btn-ghost:disabled,
+.btn-danger:disabled {
+	background: transparent;
+	opacity: 0.5;
+	box-shadow: inset 0 0 0 2px var(--fg-line);
+}
+.btn-chip:disabled {
+	--b-ink: var(--chip-ink);
+}
+.btn-ghost:disabled {
+	--b-ink: var(--fg);
+}
+.btn-danger:disabled {
+	--b-ink: var(--fg-danger);
+}
+/* Telegram's own blue, its own words (not our capitals) */
+.btn-telegram {
+	--b-a: #45b8f2;
+	--b-b: var(--telegram);
+	--b-c: #1f9ad8;
+	--b-ink: #fff;
+	--b-lip: var(--telegram-lip);
+	--b-text-shadow: 0 1px 0 rgba(10, 80, 120, 0.5);
+	font-family: var(--f-text);
 	font-weight: 700;
 	font-size: 16px;
 	letter-spacing: 0;
+	text-transform: none;
 }
 
+/* a quiet square key with an icon, 44 px: on the ground glass, on a panel milk-2 */
 .icon-btn {
 	width: 44px;
 	height: 44px;
 	border: none;
-	border-radius: 14px;
-	background: var(--surface-2);
+	border-radius: var(--r-s);
+	background: var(--quiet-bg);
+	box-shadow: inset 0 0 0 1.5px var(--quiet-line);
+	color: var(--fg);
 	display: grid;
 	place-items: center;
-	color: var(--text);
+	flex: none;
 	transition: transform 0.1s;
 }
 .icon-btn:active {
 	transform: scale(0.92);
 }
 
-/* ---------- cards and fields ---------- */
-.card {
-	background: var(--surface);
-	border: 1px solid var(--border);
-	border-radius: 20px;
-	padding: 22px;
-}
-.card-title {
-	font-family: var(--display);
+/* a word that acts, underlined: white on the ground, the link's teal on a panel */
+.link-btn {
+	border: none;
+	background: none;
+	padding: 0;
+	color: var(--fg-link);
 	font-weight: 700;
-	font-size: 17px;
-	letter-spacing: -0.01em;
-	margin-bottom: 16px;
+	text-decoration: underline;
+	text-underline-offset: 3px;
+	text-decoration-thickness: 1.5px;
 }
+
+/* a capsule: small, dark, over the panorama; a little lip so it reads as a game piece */
+.cap {
+	background: var(--cap-bg);
+	color: var(--cap-ink);
+	box-shadow:
+		inset 0 1px 0 rgba(255, 255, 255, 0.16),
+		inset 0 0 0 1px var(--cap-line),
+		0 3px 0 var(--cap-lip),
+		0 10px 20px rgba(0, 0, 0, 0.25);
+}
+/* a quiet small button on the ground: glass, no lip (its size is the screen's own) */
+.chip {
+	border: none;
+	background: var(--chip-bg);
+	box-shadow: inset 0 0 0 1.5px var(--chip-line);
+	color: var(--chip-ink);
+	font-weight: 700;
+	text-decoration: none;
+}
+
+/* ---------- surfaces ---------- */
+/* a milk card: <section class="panel">. Ink inside; its padding is 18px */
+.panel {
+	background: var(--panel);
+	border-radius: var(--r);
+	padding: 18px;
+	box-shadow:
+		0 3px 0 var(--panel-lip),
+		0 14px 28px var(--shade);
+}
+/* a milk card of rows, divided by thin lines: <ul class="panel-list"><li>…</li></ul> or
+   <nav class="panel-list"><a href>…</a></nav>. A row is a flex line, 60 px at least; a row
+   that is a link or a button lights up under the finger. A screen's own row class wins. */
+.panel-list {
+	list-style: none;
+	padding: 0;
+	background: var(--panel);
+	border-radius: var(--r);
+	overflow: hidden;
+	box-shadow:
+		0 3px 0 var(--panel-lip),
+		0 14px 28px var(--shade);
+}
+.panel-list > * {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-height: 60px;
+	padding: 10px 16px;
+	color: inherit;
+	text-decoration: none;
+}
+.panel-list > * + * {
+	border-top: 1px solid var(--panel-line);
+}
+.panel-list > button {
+	width: 100%;
+	border-left: none;
+	border-right: none;
+	border-bottom: none;
+	background: none;
+	text-align: left;
+}
+.panel-list > :first-child {
+	border-top: none;
+}
+.panel-list > a:hover,
+.panel-list > button:hover {
+	background: var(--panel-2);
+}
+.panel-list > a:active,
+.panel-list > button:active {
+	background: color-mix(in srgb, var(--panel-2), var(--ink) 6%);
+}
+
+/* two to four big numbers with small labels, side by side on one milk strip:
+   <div class="stats"><div><b>3</b><span>O‘yinlar</span></div>…</div> */
+.stats {
+	display: grid;
+	grid-auto-flow: column;
+	grid-auto-columns: minmax(0, 1fr);
+	background: var(--panel);
+	border-radius: var(--r);
+	overflow: hidden;
+	box-shadow:
+		0 3px 0 var(--panel-lip),
+		0 14px 28px var(--shade);
+}
+.stats > * {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 2px;
+	min-width: 0;
+	padding: 14px 8px 12px;
+	text-align: center;
+}
+.stats > * + * {
+	box-shadow: inset 1px 0 0 var(--panel-line);
+}
+.stats b {
+	display: inline-block;
+	font-family: var(--f-disp);
+	font-weight: 900;
+	font-size: 28px;
+	line-height: 1.1;
+	font-variant-numeric: tabular-nums;
+	transform: var(--lean);
+	color: var(--ink);
+}
+.stats span {
+	font-size: 13px;
+	font-weight: 600;
+	line-height: 1.25;
+	color: var(--ink-3);
+}
+
+/* nothing here yet: one short line and, if it helps, one key under it:
+   <div class="empty-state"><p>Hali o‘yin yo‘q</p><a class="btn btn-primary">…</a></div>.
+   Ground or panel: it follows --fg. */
+.empty-state {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 16px;
+	padding: 36px 20px;
+	text-align: center;
+	color: var(--fg-2);
+	font-size: 16px;
+	font-weight: 600;
+	line-height: 1.4;
+}
+.empty-state .btn {
+	min-width: 220px;
+}
+
+/* ---------- forms ---------- */
+/* a field's name over it, and a soft note under it: they follow the colour around them */
 .field-label {
 	display: block;
 	font-size: 14px;
 	font-weight: 700;
-	color: var(--text);
+	color: var(--fg);
 	margin-bottom: 10px;
 }
 .field-note {
 	margin-top: 10px;
 	font-size: 13.5px;
-	color: var(--muted);
+	color: var(--fg-3);
 	min-height: 1.5em;
 }
-
+/* a text input: a milk box with a lip, ink words: <input class="field"> */
+.field {
+	display: block;
+	width: 100%;
+	height: 54px;
+	padding: 0 16px;
+	border: none;
+	border-radius: var(--r-s);
+	background: var(--panel);
+	color: var(--ink);
+	font-size: 17px;
+	font-weight: 600;
+	box-shadow:
+		inset 0 0 0 2px var(--panel-line),
+		0 3px 0 var(--panel-lip);
+	transition: box-shadow 0.15s;
+}
+.field::placeholder {
+	color: var(--ink-3);
+	opacity: 0.7;
+}
+.field:focus {
+	outline: none;
+	box-shadow:
+		inset 0 0 0 2.5px var(--gold),
+		0 3px 0 var(--panel-lip);
+}
+/* one of a few: a milk track, the chosen one a raised tile in it */
 .segmented {
 	display: flex;
 	padding: 4px;
 	gap: 4px;
 	border-radius: 14px;
-	background: var(--surface-2);
+	background: var(--panel-2);
 }
 .segmented button {
 	flex: 1;
@@ -287,65 +723,110 @@ a {
 	background: transparent;
 	font-weight: 600;
 	font-size: 14.5px;
-	color: var(--muted);
+	color: var(--ink-3);
 	transition:
 		background 0.15s,
 		color 0.15s,
 		transform 0.1s;
 }
 .segmented button:hover {
-	color: var(--text);
+	color: var(--ink);
 }
 .segmented button:active {
 	transform: scale(0.96);
 }
 .segmented button[aria-pressed='true'] {
-	background: var(--surface);
-	color: var(--text);
-	box-shadow: 0 2px 0 var(--edge);
+	background: var(--panel);
+	color: var(--ink);
+	box-shadow: 0 2px 0 var(--panel-lip);
 }
-
-/* the flag, as a thin band on top of the pages around the game */
-.flag-band {
-	height: 9px;
-	background: linear-gradient(
-		to bottom,
-		var(--sky) 0 3px,
-		var(--red) 3px 4px,
-		#fff 4px 5px,
-		var(--red) 5px 6px,
-		var(--green) 6px 9px
-	);
+/* on or off: <input type="checkbox" class="toggle">, green when on */
+.toggle {
+	appearance: none;
+	-webkit-appearance: none;
+	position: relative;
+	flex: none;
+	width: 54px;
+	height: 32px;
+	border-radius: 999px;
+	background: var(--quiet-bg);
+	box-shadow: inset 0 0 0 1.5px var(--quiet-line);
+	cursor: pointer;
+	transition: background 0.2s;
+}
+.toggle::before {
+	content: '';
+	position: absolute;
+	top: 3px;
+	left: 3px;
+	width: 26px;
+	height: 26px;
+	border-radius: 50%;
+	background: #fff;
+	box-shadow: 0 2px 0 rgba(0, 0, 0, 0.18);
+	transition: transform 0.25s var(--spring);
+}
+.toggle:checked {
+	background: var(--key);
+	box-shadow: inset 0 -2px 0 var(--key-lo);
+}
+.toggle:checked::before {
+	transform: translateX(22px);
+}
+/* a range: <input type="range" class="slider">, a gold knob on a quiet track */
+.slider {
+	appearance: none;
+	-webkit-appearance: none;
+	width: 100%;
+	height: 32px;
+	background: transparent;
+	cursor: pointer;
+}
+.slider::-webkit-slider-runnable-track {
+	height: 10px;
+	border-radius: 5px;
+	background: var(--quiet-bg);
+	box-shadow: inset 0 0 0 1.5px var(--quiet-line);
+}
+.slider::-moz-range-track {
+	height: 10px;
+	border-radius: 5px;
+	background: var(--quiet-bg);
+	box-shadow: inset 0 0 0 1.5px var(--quiet-line);
+}
+.slider::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	width: 28px;
+	height: 28px;
+	margin-top: -9px;
+	border: none;
+	border-radius: 50%;
+	background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+	box-shadow:
+		0 3px 0 var(--gold-lo),
+		0 4px 10px rgba(0, 0, 0, 0.2);
+}
+.slider::-moz-range-thumb {
+	width: 28px;
+	height: 28px;
+	border: none;
+	border-radius: 50%;
+	background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+	box-shadow:
+		0 3px 0 var(--gold-lo),
+		0 4px 10px rgba(0, 0, 0, 0.2);
 }
 
 /* ---------- small shared parts ---------- */
+/* a face: an emoji on a milk disc; its size is the screen's own */
 .avatar {
 	display: inline-grid;
 	place-items: center;
 	flex: none;
 	border-radius: 50%;
-	background: var(--surface-2);
-	font-family: var(--body);
+	background: var(--panel-2);
+	font-family: var(--f-text);
 	line-height: 1;
-}
-.link-btn {
-	border: none;
-	background: none;
-	padding: 0;
-	color: var(--sky-ink);
-	font-weight: 600;
-	text-decoration: underline;
-	text-underline-offset: 3px;
-	text-decoration-thickness: 1.5px;
-}
-:root[data-theme='dark'] .link-btn {
-	color: var(--sky);
-}
-.section-title {
-	font-family: var(--display);
-	font-weight: 700;
-	font-size: 17px;
-	letter-spacing: -0.01em;
 }
 .spinner {
 	width: 18px;
@@ -404,27 +885,30 @@ a {
 	}
 }
 
-/* ---------- toast ---------- */
+/* ---------- toast: a capsule, under the round's clock and the hint's capsule ---------- */
 .toast {
 	position: fixed;
 	left: 50%;
-	top: calc(max(12px, env(safe-area-inset-top)) + 64px); /* under the HUD and the top bar */
+	top: calc(max(12px, env(safe-area-inset-top)) + 128px);
 	transform: translate(-50%, -16px);
-	background: var(--lapis);
-	color: #fff;
+	background: var(--cap-bg);
+	color: var(--cap-ink);
 	padding: 12px 20px;
-	border-radius: 14px;
+	border-radius: var(--r-m);
 	font-size: 15px;
 	font-weight: 600;
 	opacity: 0;
 	pointer-events: none;
 	transition:
 		opacity 0.2s,
-		transform 0.25s var(--pop);
+		transform 0.25s var(--spring);
 	z-index: 5000;
 	max-width: calc(100vw - 32px);
 	text-align: center;
-	box-shadow: 0 4px 0 rgba(0, 0, 0, 0.25);
+	box-shadow:
+		inset 0 0 0 1px var(--cap-line),
+		0 3px 0 var(--cap-lip),
+		0 10px 20px rgba(0, 0, 0, 0.25);
 }
 .toast.show {
 	opacity: 1;
@@ -492,17 +976,20 @@ a {
 		opacity: 0;
 	}
 }
+/* the crowd's "O‘rtacha 5.7 km" on the result map: a gold chip with a lip */
 .sg-crowd-label {
 	position: absolute;
 	transform: translate(-50%, -50%);
-	padding: 3px 9px;
+	padding: 6px 10px;
 	border-radius: 999px;
-	background: #f5b81c;
-	color: #13233f;
-	font: 700 12.5px/1.25 var(--body, Onest, sans-serif);
+	background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+	color: var(--gold-ink);
+	font: 800 13px/1.15 var(--f-text);
 	white-space: nowrap;
-	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-	animation: pop-in 0.3s var(--pop) both;
+	box-shadow:
+		0 2px 0 var(--gold-lo),
+		0 4px 10px rgba(0, 0, 0, 0.18);
+	animation: pop-in 0.3s var(--spring) both;
 	pointer-events: none;
 }
 /* the first badge on a device: its ring keeps calling a few times more, "tap me" */
@@ -563,7 +1050,7 @@ a {
 	border-radius: 50% 50% 50% 0;
 	transform: rotate(-45deg);
 	background: var(--ring);
-	box-shadow: 0 0 0 2px var(--surface);
+	box-shadow: 0 0 0 2px var(--panel);
 }
 .avatar.ring,
 .avatar.host-face {
@@ -595,7 +1082,7 @@ a {
 	--frame: conic-gradient(#8e1230, #e0456b, #8e1230, #e0456b, #8e1230);
 }
 .avatar[data-frame='frame-girih'] {
-	--frame: repeating-conic-gradient(#e8a90c 0 15deg, var(--girih-dark, #13233f) 15deg 30deg);
+	--frame: repeating-conic-gradient(#e8a90c 0 15deg, var(--girih-dark, #0b3b44) 15deg 30deg);
 }
 :root[data-theme='dark'] .avatar[data-frame='frame-girih'] {
 	--girih-dark: #4f7fe0;
@@ -607,362 +1094,4 @@ a {
 		#1d3f8f 14deg 26deg,
 		#e8a90c 26deg 28deg
 	);
-}
-
-/* ==========================================================================================
-   THE NEW LOOK (P1111 1.1): turquoise tile, milk, gold, one green key.
-
-   Chosen by the owner in the look lab on 2026-11-19 ("Turquoise tile", M PLUS Rounded leaning a
-   little, capitals on keys, soft corners, raised, tiles; tmp/look-lab/). Khiva's turquoise is
-   the ground, deep at night; panels are milk, never plain white; the map of Uzbekistan lies on
-   it as milk tiles. Gold is the chosen place, stars and what the player has learned; the picked
-   blue is a place marked but not yet chosen. Green is the real place and the one key to press.
-   Titles, numbers and keys are M PLUS Rounded 1c Black, leaning 8° (it has no italic: the lean
-   is a skew, --lean, on an inline-block: the .d class, or .lbl inside a key); text is Onest.
-
-   Until the owner's yes it is on three screens only (the home, a round, a round's result):
-   everything here hangs on html.look2, which those screens switch on (src/lib/look.svelte.ts).
-   Session 3 moves these tokens to :root, deletes the old ones above and the switch.
-   ========================================================================================== */
-:root.look2 {
-	/* the same by day and by night */
-	--f-disp: 'M PLUS Rounded 1c', 'Arial Rounded MT Bold', system-ui, sans-serif;
-	--f-text: 'Onest', system-ui, sans-serif;
-	--lean: skewX(-8deg);
-	--key-hi: #3fd072;
-	--key: #18a84c;
-	--key-lo: #11903f;
-	--key-lip: #0b6a2e;
-	--key-shade: rgba(6, 80, 32, 0.7);
-	--gold: #f4b92e;
-	--gold-hi: #ffe08a;
-	--gold-lo: #c98a0c;
-	--gold-ink: #3a2600;
-	--red: #e5323f;
-	--red-glow: rgba(229, 50, 63, 0.6);
-	--you: #2fb2f2; /* the player's own pin when alone */
-	--cap-ink: #fff; /* capsules over the panorama: the photo has no theme */
-	--cap-ink-2: #b7dcdc;
-	--cap-line: rgba(190, 240, 240, 0.16);
-	--cap-lip: rgba(2, 20, 24, 0.6);
-	--r: 24px; /* soft corners */
-	--r-s: 16px;
-	--r-m: 18px;
-	--r-l: 26px;
-	--spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-	--out: cubic-bezier(0.22, 1, 0.36, 1);
-	--kick-a: #ffe08a; /* the small gold tag over a title */
-	--kick-b: #f4b92e;
-	--kick-ink: #3a2600;
-	--plaque-seam: #f4b92e;
-
-	/* by day */
-	--cap-bg: rgba(4, 40, 47, 0.86);
-	--ground-top: #0d808d;
-	--ground-bot: #08606c;
-	--ground-glow: rgba(70, 215, 220, 0.38);
-	--on-ground: #fff; /* text on the ground */
-	--on-ground-2: #f7fdfd;
-	--on-ground-3: #d6eeee;
-	--panel: #fff9ec; /* raised surfaces: milk, never plain white */
-	--panel-2: #f4ecd8;
-	--panel-line: rgba(11, 59, 68, 0.12);
-	--ink: #0b3b44; /* text on a panel */
-	--ink-2: #3a5d63;
-	--ink-3: #526d72;
-	--tile-a: #fffdf4; /* the map's parts */
-	--tile-b: #f4e8cc;
-	--tile-lit: #fffdf4;
-	--tile-quiet: color-mix(in srgb, var(--tile-b) 68%, var(--ground-top)); /* no panoramas yet */
-	--seam: rgba(10, 96, 108, 0.55);
-	--map-glow: rgba(3, 45, 52, 0.38);
-	--map-shadow: rgba(3, 45, 52, 0.38);
-	--picked: #2457c5; /* a place marked on the map, not yet chosen */
-	--picked-line: #163a8c;
-	--stack: #064e58; /* the stacked shadow titles float on */
-	--stack-2: rgba(3, 40, 48, 0.35);
-	--shade: rgba(2, 30, 36, 0.3); /* soft shadows under raised things */
-	--gold-text: #ffd45e; /* gold lettering on the ground */
-	--gold-on-panel: #9a6400; /* gold lettering on a panel */
-	--link: #0b6e7a;
-	--chip-bg: rgba(3, 40, 47, 0.2); /* quiet buttons on the ground */
-	--chip-line: rgba(255, 255, 255, 0.34);
-	--chip-ink: #fff;
-	--score-a: #0b3b44; /* the result's number, top to bottom */
-	--score-b: #0f7c8a;
-	--score-stack: #f4b92e;
-	--plaque-a: #0f6272; /* the place's plaque */
-	--plaque-b: #0a4753;
-	--plaque-lip: #052e36;
-	--plaque-kick: #ffd45e;
-	--plaque-tile: rgba(
-		255,
-		255,
-		255,
-		0.16
-	); /* the plaque's picture: the parent faint, the place gold */
-	--plaque-tline: rgba(190, 240, 240, 0.5);
-
-	/* the old names, so the shared parts inside these screens (a sheet, the rules) follow */
-	--bg: var(--ground-bot);
-	--surface: var(--panel);
-	--surface-2: var(--panel-2);
-	--edge: #e2d6bb;
-	--text: var(--ink);
-	--muted: var(--ink-3);
-	--border: var(--panel-line);
-	--shadow: 0 18px 40px rgba(2, 30, 36, 0.35);
-	--display: var(--f-disp);
-	--body: var(--f-text);
-	--green: var(--key);
-	--green-ink: var(--key-lo);
-	--green-edge: var(--key-lip);
-	--star: var(--gold);
-	--sky: #0f8f9e;
-	--sky-ink: var(--link);
-	--sky-edge: #08606c;
-	--lapis: #063a42;
-	--lapis-2: #0b4a54;
-	--hud: var(--cap-bg);
-	--hud-edge: var(--cap-lip);
-	--radius: var(--r-m);
-	--pop: var(--spring);
-	--settle: var(--out);
-}
-:root.look2[data-theme='dark'] {
-	--cap-bg: rgba(3, 30, 36, 0.86);
-	--ground-top: #0c3b43;
-	--ground-bot: #062830;
-	--ground-glow: rgba(40, 200, 200, 0.14);
-	--on-ground: #f2fbfa;
-	--on-ground-2: #c0dddd;
-	--on-ground-3: #97bcbd;
-	--panel: #0f414a;
-	--panel-2: #15505a;
-	--panel-line: rgba(220, 250, 250, 0.12);
-	--ink: #f2fbfa;
-	--ink-2: #c0dddd;
-	--ink-3: #9dc2c3;
-	--tile-a: #efe5cf;
-	--tile-b: #d3c3a0;
-	--tile-lit: #efe5cf;
-	--seam: rgba(10, 96, 108, 0.6);
-	--map-glow: rgba(40, 200, 200, 0.22);
-	--map-shadow: rgba(0, 0, 0, 0.45);
-	--picked: #3f79e6;
-	--picked-line: #1e4fb0;
-	--stack: #021a1f;
-	--stack-2: rgba(0, 0, 0, 0.35);
-	--shade: rgba(0, 0, 0, 0.4);
-	--gold-text: #ffd45e;
-	--gold-on-panel: #ffd45e;
-	--link: #7fd9df;
-	--chip-bg: rgba(255, 255, 255, 0.07);
-	--chip-line: rgba(220, 250, 250, 0.18);
-	--chip-ink: #f2fbfa;
-	--score-a: #fff;
-	--score-b: #8fe3e0;
-	--score-stack: #021a1f;
-	--plaque-a: #0f6472;
-	--plaque-b: #0b4e5a;
-	--plaque-lip: #032a31;
-	--plaque-kick: #ffe08a;
-
-	--edge: #041f25;
-	--shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
-	--sky: #2fb8c4;
-	--sky-ink: var(--link);
-	--sky-edge: #0b6e7a;
-	--lapis: #0f414a;
-	--lapis-2: #15505a;
-}
-
-:root.look2 body {
-	background:
-		radial-gradient(120% 70% at 60% 45%, var(--ground-glow), transparent 60%),
-		linear-gradient(180deg, var(--ground-top), var(--ground-bot)) fixed;
-	background-color: var(--ground-bot);
-	color: var(--on-ground);
-	font-family: var(--f-text);
-	font-synthesis: none;
-}
-
-/* lettering: titles, numbers and keys lean forward. The font has no italic, so the lean is a
-   skew of the element (.d; .lbl or .label inside a key). The lean has no weight of its own
-   (:where), so a component that gives the element its own display or transform keeps it: a
-   capsule or a badge puts .d on its words, not on itself. An animation of a .d's transform
-   keeps var(--lean) first in its keyframes. The digits are all one width, so a counting score
-   doesn't jump. */
-:root.look2 .d,
-:root.look2 .btn .lbl,
-:root.look2 .btn .label {
-	font-family: var(--f-disp);
-	font-weight: 900;
-	font-variant-numeric: tabular-nums;
-	letter-spacing: -0.01em;
-}
-:where(:root.look2) :where(.d, .btn .lbl, .btn .label) {
-	display: inline-block;
-	transform: var(--lean);
-	transform-origin: 50% 75%;
-}
-:where(:root.look2) :where(.d .d, .btn .lbl .d, .btn .label .d) {
-	transform: none;
-}
-:root.look2 .float {
-	text-shadow:
-		0 2px 0 var(--stack),
-		0 5px 0 var(--stack-2),
-		0 12px 24px rgba(0, 0, 0, 0.22);
-}
-
-/* the key: a button with a light line on top and a lip under it; it goes down when pressed */
-:root.look2 .btn {
-	--b-a: var(--panel-2);
-	--b-b: var(--panel-2);
-	--b-c: var(--panel-2);
-	--b-ink: var(--ink);
-	--b-lip: var(--edge);
-	--b-glow: var(--shade);
-	--b-text-shadow: none;
-	height: 56px;
-	padding: 0 22px;
-	border-radius: var(--r-m);
-	background: linear-gradient(180deg, var(--b-a) 0%, var(--b-b) 48%, var(--b-c) 100%);
-	color: var(--b-ink);
-	box-shadow:
-		inset 0 2px 0 rgba(255, 255, 255, 0.4),
-		inset 0 -2px 0 rgba(0, 0, 0, 0.1),
-		0 5px 0 var(--b-lip),
-		0 12px 20px var(--b-glow);
-	font-family: var(--f-disp);
-	font-weight: 900;
-	font-size: 18px;
-	letter-spacing: 0.02em;
-	text-transform: uppercase;
-	text-shadow: var(--b-text-shadow);
-	margin-bottom: 5px;
-	transition:
-		transform 0.12s var(--out),
-		box-shadow 0.12s var(--out),
-		filter 0.15s,
-		opacity 0.15s;
-}
-:root.look2 .btn:hover:not(:disabled) {
-	filter: brightness(1.05);
-}
-:root.look2 .btn:active:not(:disabled) {
-	transform: translateY(4px);
-	box-shadow:
-		inset 0 2px 0 rgba(255, 255, 255, 0.35),
-		0 1px 0 var(--b-lip),
-		0 4px 8px var(--b-glow);
-}
-:root.look2 .btn:disabled {
-	opacity: 1;
-	--b-a: #0a4f59;
-	--b-b: #08454e;
-	--b-c: #063b43;
-	--b-lip: #032a31;
-	--b-ink: rgba(255, 255, 255, 0.55);
-	--b-text-shadow: none;
-	box-shadow:
-		inset 0 2px 0 rgba(255, 255, 255, 0.12),
-		0 5px 0 var(--b-lip);
-}
-:root.look2 .btn svg {
-	width: 22px;
-	height: 22px;
-	stroke-width: 2.6;
-}
-:root.look2 .btn-primary {
-	--b-a: var(--key-hi);
-	--b-b: var(--key);
-	--b-c: var(--key-lo);
-	--b-ink: #fff;
-	--b-lip: var(--key-lip);
-	--b-glow: rgba(2, 24, 10, 0.4);
-	--b-text-shadow: 0 2px 0 var(--key-shade);
-	height: 64px;
-	font-size: 22px;
-	margin-bottom: 6px;
-	box-shadow:
-		inset 0 2px 0 rgba(255, 255, 255, 0.55),
-		inset 0 -2px 0 rgba(0, 0, 0, 0.1),
-		0 6px 0 var(--b-lip),
-		0 16px 26px var(--b-glow);
-}
-:root.look2 .btn-primary svg {
-	filter: drop-shadow(0 2px 0 var(--key-shade));
-}
-:root.look2 .btn-sky {
-	--b-a: #22b4bf;
-	--b-b: #0f8f9e;
-	--b-c: #0b7a87;
-	--b-ink: #fff;
-	--b-lip: #05505a;
-	--b-text-shadow: 0 2px 0 rgba(3, 60, 68, 0.7);
-}
-:root.look2 .btn-danger {
-	--b-a: #ff5a6a;
-	--b-b: var(--red);
-	--b-c: #cc1c2e;
-	--b-ink: #fff;
-	--b-lip: #8e0a1a;
-}
-:root.look2 .btn-ghost {
-	background: transparent;
-	color: var(--ink);
-	box-shadow: inset 0 0 0 2px var(--panel-line);
-	text-shadow: none;
-	margin-bottom: 0;
-}
-:root.look2 .btn-ghost:hover:not(:disabled),
-:root.look2 .btn-ghost:active:not(:disabled) {
-	box-shadow: inset 0 0 0 2px var(--ink-3);
-	filter: none;
-	transform: none;
-}
-
-/* a capsule: small, dark, over the panorama; a little lip so it reads as a game piece */
-:root.look2 .cap {
-	background: var(--cap-bg);
-	color: var(--cap-ink);
-	box-shadow:
-		inset 0 1px 0 rgba(255, 255, 255, 0.16),
-		inset 0 0 0 1px var(--cap-line),
-		0 3px 0 var(--cap-lip),
-		0 10px 20px rgba(0, 0, 0, 0.25);
-}
-/* a quiet button on the ground: glass, no lip */
-:root.look2 .chip {
-	border: none;
-	background: var(--chip-bg);
-	box-shadow: inset 0 0 0 1.5px var(--chip-line);
-	color: var(--chip-ink);
-	font-weight: 700;
-	text-decoration: none;
-}
-:root.look2 .segmented button[aria-pressed='true'] {
-	box-shadow: 0 2px 0 var(--edge);
-}
-:root.look2 .toast {
-	/* under the round's clock and the hint's capsule, not over them */
-	top: calc(max(12px, env(safe-area-inset-top)) + 128px);
-	background: var(--cap-bg);
-	border-radius: var(--r-m);
-	box-shadow:
-		inset 0 0 0 1px var(--cap-line),
-		0 3px 0 var(--cap-lip),
-		0 10px 20px rgba(0, 0, 0, 0.25);
-}
-/* the crowd's "O‘rtacha 5.7 km" on the result map: a gold chip with a lip */
-:root.look2 .sg-crowd-label {
-	padding: 6px 10px;
-	background: linear-gradient(180deg, var(--gold-hi), var(--gold));
-	color: var(--gold-ink);
-	font: 800 13px/1.15 var(--f-text);
-	box-shadow:
-		0 2px 0 var(--gold-lo),
-		0 4px 10px rgba(0, 0, 0, 0.18);
 }

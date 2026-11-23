@@ -67,10 +67,7 @@
 		const drag = (e: PointerEvent) => e.buttons && touch();
 		el.addEventListener('pointermove', drag);
 		el.addEventListener('wheel', touch, { passive: true });
-		const seen = new ResizeObserver(() => {
-			map?.container.fitToViewport(true);
-			if (map && !moved && (focus || !guess)) map.setBounds(bounds(focus ?? bbox));
-		});
+		const seen = new ResizeObserver(refit);
 		seen.observe(el);
 		return () => {
 			gone = true;
@@ -139,6 +136,15 @@
 	function zoomTo(m: YMap, box: BBox) {
 		focus = box;
 		m.setBounds(bounds(box), { duration: 400 });
+	}
+
+	/** Measures the box again and shows the hint's area or the whole one, unless the player
+	 *  has moved the map. Called when the box changes size, and on a phone once the sheet has
+	 *  finished sliding up: the map was laid out while the sheet was hidden below the screen. */
+	export function refit() {
+		if (!map) return;
+		map.container.fitToViewport(true);
+		if (!moved && (focus || !guess)) map.setBounds(bounds(focus ?? bbox));
 	}
 
 	/** Back to the whole map, e.g. at the start of a round. */

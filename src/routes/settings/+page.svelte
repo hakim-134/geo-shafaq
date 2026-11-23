@@ -3,13 +3,11 @@
 	// language, a small screen in light and dark, the three compasses turning over a street,
 	// the three map looks, the sound (it plays when turned on), the first game's finger. Each
 	// takes effect at once.
-	import { onDestroy } from 'svelte';
 	import SubPage from '#lib/components/SubPage.svelte';
-	import Compass from '#lib/components/Compass.svelte';
+	import ChoiceTiles from '#lib/components/ChoiceTiles.svelte';
 	import { i18n, langs, setLang, t, type Lang } from '#lib/i18n/index.svelte.js';
 	import { theme, setTheme } from '#lib/theme.svelte.js';
-	import { sound, setSound, sfxStar } from '#lib/sfx.svelte.js';
-	import { compass, setCompassStyle, COMPASS_STYLES, MNEMONIC } from '#lib/compass.svelte.js';
+	import { compass, MNEMONIC } from '#lib/compass.svelte.js';
 	import { LAYERS, savedLayer, saveLayer, type Layer } from '#lib/map/map.js';
 	import { load, save } from '#lib/storage.js';
 	import { showToast } from '#lib/toast.svelte.js';
@@ -20,21 +18,9 @@
 	let layer = $state<Layer>(savedLayer());
 	let tipsDone = $state(!!load('coach_done', ''));
 
-	// the compasses turn slowly, as if someone looks around
-	let heading = $state(0);
-	let raf = requestAnimationFrame(function spin(now) {
-		heading = Math.sin(now / 2600) * 120;
-		raf = requestAnimationFrame(spin);
-	});
-	onDestroy(() => cancelAnimationFrame(raf));
-
 	function pickLayer(l: Layer) {
 		layer = l;
 		saveLayer(l);
-	}
-	function soundOn(on: boolean) {
-		setSound(on);
-		if (on) setTimeout(() => [0, 1, 2].forEach((i) => setTimeout(() => sfxStar(i), i * 200)), 50);
 	}
 	function tipsAgain() {
 		save('coach_done', '');
@@ -46,11 +32,11 @@
 <SubPage title={t('settings')} back={{ href: '/me', label: t('profile') }}>
 	<div class="list">
 		<section>
-			<h2>{t('langLabel')}</h2>
+			<h2 class="section-title">{t('langLabel')}</h2>
 			<div class="tiles three">
 				{#each langs as l (l)}
 					<button class="tile" aria-pressed={i18n.lang === l} onclick={() => setLang(l)}>
-						<span class="pic words"><b>{sample[l]}</b></span>
+						<span class="pic words"><b class="d">{sample[l]}</b></span>
 						<span class="name">{names[l]}</span>
 					</button>
 				{/each}
@@ -58,17 +44,35 @@
 		</section>
 
 		<section>
-			<h2>{t('theme')}</h2>
+			<h2 class="section-title">{t('theme')}</h2>
 			<div class="tiles two">
 				{#each ['light', 'dark'] as const as th (th)}
 					<button class="tile" aria-pressed={theme.value === th} onclick={() => setTheme(th)}>
-						<!-- a tiny home: the greeting, a blue sign, the green button -->
+						<!-- a tiny home in its own colours: the gold tag, the title, the map, the green key -->
 						<span class="pic screen {th}" aria-hidden="true">
-							<i class="s-line"></i>
-							<i class="s-title"></i>
-							<i class="s-sign"></i>
-							<i class="s-sign white"></i>
-							<i class="s-play"></i>
+							<svg viewBox="0 0 120 84">
+								<defs>
+									<linearGradient id="ground-{th}" x1="0" y1="0" x2="0" y2="1">
+										<stop offset="0" stop-color={th === 'light' ? '#0d808d' : '#0c3b43'} />
+										<stop offset="1" stop-color={th === 'light' ? '#08606c' : '#062830'} />
+									</linearGradient>
+								</defs>
+								<rect width="120" height="84" fill="url(#ground-{th})" />
+								<circle cx="12" cy="9" r="3.2" fill="#f4b92e" />
+								<rect x="18" y="7" width="26" height="4.5" rx="2" fill="#fff" />
+								<rect x="28" y="17" width="30" height="6" rx="2" fill="#f4b92e" />
+								<rect x="28" y="25.5" width="64" height="7" rx="2.5" fill="#fff" />
+								<path
+									d="M20 39 36 37l9 6 13 2 9 4 10-2 6 4 13-3-3 6-11 1-6 6-6-3-6 5-9-5-11-4-7-4-8 2-6-3z"
+									fill={th === 'light' ? '#fff9ec' : '#efe5cf'}
+									stroke={th === 'light' ? '#0a606c' : '#0a3a42'}
+									stroke-width="0.8"
+									stroke-linejoin="round"
+								/>
+								<circle cx="86" cy="51" r="3.2" fill="#f4b92e" stroke="#fff" stroke-width="1.2" />
+								<rect x="10" y="70.5" width="100" height="10" rx="4" fill="#0b6a2e" />
+								<rect x="10" y="67" width="100" height="11" rx="4" fill="#18a84c" />
+							</svg>
 						</span>
 						<span class="name">{th === 'light' ? t('themeLight') : t('themeDark')}</span>
 					</button>
@@ -77,56 +81,19 @@
 		</section>
 
 		<section>
-			<h2>{t('sound')}</h2>
-			<div class="tiles two">
-				<button class="tile" aria-pressed={sound.on} onclick={() => soundOn(true)}>
-					<span class="pic speaker on" aria-hidden="true">
-						<svg viewBox="0 0 48 48"
-							><path class="body" d="M8 19h7l10-8v26l-10-8H8z" /><path
-								class="wave w1"
-								d="M31 18a8 8 0 0 1 0 12"
-							/><path class="wave w2" d="M35 13a15 15 0 0 1 0 22" /></svg
-						>
-					</span>
-					<span class="name">{t('soundOn')}</span>
-				</button>
-				<button class="tile" aria-pressed={!sound.on} onclick={() => soundOn(false)}>
-					<span class="pic speaker" aria-hidden="true">
-						<svg viewBox="0 0 48 48"
-							><path class="body" d="M8 19h7l10-8v26l-10-8H8z" /><path
-								class="cross"
-								d="m31 19 10 10M41 19 31 29"
-							/></svg
-						>
-					</span>
-					<span class="name">{t('soundOff')}</span>
-				</button>
-			</div>
+			<h2 class="section-title">{t('sound')}</h2>
+			<ChoiceTiles kind="sound" />
 			<p class="note">{t('soundNote')}</p>
 		</section>
 
 		<section>
-			<h2>{t('compass')}</h2>
-			<div class="tiles three">
-				{#each COMPASS_STYLES as c (c)}
-					<button
-						class="tile"
-						aria-pressed={compass.style === c}
-						onclick={() => setCompassStyle(c)}
-					>
-						<!-- over a bit of street, as in a round -->
-						<span class="pic street" aria-hidden="true">
-							<span class="compass {c}"><Compass {heading} style={c} /></span>
-						</span>
-						<span class="name">{t(`compass_${c}`)}</span>
-					</button>
-				{/each}
-			</div>
+			<h2 class="section-title">{t('compass')}</h2>
+			<ChoiceTiles kind="compass" />
 			<p class="note">{t(`compassNote_${compass.style}`, MNEMONIC)}</p>
 		</section>
 
 		<section>
-			<h2>{t('mapLook')}</h2>
+			<h2 class="section-title">{t('mapLook')}</h2>
 			<div class="tiles three">
 				{#each LAYERS as l (l)}
 					<button class="tile" aria-pressed={layer === l} onclick={() => pickLayer(l)}>
@@ -192,14 +159,21 @@
 		</section>
 
 		<section>
-			<h2>{t('tipsLabel')}</h2>
-			<div class="tips">
+			<h2 class="section-title">{t('tipsLabel')}</h2>
+			<div class="tips panel">
 				<span class="pic street finger-pic" aria-hidden="true"><span class="finger">👆</span></span>
 				<div>
-					<p class="note">{t('tipsNote')}</p>
-					<button class="btn btn-ghost" onclick={tipsAgain} disabled={!tipsDone}>
-						{tipsDone ? t('tipsAgain') : t('tipsOn')}
-					</button>
+					<p>{t('tipsNote')}</p>
+					<!-- once asked for, a word that it's on, not a key that does nothing -->
+					{#if tipsDone}
+						<button class="btn btn-ghost" onclick={tipsAgain}>{t('tipsAgain')}</button>
+					{:else}
+						<p class="on">
+							<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+								><path d="m5 12.5 4.5 4.5L19 7.5" /></svg
+							>{t('tipsOn')}
+						</p>
+					{/if}
 				</div>
 			</div>
 		</section>
@@ -212,21 +186,21 @@
 		flex-direction: column;
 		gap: 30px;
 	}
-	h2 {
-		font-size: 15px;
-		font-weight: 700;
-		margin-bottom: 10px;
+	.section-title {
+		margin-bottom: 12px;
 	}
 	.note {
-		margin-top: 10px;
-		font-size: 13.5px;
-		color: var(--muted);
+		margin-top: 12px;
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--on-ground-3);
 	}
 
-	/* every choice is a tile: a picture of it, its name; the chosen one has a green rim */
+	/* every choice is a milk tile: a picture of it in a soft well, its name; the chosen one wears
+	   a gold ring and a gold tick, gold being what is the player's own */
 	.tiles {
 		display: grid;
-		gap: 10px;
+		gap: 12px;
 	}
 	.tiles.two {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -239,43 +213,45 @@
 		display: flex;
 		flex-direction: column;
 		gap: 8px;
-		padding: 8px 8px 10px;
+		padding: 7px 7px 10px;
 		border: none;
-		border-radius: 18px;
-		background: var(--surface);
-		color: var(--text);
+		border-radius: 20px;
+		background: var(--panel);
+		color: var(--ink);
 		box-shadow:
-			inset 0 0 0 2px var(--border),
-			0 3px 0 var(--edge);
+			0 3px 0 var(--panel-lip),
+			0 10px 20px var(--shade);
 		transition:
-			transform 0.08s,
-			box-shadow 0.12s;
+			transform 0.1s var(--out),
+			box-shadow 0.15s;
 	}
 	.tile:active {
-		transform: translateY(2px);
+		transform: translateY(2px) scale(0.98);
 	}
 	.tile[aria-pressed='true'] {
 		box-shadow:
-			inset 0 0 0 3px var(--green),
-			0 3px 0 var(--green-edge);
+			inset 0 0 0 3px var(--gold),
+			0 3px 0 var(--gold-lo),
+			0 10px 20px var(--shade);
 	}
 	.tile[aria-pressed='true']::after {
 		content: '';
 		position: absolute;
-		top: -6px;
-		right: -6px;
-		width: 24px;
-		height: 24px;
+		top: -7px;
+		right: -7px;
+		width: 26px;
+		height: 26px;
 		border-radius: 50%;
-		background: var(--green)
-			url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m6 12.5 4 4L18 8' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
-			center / 16px no-repeat;
-		box-shadow: 0 2px 0 var(--green-edge);
-		animation: pop-in 0.3s var(--pop);
+		background:
+			url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m6 12.5 4 4L18 8' fill='none' stroke='%233a2600' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+				center / 17px no-repeat,
+			linear-gradient(180deg, var(--gold-hi), var(--gold));
+		box-shadow: 0 2px 0 var(--gold-lo);
+		animation: pop-in 0.3s var(--spring);
 	}
 	.name {
 		font-weight: 700;
-		font-size: 14px;
+		font-size: 14.5px;
 		text-align: center;
 	}
 	.pic {
@@ -283,105 +259,35 @@
 		display: grid;
 		place-items: center;
 		height: 78px;
-		border-radius: 12px;
+		border-radius: 14px;
 		overflow: hidden;
-		background: var(--bg);
+		background: var(--panel-2);
 	}
 
 	.words b {
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 12.5px;
-		overflow-wrap: anywhere;
+		font-size: 13px;
 		line-height: 1.15;
 		padding: 0 6px;
 		text-align: center;
+		color: var(--ink);
 	}
 
-	/* a tiny home screen, in its own colours whatever the page's theme */
+	/* the whole tiny home always shows; a wide tile (a laptop) shows more ground round it */
 	.screen {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		justify-content: flex-start;
-		gap: 4px;
-		padding: 9px 10px;
 		height: 96px;
 	}
 	.screen.light {
-		background: #f4efe4;
-		--ink: #13233f;
-		--plate: #fbfaf6;
+		background: linear-gradient(180deg, #0d808d, #08606c);
 	}
 	.screen.dark {
-		background: #0c1424;
-		--ink: #edf1f8;
-		--plate: #e9edf4;
+		background: linear-gradient(180deg, #0c3b43, #062830);
 	}
-	.screen i {
-		display: block;
-		border-radius: 3px;
-	}
-	.s-line {
-		width: 40%;
-		height: 4px;
-		background: var(--ink);
-		opacity: 0.4;
-	}
-	.s-title {
-		width: 70%;
-		height: 9px;
-		background: var(--ink);
-	}
-	.s-sign {
+	.screen svg {
 		width: 100%;
-		height: 15px;
-		background: #1d4f9a;
-		box-shadow:
-			inset 0 0 0 2px #1d4f9a,
-			inset 0 0 0 3px #fff;
-	}
-	.s-sign.white {
-		background: var(--plate);
-		box-shadow: inset 0 0 0 2px #1b2a44;
-	}
-	.s-play {
-		margin-top: auto;
-		width: 100%;
-		height: 11px;
-		background: #1eb53a;
-		box-shadow: 0 2px 0 #0f7a24;
+		height: 100%;
 	}
 
-	.speaker svg {
-		width: 54px;
-		height: 54px;
-		fill: none;
-		stroke: var(--text);
-		stroke-width: 3;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-	}
-	.speaker .body {
-		fill: var(--text);
-	}
-	.speaker .cross {
-		stroke: var(--red);
-	}
-	.speaker.on .wave {
-		stroke: var(--sky);
-		animation: wave 1.2s ease-in-out infinite;
-	}
-	.speaker.on .w2 {
-		animation-delay: 0.2s;
-	}
-	@keyframes wave {
-		50% {
-			opacity: 0.25;
-		}
-	}
-
-	/* a bit of street (sky, houses, road) under the compass and the finger */
+	/* a bit of street (sky, houses, road) under the first game's finger */
 	.street {
 		background:
 			linear-gradient(to bottom, transparent 58%, #6b6f78 58% 100%),
@@ -398,21 +304,6 @@
 				0 26% / 100% 40% no-repeat,
 			linear-gradient(to bottom, #7cc3e8, #bfe3f2);
 	}
-	.compass {
-		display: grid;
-		place-items: center;
-	}
-	.compass.modern {
-		position: absolute;
-		left: 50%;
-		top: 50%;
-		transform: translate(-50%, -50%) scale(0.45);
-	}
-	.compass.classic,
-	.compass.mnemonic {
-		transform: scale(0.95);
-	}
-
 	.mapthumb {
 		width: 100%;
 		height: 100%;
@@ -421,10 +312,12 @@
 	.tips {
 		display: flex;
 		align-items: center;
-		gap: 14px;
+		gap: 16px;
+		padding: 12px;
 	}
 	.finger-pic {
-		width: 110px;
+		width: 108px;
+		height: 96px;
 		flex: none;
 	}
 	.finger {
@@ -441,11 +334,28 @@
 			transform: translateX(26px) rotate(12deg);
 		}
 	}
-	.tips .note {
-		margin: 0 0 10px;
+	.tips p {
+		margin-bottom: 10px;
+		font-size: 14px;
+		line-height: 1.4;
+		color: var(--ink-2);
 	}
 	.tips .btn {
 		height: 46px;
+		padding: 0 16px;
 		font-size: 14px;
+	}
+	.tips .on {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin: 0;
+		font-weight: 700;
+		color: var(--gold-on-panel);
+	}
+	.tips .on .icon {
+		width: 18px;
+		height: 18px;
+		stroke-width: 3;
 	}
 </style>

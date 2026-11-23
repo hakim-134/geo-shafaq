@@ -501,6 +501,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/places/{slug}/face": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A place's face, its picture wherever it is named (P1111 §5).
+         * @description The place inside its parent: the parent's parts drawn in one frame, as
+         *     `/v1/places/{slug}/map` draws them, and which of them is the place. A region is shown
+         *     in Uzbekistan; a district or a town in its region (Tashkent's districts in Tashkent); a
+         *     city under the country that a region surrounds (Tashkent) in that region, drawn into
+         *     the hole the region leaves for it; Uzbekistan alone, all of it (`whole`). The same for
+         *     everyone and it never changes, so it is cached a day.
+         */
+        get: operations["getPlaceFace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/games": {
         parameters: {
             query?: never;
@@ -1197,7 +1222,10 @@ export interface components {
         };
         MyStreet: {
             name: components["schemas"]["Text"];
-            place?: components["schemas"]["Text"];
+            /** @description The district the player met the street in: the place of their closest round there (the round of `at`), as that round's result names it. A long street runs through several districts; in a district's list (`place=`) it is that district. */
+            place: components["schemas"]["Text"];
+            /** @description That district by slug, for its picture (`/v1/places/{slug}/face`). */
+            face: string;
             /** @description Rounds played on this street. */
             rounds: number;
             /**
@@ -1242,6 +1270,10 @@ export interface components {
             note?: string;
             /** Format: date-time */
             at: string;
+            /** @description street: the district the player learned it in (as in their streets: their closest round there; with none left, where most of its panoramas are). district: the district. */
+            place?: components["schemas"]["Text"];
+            /** @description That district by slug, for its picture (`/v1/places/{slug}/face`). */
+            face?: string;
         };
         Shop: {
             balance: number;
@@ -1354,6 +1386,11 @@ export interface components {
             outline?: string;
             /** @description The slugs of the places the map is made of (the place map marks them). */
             places?: string[];
+            /**
+             * @description The place whose picture stands for the map (`/v1/places/{slug}/face`): its one place, or the smallest place holding all of them (Uzbekistan for the historic cities); a player's streets map, the place of the map it plays on. Absent when the map has no places.
+             * @example toshkent
+             */
+            face?: string;
         };
         /** @description A place, by name. On a map, the map's one place (or its parent). */
         PlaceRef: {
@@ -1387,9 +1424,6 @@ export interface components {
             map: string;
             /** @description The outline as a small SVG. */
             outline: string;
-            /** @description A photo of the place (Wikimedia Commons). */
-            banner?: string;
-            bannerCredit?: string;
             /** @description Active panoramas, on the players' providers. */
             panoramas: number;
             /** @description Places inside it that have panoramas (the picker can go deeper). */
@@ -1437,6 +1471,27 @@ export interface components {
             y: number;
             /** @description The place's name (marks only; a shape's name is in its card). */
             name?: components["schemas"]["Text"];
+        };
+        /**
+         * @description A place's face: the parts of `frame` drawn in one frame (Web Mercator, the longer side
+         *     1000, y down, as `PlaceMap`), with the place filled: the shape whose `slug` is the
+         *     place's, or every shape when `whole`.
+         */
+        PlaceFace: {
+            /** @example jondor-tumani */
+            slug: string;
+            /** @enum {string} */
+            kind: "country" | "region" | "district" | "city";
+            name: components["schemas"]["Text"];
+            /** @description The place whose parts are drawn: the parent (Buxoro viloyati round Jondor), the region round a city under the country (Toshkent viloyati round Tashkent), the place itself when `whole`. */
+            frame: components["schemas"]["PlaceRef"];
+            /** @description The place is the frame itself (Uzbekistan): every shape is it. */
+            whole: boolean;
+            /** Format: double */
+            width: number;
+            /** Format: double */
+            height: number;
+            shapes: components["schemas"]["PlaceMapShape"][];
         };
         CreateGame: {
             /** @description The map's slug. */
@@ -1680,6 +1735,11 @@ export interface components {
         MapRef: {
             slug: string;
             name: components["schemas"]["Text"];
+            /**
+             * @description The place whose picture stands for the map, as in `MapSummary.face`.
+             * @example toshkent
+             */
+            face?: string;
         };
         Round: {
             n: number;
@@ -1791,15 +1851,10 @@ export interface components {
             region?: components["schemas"]["Text"];
             metro?: components["schemas"]["Metro"];
             /**
-             * @description The smallest place the round was in (a district, a city, a region). With `parent` it is the place's picture: `GET /v1/places/{parent}/map` draws the parent's parts, and this one is filled in. Missing in results saved before 2026-11-12.
+             * @description The smallest place the round was in (a district, a city, a region), for its picture (`/v1/places/{slug}/face`). Missing in results saved before 2026-11-12.
              * @example bektemir-tumani
              */
             slug?: string;
-            /**
-             * @description The place `slug` is a part of.
-             * @example toshkent
-             */
-            parent?: string;
         };
         Metro: {
             name: components["schemas"]["Text"];
@@ -2551,6 +2606,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlaceMap"];
+                };
+            };
+            404: components["responses"]["Error"];
+        };
+    };
+    getPlaceFace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The face */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceFace"];
                 };
             };
             404: components["responses"]["Error"];

@@ -14,21 +14,15 @@
 	import GuessMap from '#lib/map/GuessMap.svelte';
 	import { LAYERS, savedLayer, saveLayer, type BBox, type Layer } from '#lib/map/map.js';
 	import Compass from '#lib/components/Compass.svelte';
+	import ChoiceTiles from '#lib/components/ChoiceTiles.svelte';
+	import PlaceInParent from '#lib/maps/PlaceInParent.svelte';
 	import Sheet from '#lib/components/Sheet.svelte';
-	import { compass, setCompassStyle, COMPASS_STYLES } from '#lib/compass.svelte.js';
+	import { compass } from '#lib/compass.svelte.js';
 	import { i18n, t, tx, type Key } from '#lib/i18n/index.svelte.js';
 	import { fmtClock, fmtNum } from '#lib/format.js';
 	import { showToast } from '#lib/toast.svelte.js';
 	import { load, save } from '#lib/storage.js';
-	import {
-		beep,
-		setSound,
-		sfxGuess,
-		sfxPin,
-		sound,
-		unlockAudio,
-		vibrate
-	} from '#lib/sfx.svelte.js';
+	import { beep, sfxGuess, sfxPin, unlockAudio, vibrate } from '#lib/sfx.svelte.js';
 
 	/** opening: the panorama is loading; playing: look and guess; sending: the guess is on its
 	 *  way; waiting: guessed, the others are still looking (rooms); off: a result is on top. */
@@ -188,6 +182,13 @@
 
 	export function closeMap() {
 		mapOpen = false;
+	}
+
+	// the phone's sheet has finished sliding up: the map measures its box again and frames the
+	// area (its own box's growing on a laptop is the map's own ResizeObserver's)
+	function sheetUp(e: TransitionEvent) {
+		if (e.target === e.currentTarget && e.propertyName === 'transform' && mapOpen)
+			guessMap?.refit();
 	}
 
 	function openMap() {
@@ -393,12 +394,18 @@
 
 {#if hints.length && playing}
 	{@const h = hints.at(-1)!}
-	<div class="hint-banner cap" class:low={showCompass && compass.style === 'modern'}>
-		<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
-			><path
-				d="M9 18h6M10 21.5h4M12 2.5a6.5 6.5 0 0 0-3.8 11.8V16.5h7.6v-2.2A6.5 6.5 0 0 0 12 2.5z"
-			/></svg
-		>
+	<div class="hint-cap cap" class:low={showCompass && compass.style === 'modern'}>
+		<!-- a named place shows its face (the gold rim already says it's the hint); a circle,
+		     which names nothing, keeps the bulb -->
+		{#if h.place}
+			<span class="hint-face"><PlaceInParent place={h.place} /></span>
+		{:else}
+			<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+				><path
+					d="M9 18h6M10 21.5h4M12 2.5a6.5 6.5 0 0 0-3.8 11.8V16.5h7.6v-2.2A6.5 6.5 0 0 0 12 2.5z"
+				/></svg
+			>
+		{/if}
 		<!-- the place's own name says what it is: "Yashnobod tumani", not "Tuman: Yashnobod tumani" -->
 		<span>{h.kind === 'circle' ? t('hintCircle') : tx(h.text)}</span>
 	</div>
@@ -511,6 +518,7 @@
 	class:hidden={status === 'off'}
 	role="region"
 	aria-label={t('map')}
+	ontransitionend={sheetUp}
 >
 	<i class="grab-bar" aria-hidden="true"></i>
 	<div class="map-head">
@@ -572,50 +580,32 @@
 		{#if !onleave}
 			<button class="btn btn-primary" onclick={() => (menuOpen = false)}>
 				<svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" /></svg>
-				{t('resume')}
+				<span class="lbl">{t('resume')}</span>
 			</button>
 		{/if}
 		{#if rules.compass}
 			<div class="menu-row">
 				<span class="field-label">{t('compass')}</span>
-				<div class="segmented">
-					{#each COMPASS_STYLES as c (c)}
-						<button
-							aria-pressed={!compassOff && compass.style === c}
-							onclick={() => {
-								compassOff = false;
-								setCompassStyle(c);
-							}}>{t(`compass_${c}`)}</button
-						>
-					{/each}
-					<!-- the same four as the settings: "Yo‘q" hides it for this game -->
-					<button aria-pressed={compassOff} onclick={() => (compassOff = true)}
-						>{t('compassNone')}</button
-					>
-				</div>
+				<!-- the same pictures as Sozlamalar; "Yo‘q" hides it for this game -->
+				<ChoiceTiles kind="compass" small none bind:off={compassOff} />
 			</div>
 		{/if}
 		<div class="menu-row">
 			<span class="field-label">{t('sound')}</span>
-			<div class="segmented">
-				<button aria-pressed={sound.on} onclick={() => setSound(true)}>{t('soundOn')}</button>
-				<button aria-pressed={!sound.on} onclick={() => setSound(false)}>{t('soundOff')}</button>
-			</div>
+			<ChoiceTiles kind="sound" small />
 		</div>
 		{#if onleave}
-			<button class="btn btn-ghost" onclick={onleave}>{t('leave')}</button>
+			<button class="btn btn-ghost" onclick={onleave}><span class="lbl">{t('leave')}</span></button>
 		{:else}
 			<p class="keys">{t('keys')}</p>
-			<a class="btn btn-ghost" href="/">{t('leaveGame')}</a>
+			<a class="btn btn-ghost" href="/"><span class="lbl">{t('leaveGame')}</span></a>
 		{/if}
 	</div>
 </Sheet>
 
 <style>
-	/* The round in the new look (P1111 1.1). Only rounds use this file, and the game and room
-	   pages switch html.look2 on for them, so its tokens (--cap-*, --gold*, --key*, --panel*)
-	   are always there. The capsules carry no backdrop blur: the panorama is a live canvas and
-	   blur costs frames on cheap phones, so their solid lapis does the work. */
+	/* The round in the new look (P1111 1.1). The capsules carry no backdrop blur: the panorama
+	   is a live canvas and blur costs frames on cheap phones, so their solid lapis does the work. */
 	.pano,
 	.pano :global(.pano-layer) {
 		position: absolute;
@@ -1001,7 +991,7 @@
 		background: linear-gradient(180deg, var(--gold-hi), var(--gold));
 		box-shadow:
 			0 2px 0 var(--gold-lo),
-			0 0 0 2px var(--lapis);
+			0 0 0 2px var(--ring-deep);
 		white-space: nowrap;
 	}
 	.badge {
@@ -1096,7 +1086,7 @@
 	}
 
 	/* ---------- a hint taken: a capsule with a gold ring naming it ---------- */
-	.hint-banner {
+	.hint-cap {
 		position: fixed;
 		top: calc(max(12px, env(safe-area-inset-top)) + 70px);
 		left: 50%;
@@ -1118,13 +1108,21 @@
 			0 10px 20px rgba(0, 0, 0, 0.25);
 		animation: pop-in 0.35s var(--spring);
 	}
-	.hint-banner .icon {
+	.hint-cap .icon {
 		width: 20px;
 		height: 20px;
 		color: var(--gold);
 		fill: color-mix(in srgb, var(--gold) 22%, transparent);
 	}
-	.hint-banner.low {
+	/* the hinted place's face: milk tiles, the place gold, as on the ground; the pill's full
+	   height, so the district can be seen at a glance */
+	.hint-face {
+		width: 40px;
+		height: 40px;
+		flex: none;
+		margin: -6px 0 -6px -8px;
+	}
+	.hint-cap.low {
 		top: calc(max(12px, env(safe-area-inset-top)) + 112px);
 	}
 
@@ -1254,7 +1252,7 @@
 		height: 48px;
 		border-radius: 50%;
 		border: 4px solid var(--gold);
-		box-shadow: 0 0 0 2px var(--lapis);
+		box-shadow: 0 0 0 2px var(--ring-deep);
 		animation: ripple 1.4s ease-out infinite;
 	}
 	@keyframes ripple {
@@ -1461,7 +1459,7 @@
 		overflow: hidden;
 		background: #eef0ee;
 		box-shadow:
-			0 0 0 3px var(--lapis),
+			0 0 0 3px var(--ring-deep),
 			0 0 0 5px rgba(190, 240, 240, 0.35),
 			0 8px 0 3px var(--cap-lip),
 			0 18px 36px rgba(0, 0, 0, 0.35);
@@ -1520,10 +1518,6 @@
 	.menu-row .field-label {
 		margin-bottom: 8px;
 		color: var(--ink-2);
-	}
-	.menu :global(.segmented button[aria-pressed='true']) {
-		color: var(--ink);
-		font-weight: 800;
 	}
 	.keys {
 		font-size: 13px;
@@ -1638,7 +1632,7 @@
 			transform: translateX(-50%) scale(0.85);
 		}
 		/* beside the compass, under the status: centred in what's left of the width */
-		.hint-banner {
+		.hint-cap {
 			top: calc(max(10px, env(safe-area-inset-top)) + 70px);
 			left: 72px;
 			right: 10px;
@@ -1649,7 +1643,7 @@
 			white-space: normal;
 			font-size: 15px;
 		}
-		.hint-banner.low {
+		.hint-cap.low {
 			left: 10px;
 			top: calc(max(10px, env(safe-area-inset-top)) + 108px);
 			max-width: calc(100vw - 20px);
@@ -1711,7 +1705,7 @@
 				transform 0.32s var(--out),
 				visibility 0s 0.32s;
 		}
-		:global(:root.look2[data-theme='dark']) .minimap {
+		:global(:root[data-theme='dark']) .minimap {
 			background: linear-gradient(180deg, var(--panel-2), var(--ground-top) 70%);
 		}
 		.minimap.open {

@@ -12,22 +12,14 @@
 		actions: Snippet;
 		children: Snippet;
 		legend?: boolean | 'actual'; // 'actual': the flag's key only (a room's pins are its players' faces)
-		tall?: boolean; // more to read than to see (the final table): a smaller map on phones
-		stage?: boolean; // the panel is the show (a room's podium): on phones it comes first, the map under it
-		scroll?: boolean; // a long story (the end of a game): on phones one page scrolls, the map on top
+		// the end of a game: its own page on the turquoise ground, not a milk panel (its lists are
+		// milk panels on it); on phones one page scrolls, the map on top
+		scroll?: boolean;
 	}
-	let {
-		map,
-		actions,
-		children,
-		legend = true,
-		tall = false,
-		stage = false,
-		scroll = false
-	}: Props = $props();
+	let { map, actions, children, legend = true, scroll = false }: Props = $props();
 </script>
 
-<div class="result" class:tall class:stage class:scroll>
+<div class="result" class:on-panel={!scroll} class:scroll>
 	<div class="map-side">
 		{@render map()}
 		{#if legend}
@@ -40,21 +32,24 @@
 			</div>
 		{/if}
 	</div>
-	<section class="panel">
+	<section class="side">
 		<div class="body">{@render children()}</div>
 		<div class="actions">{@render actions()}</div>
 	</section>
 </div>
 
 <style>
+	/* The panel is a raised milk surface (deep turquoise by night); on a phone it rises over the
+	   map's foot with a rounded top, on a laptop it stands at the left and its story sits in the
+	   middle of its height, the key right under it. Yandex's map is never filtered. */
 	.result {
 		position: fixed;
 		inset: 0;
 		z-index: 2000;
-		background: var(--bg);
-		color: var(--text);
+		background: var(--panel);
+		color: var(--ink);
 		display: grid;
-		grid-template-columns: 420px minmax(0, 1fr);
+		grid-template-columns: 500px minmax(0, 1fr);
 		grid-template-rows: minmax(0, 1fr);
 	}
 	.map-side {
@@ -66,57 +61,65 @@
 		position: absolute;
 		inset: 0;
 	}
-	/* bottom left, under each other: Yandex's own box has the top left, its logo the bottom right */
+	/* the legend: one small card in the map's corner, clear of Yandex's box (top left) and its
+	   logo and terms (bottom right); the markers are the map's own */
 	.legend {
 		position: absolute;
-		left: 10px;
-		bottom: 10px;
+		left: 12px;
+		bottom: 12px;
 		display: flex;
 		flex-direction: column;
 		align-items: flex-start;
-		gap: 6px;
+		gap: 4px;
+		padding: 8px 12px 8px 10px;
+		border-radius: 14px;
+		background: #fff9ec;
+		box-shadow:
+			0 3px 0 rgba(11, 59, 68, 0.18),
+			0 6px 14px rgba(0, 0, 0, 0.15);
 		pointer-events: none;
 	}
 	.legend span {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
-		padding: 5px 10px;
-		border-radius: 10px;
-		background: rgba(255, 255, 255, 0.92);
-		color: #13233f;
-		font-size: 12.5px;
-		font-weight: 600;
-		box-shadow: 0 2px 0 rgba(0, 0, 0, 0.12);
+		height: 24px;
+		gap: 8px;
+		color: #0b3b44; /* on the milk card over Yandex's map, which is light in both themes */
+		font-size: 13px;
+		font-weight: 700;
+		white-space: nowrap;
 	}
 	.legend img {
 		display: block;
-		margin: -4px -2px -2px -4px;
+		width: 18px;
+		height: auto;
+		margin: -3px 0 0;
 	}
-	.panel {
+	.side {
+		position: relative;
+		z-index: 1;
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
-		background: var(--surface);
-		border-right: 1px solid var(--border);
-		animation: slide-in 0.4s var(--settle);
+		justify-content: center;
+		background: var(--panel);
+		box-shadow: 12px 0 30px var(--shade);
+		animation: slide-in 0.45s var(--out);
+	}
+	:global(:root[data-theme='dark']) .side {
+		background: linear-gradient(180deg, var(--panel-2), var(--ground-top) 75%);
 	}
 	.body {
-		flex: 1;
+		flex: 0 1 auto;
 		min-height: 0;
 		overflow-y: auto;
-		padding: 28px 26px 16px;
-	}
-	/* a room's podium is the show: a wider panel on a laptop */
-	.stage {
-		grid-template-columns: min(540px, 40vw) minmax(0, 1fr);
+		padding: 32px 36px 8px;
 	}
 	.actions {
-		padding: 12px 26px max(18px, env(safe-area-inset-bottom));
+		padding: 22px 36px max(26px, env(safe-area-inset-bottom));
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
-		border-top: 1px solid var(--border);
 	}
 	.actions :global(.btn) {
 		width: 100%;
@@ -136,11 +139,34 @@
 			opacity: 0;
 		}
 	}
+	/* the end of a game: the side is the ground, by day and by night; white words on it */
+	.scroll {
+		background: var(--ground-bot);
+		color: var(--on-ground);
+	}
+	.scroll .side,
+	:global(:root[data-theme='dark']) .scroll .side {
+		background:
+			radial-gradient(120% 50% at 30% 0%, var(--ground-glow), transparent 70%),
+			linear-gradient(180deg, var(--ground-top), var(--ground-bot));
+	}
+	/* a long list scrolls in the column and fades into the ground over the keys, not cut */
+	.scroll .body {
+		padding-bottom: 28px;
+		-webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+		mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+	}
 
 	@media (max-width: 760px) {
 		.result {
 			display: flex;
 			flex-direction: column;
+		}
+		/* the panel's rounded top meets the map's foot: the two small corners beside it take
+		   the colour of Yandex's land, so the map seems to run on under the panel, while the
+		   map's own box (and its logo and terms) ends where the panel begins */
+		.result:not(.scroll) {
+			background: #fbf9f3;
 		}
 		.map-side {
 			order: 0;
@@ -148,182 +174,22 @@
 			min-height: 30vh;
 			min-height: 30dvh;
 		}
-		/* as tall as what it says, up to 70%: a room's table needs it, a solo result doesn't */
-		.panel {
-			flex: none;
-			max-height: 70vh;
-			max-height: 70dvh;
-			z-index: 1;
-			border-right: none;
-			box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18);
-			animation: rise-up 0.45s var(--settle);
-		}
-		/* the flag's thin band where the panel meets the map */
-		.panel::before {
-			content: '';
-			flex: none;
-			height: 7px;
-			background: linear-gradient(
-				to bottom,
-				var(--sky) 0 2px,
-				var(--red) 2px 3px,
-				#fff 3px 4px,
-				var(--red) 4px 5px,
-				var(--green) 5px 7px
-			);
-		}
-		/* the two add up to the screen, or the buttons at the bottom are cut off */
-		.tall .panel {
-			max-height: 72vh;
-			max-height: 72dvh;
-		}
-		.tall .map-side {
-			min-height: 28vh;
-			min-height: 28dvh;
-		}
-		.body {
-			padding: 20px 16px 12px;
-		}
-		.actions {
-			padding: 10px 16px max(12px, env(safe-area-inset-bottom));
-			gap: 8px;
-		}
-		/* the stage: one scroll, the panel's story first, the map under it, the buttons fixed;
-		   scroll: the same, the map first */
-		.stage,
-		.scroll {
-			overflow-y: auto;
-		}
-		.stage .panel,
-		.scroll .panel {
-			display: contents;
-		}
-		.stage .body,
-		.scroll .body {
-			order: 1;
-			flex: none;
-			overflow: visible;
-		}
-		.scroll .map-side {
-			flex: none;
-			height: 40vh;
-			height: 40dvh;
-			min-height: 0;
-		}
-		.scroll .actions {
-			order: 3;
-			position: sticky;
-			bottom: 0;
-			z-index: 2;
-			background: var(--surface);
-		}
-		.scroll .body {
-			background: var(--surface);
-		}
-		.stage .map-side {
-			order: 2;
-			flex: none;
-			height: 55vh;
-			min-height: 0;
-		}
-		.stage .actions {
-			order: 3;
-			position: sticky;
-			bottom: 0;
-			z-index: 2;
-			background: var(--surface);
-		}
-		.stage .body,
-		.stage .map-side {
-			background: var(--surface);
-		}
-		@keyframes rise-up {
-			from {
-				transform: translateY(60%);
-			}
-		}
-	}
-	/* ---------- the new look (P1111 1.1): only a round's result has it so far ----------
-	   The panel is a raised surface (white by day, lapis by night); on a phone it rises over
-	   the map's foot with a rounded top, on a laptop it stands at the left and its story sits
-	   in the middle of its height, the key right under it. Yandex's map is never filtered. */
-	:global(:root.look2) .result {
-		background: var(--panel);
-		color: var(--ink);
-		grid-template-columns: 500px minmax(0, 1fr);
-	}
-	:global(:root.look2) .panel {
-		position: relative;
-		z-index: 1;
-		justify-content: center;
-		background: var(--panel);
-		border-right: none;
-		box-shadow: 12px 0 30px var(--shade);
-		animation: slide-in 0.45s var(--out);
-	}
-	:global(:root.look2[data-theme='dark']) .panel {
-		background: linear-gradient(180deg, var(--panel-2), var(--ground-top) 75%);
-	}
-	:global(:root.look2) .body {
-		flex: 0 1 auto;
-		padding: 32px 36px 8px;
-	}
-	:global(:root.look2) .actions {
-		padding: 22px 36px max(26px, env(safe-area-inset-bottom));
-		border-top: none;
-	}
-	/* the legend: one small card in the map's corner, clear of Yandex's box (top left) and its
-	   logo and terms (bottom right); the markers are the map's own */
-	:global(:root.look2) .legend {
-		left: 12px;
-		bottom: 12px;
-		gap: 4px;
-		padding: 8px 12px 8px 10px;
-		border-radius: 14px;
-		background: #fff9ec;
-		box-shadow:
-			0 3px 0 rgba(11, 59, 68, 0.18),
-			0 6px 14px rgba(0, 0, 0, 0.15);
-	}
-	:global(:root.look2) .legend span {
-		height: 24px;
-		gap: 8px;
-		padding: 0;
-		border-radius: 0;
-		background: none;
-		box-shadow: none;
-		color: #0b3b44; /* on the milk card over Yandex's map, which is light in both themes */
-		font-size: 13px;
-		font-weight: 700;
-		white-space: nowrap;
-	}
-	:global(:root.look2) .legend img {
-		width: 18px;
-		height: auto;
-		margin: -3px 0 0;
-	}
-
-	@media (max-width: 760px) {
-		/* the panel's rounded top meets the map's foot: the two small corners beside it take
-		   the colour of Yandex's land, so the map seems to run on under the panel, while the
-		   map's own box (and its logo and terms) ends where the panel begins */
-		:global(:root.look2) .result:not(.stage):not(.scroll) {
-			background: #fbf9f3;
-		}
 		/* over Yandex's terms line, not on it; one row, so it lies under the pins' margin and
 		   never on a pin */
-		:global(:root.look2) .legend {
+		.legend {
 			left: 10px;
 			bottom: 26px;
 			flex-direction: row;
 			gap: 14px;
 			padding: 5px 10px 5px 8px;
 		}
-		:global(:root.look2) .legend span {
+		.legend span {
 			height: 22px;
 			font-size: 12.5px;
 		}
-		:global(:root.look2) .panel {
+		/* as tall as what it says, up to 72% */
+		.side {
+			flex: none;
 			justify-content: flex-start;
 			max-height: 72vh;
 			max-height: 72dvh;
@@ -331,19 +197,74 @@
 			box-shadow: 0 -10px 30px var(--shade);
 			animation: rise-up 0.5s var(--out);
 		}
-		:global(:root.look2) .panel::before {
-			display: none;
-		}
 		/* on a short phone the story scrolls under the key: its foot fades, so a line cut in
 		   half reads as "more below", not as a fault */
-		:global(:root.look2) .body {
+		.body {
 			flex: 1 1 auto;
 			padding: 18px 16px 18px;
 			-webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
 			mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), transparent);
 		}
-		:global(:root.look2) .actions {
+		.actions {
 			padding: 10px 16px max(14px, env(safe-area-inset-bottom));
+			gap: 8px;
+		}
+		/* scroll: one page scrolls, the map first, the story under it, the keys fixed */
+		.scroll {
+			overflow-y: auto;
+		}
+		.scroll .side {
+			display: contents;
+		}
+		.scroll .body {
+			order: 1;
+			flex: none;
+			overflow: visible;
+		}
+		/* the end of a game: the ground rises over the map's foot with a rounded top. The map's
+		   box ends where the ground begins (its logo and terms stay in sight); the two small
+		   corners beside the rounded top take Yandex's land colour, as on a round's result, and
+		   the rest of the page is the ground. The keys stay under the thumb, the list passing
+		   under them into the ground. */
+		.scroll {
+			background: linear-gradient(
+					180deg,
+					#fbf9f3 calc(38dvh + 26px),
+					var(--ground-bot) calc(38dvh + 26px)
+				)
+				local;
+		}
+		.scroll .map-side {
+			flex: none;
+			height: 38vh;
+			height: 38dvh;
+			min-height: 0;
+		}
+		.scroll .body {
+			flex: 1 0 auto;
+			position: relative;
+			border-radius: 26px 26px 0 0;
+			padding: 22px 16px 24px;
+			background:
+				radial-gradient(130% 380px at 30% 0%, var(--ground-glow), transparent 70%),
+				linear-gradient(180deg, var(--ground-top), var(--ground-bot) 560px);
+			box-shadow: 0 -10px 30px var(--shade);
+			-webkit-mask-image: none;
+			mask-image: none;
+			animation: rise 0.45s var(--out) both;
+		}
+		.scroll .actions {
+			order: 3;
+			position: sticky;
+			bottom: 0;
+			z-index: 2;
+			padding-top: 18px;
+			background: linear-gradient(180deg, transparent, var(--ground-bot) 18px);
+		}
+		@keyframes rise-up {
+			from {
+				transform: translateY(60%);
+			}
 		}
 	}
 </style>

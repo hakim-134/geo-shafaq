@@ -1,32 +1,22 @@
 <script lang="ts">
-	// My map (P1028 4.3): Tashkent's 13 tumanlar on the place map's own drawing (PlaceMap: names
-	// inside their shapes, coloured by what the player knows), the streets learned beside its
-	// title. The profile's big picture, where a tap on a district shows its streets; the laptop
-	// home's right half, where the place on the sign is marked (a district lit, the whole city
-	// edged) and a click on a district makes it the sign at once. onpick says which. Before the
-	// first game it glows under "Shu yerdan boshlang".
+	// "Sizning Toshkentingiz" (P1028 4.3): Tashkent's 13 districts on the place map's own drawing
+	// (PlaceMap: the districts as tiles with their names inside, gold as their streets are
+	// learned), the streets learned beside its title. The profile's big picture: a tap on a
+	// district shows its streets (onpick). Before the first game it glows under a gold "Shu
+	// yerdan boshlang". It lies straight on the ground, as the home's map does.
 	import { api, call, type Schemas } from '#lib/api/client.js';
 	import { session } from '#lib/session.svelte.js';
-	import { t, tx } from '#lib/i18n/index.svelte.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import { fmtNum } from '#lib/format.js';
 	import PlaceMap from './PlaceMap.svelte';
-	import { shortName } from './progress.js';
 
-	// chosen: the map on the home's sign ("tashkent-streets", "place-chilonzor-tumani", …);
-	// onstreets: the home's way to the streets of the district on the sign, beside the title
 	let {
 		glow = false,
-		chosen = '',
-		onpick,
-		onstreets
+		onpick
 	}: {
 		glow?: boolean;
-		chosen?: string;
 		onpick: (c: Schemas['PlaceCard']) => void;
-		onstreets?: (c: Schemas['PlaceCard']) => void;
 	} = $props();
-	const pick = $derived(chosen.startsWith('place-') ? chosen.slice(6) : '');
-	const whole = $derived(chosen === 'tashkent-streets' || pick === 'toshkent');
 
 	let detail = $state<Schemas['PlaceDetail'] | null>(null);
 	let drawing = $state<Schemas['PlaceMap'] | null>(null);
@@ -69,8 +59,7 @@
 			}
 		};
 	});
-	const picked = $derived(detail?.children.find((c) => c.slug === pick));
-	const known = $derived((picked ?? detail?.place)?.progress);
+	const known = $derived(detail?.place.progress);
 
 	$effect(() => {
 		void session.version;
@@ -85,7 +74,7 @@
 				call(api().GET('/v1/places/{slug}/map', params))
 			]);
 		} catch {
-			/* the map is a bonus: without it the right half stays quiet */
+			/* the map is a bonus: without it the page goes on without it */
 		}
 	}
 </script>
@@ -94,21 +83,16 @@
 	<figure class="city" class:glow>
 		<!-- before the first game there is no "your Tashkent" yet: the city glows, start here -->
 		<figcaption class="head">
-			<span class="title">{glow ? t('startHere') : t('yourTashkent')}</span>
+			{#if glow}<span class="kick-tag">{t('startHere')}</span>{/if}
+			<h2 class="d float title">{t('yourTashkent')}</h2>
 			{#if !glow && known}
-				{#if picked && onstreets}
-					<button class="count link" onclick={() => onstreets(picked)}>
-						{shortName(tx(picked.name))}: <b>{fmtNum(known.learned)}</b> / {fmtNum(known.total)}
-						{t('streetsWord')}
-						<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg>
-					</button>
-				{:else if known.learned}
-					<span class="count">
-						<b>{fmtNum(known.learned)}</b> / {fmtNum(known.total)}
+				{#if known.learned}
+					<p class="count">
+						<b class="d">{fmtNum(known.learned)}</b> / {fmtNum(known.total)}
 						{t('streetsLearnedShort')}
-					</span>
+					</p>
 				{:else}
-					<span class="count">{t('firstLearnHint')}</span>
+					<p class="count">{t('firstLearnHint')}</p>
 				{/if}
 			{/if}
 		</figcaption>
@@ -117,8 +101,6 @@
 			crop={city.crop}
 			level
 			cards={detail.children}
-			lit={pick ? [pick] : []}
-			{whole}
 			ondrill={() => {}}
 			{onpick}
 		/>
@@ -134,66 +116,35 @@
 	}
 	.head {
 		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 2px 12px;
-	}
-	.count {
-		font-size: 14px;
-		color: var(--muted);
-		text-decoration: none;
-	}
-	.count.link {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		min-height: 32px;
-		padding: 0;
-		border: none;
-		background: none;
-		font: inherit;
-		font-size: 14px;
-		font-weight: 600;
-		color: var(--sky-ink);
-		cursor: pointer;
-	}
-	:global(:root[data-theme='dark']) .count.link {
-		color: var(--sky);
-	}
-	.count.link:hover {
-		text-decoration: underline;
-	}
-	.count.link .icon {
-		width: 16px;
-		height: 16px;
-	}
-	.count b {
-		font-family: var(--display);
-		font-size: 17px;
-		color: var(--green-ink);
-	}
-	:global(:root[data-theme='dark']) .count b {
-		color: var(--green);
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 6px;
 	}
 	.title {
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 18px;
+		font-size: 26px;
+		line-height: 1.15;
+		color: var(--on-ground);
+		transform-origin: 0 75%;
 	}
-	/* before the first game the whole city breathes, under a gold "start here" */
+	.count {
+		font-size: 15px;
+		font-weight: 600;
+		color: var(--on-ground-2);
+	}
+	/* the learned ones: gold, as on the map */
+	.count b {
+		font-size: 20px;
+		color: var(--gold-text);
+		margin-right: 2px;
+	}
+	/* before the first game the whole city breathes, gold, under the gold "start here" */
 	.glow :global(svg) {
 		animation: halo 2.4s ease-in-out infinite;
 	}
-	.glow .title {
-		padding: 4px 14px;
-		border-radius: 999px;
-		background: color-mix(in srgb, var(--star) 30%, transparent);
-	}
 	@keyframes halo {
 		50% {
-			filter: drop-shadow(0 6px 10px rgba(19, 35, 63, 0.16))
-				drop-shadow(0 0 14px color-mix(in srgb, var(--star) 70%, transparent));
+			filter: drop-shadow(0 6px 10px var(--shade))
+				drop-shadow(0 0 16px color-mix(in srgb, var(--gold) 75%, transparent));
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {

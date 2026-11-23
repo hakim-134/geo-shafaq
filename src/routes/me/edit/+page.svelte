@@ -1,5 +1,7 @@
 <script lang="ts">
-	// The player's name and picture: what friends see in a room and on the result table.
+	// The player's name and picture: what friends see in a room and on the result table. On top,
+	// the face as the top bar shows it (a gold coin, with the frame they wear) and the name under
+	// it, changing as they type and pick; then the name, the faces to pick from, one key to save.
 	import { goto } from '$app/navigation';
 	import SubPage from '#lib/components/SubPage.svelte';
 	import { api, call, ApiError } from '#lib/api/client.js';
@@ -40,111 +42,134 @@
 <SubPage title={t('editNameAvatar')} back={{ href: '/me', label: t('profile') }}>
 	<form onsubmit={save}>
 		<div class="preview">
-			<span class="avatar">{avatar}</span>
-			<b>{name || '…'}</b>
+			{#key avatar}
+				<span class="avatar face" data-frame={session.me?.user.prefs?.frame}>{avatar}</span>
+			{/key}
+			<b class="d float">{name || '…'}</b>
 		</div>
 
 		<label class="field-label" for="name">{t('nameLabel')}</label>
 		<input
 			id="name"
-			class="input"
+			class="field"
 			class:bad={nameError}
 			bind:value={name}
 			maxlength="24"
 			autocomplete="nickname"
 			spellcheck="false"
 		/>
-		<p class="help" class:bad={nameError}>{nameError ? t('badName') : t('nameHelp')}</p>
+		<p class="field-note" class:bad={nameError}>{nameError ? t('badName') : t('nameHelp')}</p>
 
-		<div class="field-label">{t('avatarLabel')}</div>
-		<div class="avatars" role="radiogroup" aria-label={t('avatarLabel')}>
+		<div class="field-label pick-label">{t('avatarLabel')}</div>
+		<div class="avatars panel" role="radiogroup" aria-label={t('avatarLabel')}>
 			{#each account.config?.avatars ?? [] as a (a)}
 				<button type="button" role="radio" aria-checked={avatar === a} onclick={() => (avatar = a)}
 					>{a}</button
 				>
 			{/each}
 		</div>
-		<button class="btn btn-primary save" disabled={saving || name.trim().length < 2}
-			>{t('save')}</button
-		>
+		<div class="foot">
+			<button class="btn btn-primary save" disabled={saving || name.trim().length < 2}
+				><span class="lbl">{t('save')}</span></button
+			>
+		</div>
 	</form>
 </SubPage>
 
 <style>
+	/* the face as friends will see it: the top bar's gold coin, big, the name floating under it */
 	.preview {
 		display: flex;
+		flex-direction: column;
 		align-items: center;
 		gap: 14px;
-		margin-bottom: 24px;
+		margin: 0 0 26px;
+		text-align: center;
 	}
-	.preview .avatar {
-		width: 72px;
-		height: 72px;
-		font-size: 40px;
-		background: var(--surface);
-		border: 1px solid var(--border);
-		box-shadow: 0 4px 0 var(--edge);
-		animation: pop-in 0.3s var(--pop);
+	.face {
+		width: 104px;
+		height: 104px;
+		font-size: 56px;
+		background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+		box-shadow:
+			inset 0 3px 0 rgba(255, 255, 255, 0.6),
+			0 6px 0 var(--gold-lo),
+			0 16px 26px rgba(0, 0, 0, 0.28);
+		animation: pop-in 0.3s var(--spring);
 	}
 	.preview b {
-		font-family: var(--display);
-		font-size: 22px;
+		max-width: 100%;
+		font-size: 30px;
+		line-height: 1.15;
+		color: var(--on-ground);
 		overflow-wrap: anywhere;
 	}
-	.input {
-		width: 100%;
-		height: 54px;
-		padding: 0 16px;
-		border-radius: 14px;
-		border: 2px solid var(--border);
-		background: var(--surface);
-		font-size: 18px;
-		font-weight: 600;
+	.field.bad {
+		box-shadow:
+			inset 0 0 0 2.5px var(--red),
+			0 3px 0 var(--panel-lip);
 	}
-	.input:focus {
-		outline: none;
-		border-color: var(--sky);
+	.field-note.bad {
+		color: var(--red-on-ground);
+		font-weight: 700;
 	}
-	.input.bad {
-		border-color: var(--red);
+	.pick-label {
+		margin-top: 22px;
 	}
-	.help {
-		margin: 8px 0 24px;
-		font-size: 13.5px;
-		color: var(--muted);
-	}
-	.help.bad {
-		color: var(--red);
-		font-weight: 600;
-	}
+	/* the faces to pick from: milk tiles on a milk card; the chosen one is a gold coin */
 	.avatars {
 		display: grid;
 		grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
-		gap: 8px;
+		gap: 10px;
+		padding: 14px;
 	}
 	.avatars button {
 		aspect-ratio: 1;
 		border: none;
-		border-radius: 14px;
-		background: var(--surface);
+		border-radius: 50%;
+		background: var(--panel-2);
 		font-size: 28px;
 		line-height: 1;
-		box-shadow: 0 3px 0 var(--edge);
-		transition: transform 0.1s;
+		box-shadow: 0 3px 0 var(--panel-lip);
+		transition: transform 0.1s var(--out);
 	}
 	.avatars button:active {
-		transform: translateY(2px);
+		transform: translateY(2px) scale(0.95);
 	}
 	.avatars button[aria-checked='true'] {
-		background: color-mix(in srgb, var(--green) 22%, var(--surface));
+		background: linear-gradient(180deg, var(--gold-hi), var(--gold));
 		box-shadow:
-			0 0 0 3px var(--green),
-			0 3px 0 var(--green-edge);
+			inset 0 2px 0 rgba(255, 255, 255, 0.6),
+			0 3px 0 var(--gold-lo),
+			0 0 0 3px color-mix(in srgb, var(--gold) 45%, transparent);
+		animation: boing 0.4s var(--out);
+	}
+	/* the one key stays under the thumb */
+	.foot {
+		position: sticky;
+		bottom: 0;
+		z-index: 5;
+		margin-top: 18px;
+		padding: 14px 0 max(14px, env(safe-area-inset-bottom));
+	}
+	/* the ground darkens under it, fading out upwards and at the sides, so rows slide away
+	   beneath it without a box round the key */
+	.foot::before {
+		content: '';
+		position: absolute;
+		inset: -24px -16px 0;
+		z-index: -1;
+		background: linear-gradient(to top, var(--ground-bot) 50%, transparent);
+		pointer-events: none;
+	}
+	@media (min-width: 961px) {
+		.foot::before {
+			inset: -24px -40px 0;
+			-webkit-mask: linear-gradient(to right, transparent, #000 40px calc(100% - 40px), transparent);
+			mask: linear-gradient(to right, transparent, #000 40px calc(100% - 40px), transparent);
+		}
 	}
 	.save {
 		width: 100%;
-		margin-top: 28px;
-		position: sticky;
-		bottom: max(12px, env(safe-area-inset-bottom));
 	}
 </style>

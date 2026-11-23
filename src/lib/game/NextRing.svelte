@@ -63,8 +63,7 @@
 		align-items: center;
 		gap: 10px;
 		min-width: 0;
-		font-weight: 700;
-		font-size: 16px;
+		color: var(--ink);
 	}
 	.ring {
 		position: relative;
@@ -86,50 +85,31 @@
 		stroke-width: 4;
 	}
 	.track {
-		stroke: var(--surface-2);
+		stroke: var(--panel-2);
 	}
 	.fill {
-		stroke: var(--green);
+		stroke: var(--key);
+		stroke-width: 5;
 		stroke-linecap: round;
 	}
 	.soon .fill {
 		stroke: var(--gold);
 	}
 	.ring b {
-		font-family: var(--display);
-		font-size: 19px;
-		font-variant-numeric: tabular-nums;
-	}
-	.soon .ring b {
-		animation: pop-in 0.3s var(--pop);
-	}
-	/* two short lines rather than a cut word, beside the host's buttons on a phone */
-	.label {
-		min-width: 0;
-		line-height: 1.15;
-	}
-	/* ---------- the new look (P1111 1.1): a room's round result ---------- */
-	:global(:root.look2) .next-ring {
-		color: var(--ink);
-	}
-	:global(:root.look2) .track {
-		stroke: var(--panel-2);
-	}
-	:global(:root.look2) .fill {
-		stroke: var(--key);
-		stroke-width: 5;
-	}
-	:global(:root.look2) .soon .fill {
-		stroke: var(--gold);
-	}
-	:global(:root.look2) .ring b {
 		font-family: var(--f-disp);
 		font-weight: 900;
 		display: inline-block;
 		transform: var(--lean);
 		font-size: 21px;
+		font-variant-numeric: tabular-nums;
 	}
-	:global(:root.look2) .label {
+	.soon .ring b {
+		animation: pop-in 0.3s var(--spring);
+	}
+	/* two short lines rather than a cut word, beside the host's buttons on a phone */
+	.label {
+		min-width: 0;
+		line-height: 1.15;
 		font-family: var(--f-disp);
 		font-weight: 800;
 		display: inline-block;

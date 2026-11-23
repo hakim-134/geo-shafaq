@@ -1,9 +1,10 @@
 <script lang="ts">
 	// The home: one job, start playing. Above the map, where you'll play: the place's picture
-	// (place-in-parent) beside its gold tag over its name. The map of Uzbekistan is where you
-	// change it, in place: a tap zooms in, a tap marks, "Shu joyni tanlash" chooses (HomeMap).
-	// One quiet line says how; "O‘ynash" puts you on a street. Under it, quietly: a room with
-	// friends, opened at once, and a friend's code on a number plate. What a player hasn't
+	// (place-in-parent) beside its gold tag over its name (zoomed in, the map's square wears the
+	// picture instead). The map of Uzbekistan is where you change it, in place: a tap zooms in,
+	// a tap marks, "Shu joyni tanlash" chooses (HomeMap). One quiet line says how; "O‘ynash"
+	// puts you on a street. Under it, quietly: a room with friends, opened at once, and a
+	// friend's code on a number plate. What a player hasn't
 	// earned stays out of sight: the key breathes only before the first game; the count, the
 	// last game and "keep your results" show only after one. On a laptop the words and the key
 	// stand in a left column and the map takes all the rest.
@@ -17,15 +18,12 @@
 	import { ensureSession, session } from '#lib/session.svelte.js';
 	import { openSignIn } from '#lib/account.svelte.js';
 	import { fmtNum } from '#lib/format.js';
-	import { newLook } from '#lib/look.svelte.js';
 	import { loadChoice, saveChoice, rulesFor, testProviders } from '#lib/rules.js';
 	import RulesForm from '#lib/game/RulesForm.svelte';
 	import RulesFacts from '#lib/game/RulesFacts.svelte';
 	import { showToast } from '#lib/toast.svelte.js';
 	import { justMade } from '#lib/room.svelte.js';
 	import { unlockAudio } from '#lib/sfx.svelte.js';
-
-	newLook();
 
 	type Mode = 'solo' | 'friends';
 
@@ -51,18 +49,6 @@
 	);
 	const canMove = $derived(current?.canMove ?? true);
 	const progress = $derived(loaded && !newPlayer ? current?.progress : undefined);
-
-	// the place's picture (P1111 §5): a region in Uzbekistan; a district or a town in its region
-	// (Tashkent's districts in Tashkent); Tashkent's streets: the tiny city ringed in Uzbekistan;
-	// the whole country: all of it; a ready map of several places: their points in Uzbekistan
-	const picture = $derived.by(() => {
-		const m = current;
-		if (!m) return null;
-		const p = m.place;
-		if (!p) return { parent: 'uzbekistan', fill: [], whole: false, marks: m.places ?? [] };
-		if (p.kind === 'country') return { parent: p.slug, fill: [], whole: true, marks: [] };
-		return { parent: m.parent?.slug ?? 'uzbekistan', fill: [p.slug], whole: false, marks: [] };
-	});
 
 	$effect(() => saveChoice($state.snapshot(choice)));
 
@@ -110,6 +96,7 @@
 	/** The map's gold button: this map plays from now on (its summary first, so the name, the
 	 * count and the rules change together). */
 	let homeMap = $state<ReturnType<typeof HomeMap>>();
+	let zoomed = $state(false); // the map is in a part: its square wears the face, the header doesn't
 
 	async function choose(slug: string): Promise<boolean> {
 		if (slug === choice.map) return true;
@@ -267,16 +254,15 @@
 		<!-- where you'll play: its picture beside a gold tag over its name -->
 		<header class="place">
 			{#key current?.slug}
-				{#if current && picture}
-					<span class="pic pop-pic" aria-hidden="true">
-						<PlaceInParent
-							parent={picture.parent}
-							fill={picture.fill}
-							whole={picture.whole}
-							marks={picture.marks}
-							trim={false}
-						/>
-					</span>
+				{#if current}
+					<!-- the map's face, the one it wears on every screen (P1111 §5): Tashkent's streets
+					     are Tashkent in its region, as on the lobby's card and in the history -->
+					<!-- zoomed in, the map's square shows this same face: one copy, the words move left -->
+					{#if !zoomed}
+						<span class="pic pop-pic" aria-hidden="true">
+							{#if current.face}<PlaceInParent place={current.face} />{/if}
+						</span>
+					{/if}
 					<div class="words">
 						<span class="kick d pop" use:fitTag={tx(current.description)}
 							>{tx(current.description)}</span
@@ -315,7 +301,7 @@
 		{/if}
 
 		<!-- the heart: the map; a tap zooms in, in place; its gold button chooses -->
-		<HomeMap bind:this={homeMap} map={current} onchoose={choose} />
+		<HomeMap bind:this={homeMap} bind:zoomed map={current} onchoose={choose} />
 
 		<!-- how much is known here: one gold line, only after the first game -->
 		{#if progress && progress.unit === 'street'}
@@ -436,7 +422,9 @@
 
 <Sheet open={settingsOpen} onclose={() => (settingsOpen = false)} title={t('setup')}>
 	<RulesForm bind:choice {canMove} />
-	<button class="btn btn-primary done" onclick={() => (settingsOpen = false)}>{t('ready')}</button>
+	<button class="btn btn-primary done" onclick={() => (settingsOpen = false)}
+		><span class="lbl">{t('ready')}</span></button
+	>
 </Sheet>
 
 <style>
@@ -501,7 +489,7 @@
 		align-items: flex-start;
 		gap: 6px;
 	}
-	/* .words: past the lettering's own spacing (look2's .d) */
+	/* .words: past the lettering's own spacing (.d) */
 	.words .kick {
 		max-width: 100%;
 		height: 24px;
@@ -700,8 +688,6 @@
 	}
 	.play {
 		width: 100%;
-		height: 62px;
-		font-size: 23px;
 	}
 	.breathe {
 		animation: big-breathe 1.8s ease-in-out infinite;
@@ -1010,10 +996,6 @@
 		.rules {
 			justify-self: start;
 			margin: 16px 0 18px -10px;
-		}
-		.play {
-			height: 68px;
-			font-size: 26px;
 		}
 		.chips {
 			justify-content: flex-start;

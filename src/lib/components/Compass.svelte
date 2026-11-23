@@ -72,7 +72,7 @@
 <style>
 	.dial,
 	.strip {
-		background: var(--hud);
+		background: var(--cap-bg);
 		backdrop-filter: blur(8px);
 		-webkit-backdrop-filter: blur(8px);
 		box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
@@ -179,7 +179,7 @@
 		bottom: 12px;
 		left: 50%;
 		transform: translateX(-50%);
-		font-family: var(--display);
+		font-family: var(--f-disp);
 		font-size: 13px;
 		font-weight: 700;
 		white-space: nowrap;

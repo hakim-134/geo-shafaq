@@ -1,6 +1,7 @@
 <script lang="ts">
-	// All the player's games, ten to a page, newest first, under a heading for each day. The
-	// page is in the address (?page=2).
+	// All the player's games, ten to a page, newest first: a small white heading for each day
+	// and that day's games as rows on a milk panel. How many in all stands at the head's right;
+	// the page is in the address (?page=2) and the pager under the list says which.
 	import { page as here } from '$app/state';
 	import SubPage from '#lib/components/SubPage.svelte';
 	import Pager from '#lib/components/Pager.svelte';
@@ -55,18 +56,15 @@
 </script>
 
 <SubPage title={t('myGames')} back={{ href: '/me', label: t('profile') }}>
-	{#if total > 0}
-		<p class="count">
-			{t('nGames', { n: total })}{#if pages > 1}
-				· {t('pageOf', { n: page, m: pages })}{/if}
-		</p>
-	{/if}
+	{#snippet aside()}
+		{#if total > 0}<span class="count">{t('nGames', { n: total })}</span>{/if}
+	{/snippet}
 
 	<div class="days" class:dim={loading && games.length > 0}>
 		{#each days as d (d.day)}
 			<section>
-				<h2>{d.day}</h2>
-				<div class="list">
+				<h2 class="day">{d.day}</h2>
+				<div class="panel-list">
 					{#each d.games as g (g.id)}<GameRow game={g} day={false} />{/each}
 				</div>
 			</section>
@@ -74,13 +72,19 @@
 	</div>
 
 	{#if failed}
-		<p class="empty">{t('err_network')}</p>
-		<button class="btn btn-ghost" onclick={() => load(page)}>{t('retry')}</button>
+		<div class="empty-state">
+			<p>{t('err_network')}</p>
+			<button class="btn btn-chip" onclick={() => load(page)}
+				><span class="lbl">{t('retry')}</span></button
+			>
+		</div>
 	{:else if loading && !games.length}
 		<div class="spin"><span class="spinner"></span></div>
 	{:else if !games.length}
-		<p class="empty">{t('historyEmpty')}</p>
-		<a class="btn btn-primary" href="/">{t('play')}</a>
+		<div class="empty-state">
+			<p>{t('historyEmpty')}</p>
+			<a class="btn btn-primary" href="/"><span class="lbl">{t('play')}</span></a>
+		</div>
 	{/if}
 
 	<div class="pager">
@@ -90,42 +94,32 @@
 
 <style>
 	.count {
-		margin: -12px 0 18px;
-		color: var(--muted);
-		font-weight: 600;
+		font-size: 15px;
 	}
 	.days {
 		display: flex;
 		flex-direction: column;
-		gap: 18px;
+		gap: 22px;
 		transition: opacity 0.15s;
 	}
 	.days.dim {
 		opacity: 0.5;
 	}
-	h2 {
-		display: inline-block;
-		padding: 3px 12px;
-		border-radius: 10px;
-		background: var(--surface-2);
-		font-size: 13.5px;
-		font-weight: 700;
-	}
-	.list {
-		margin-top: 4px;
-	}
-	.list > :global(* + *) {
-		border-top: 1px solid var(--border);
-	}
-	.empty {
-		color: var(--muted);
-		margin: 12px 0 16px;
+	/* the day: small white capitals on the ground over its panel */
+	.day {
+		margin: 0 0 10px 4px;
+		font-family: var(--f-disp);
+		font-weight: 900;
+		font-size: 13px;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--on-ground-2);
 	}
 	.spin {
 		display: flex;
 		justify-content: center;
 		padding: 24px;
-		color: var(--muted);
+		color: var(--on-ground-2);
 	}
 	.pager {
 		margin-top: 28px;

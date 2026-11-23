@@ -1,7 +1,8 @@
 <script lang="ts">
+	// Another player's page (ProfileView), with a quiet way to report them at the end.
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import TopBar from '#lib/components/TopBar.svelte';
+	import GameBar from '#lib/components/GameBar.svelte';
 	import ProfileView from '#lib/components/ProfileView.svelte';
 	import Sheet from '#lib/components/Sheet.svelte';
 	import { api, call, send, ApiError, type Profile } from '#lib/api/client.js';
@@ -52,7 +53,7 @@
 
 <svelte:head><title>{profile?.user.name ?? ''} — GeoShafaq</title></svelte:head>
 
-<TopBar />
+<GameBar standalone />
 
 <main class="page">
 	{#if profile}
@@ -65,15 +66,15 @@
 			</div>
 		</ProfileView>
 	{:else if missing}
-		<div class="center">
+		<div class="empty-state center">
 			<p>{t('playerNotFound')}</p>
-			<a class="btn btn-primary" href="/">{t('home')}</a>
+			<a class="btn btn-primary" href="/"><span class="lbl">{t('home')}</span></a>
 		</div>
 	{:else if failed}
-		<div class="center">
+		<div class="empty-state center">
 			<p>{t('err_network')}</p>
 			<button class="btn btn-primary" onclick={() => load(page.params.id ?? '')}
-				>{t('retry')}</button
+				><span class="lbl">{t('retry')}</span></button
 			>
 		</div>
 	{:else}
@@ -92,9 +93,12 @@
 
 <style>
 	.page {
-		max-width: 720px;
+		max-width: 640px;
 		margin: 0 auto;
-		padding: 16px 24px 64px;
+		padding: 8px 16px calc(48px + env(safe-area-inset-bottom));
+		display: flex;
+		flex-direction: column;
+		gap: 24px;
 	}
 	.center {
 		min-height: 50vh;
@@ -102,11 +106,9 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 16px;
-		color: var(--muted);
 	}
 	.report {
-		margin-top: 36px;
+		margin-top: 12px;
 		display: flex;
 		justify-content: center;
 	}
@@ -114,8 +116,9 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		color: var(--muted);
-		font-weight: 500;
+		min-height: 40px;
+		color: var(--on-ground-3);
+		font-weight: 600;
 		font-size: 14px;
 	}
 	.report .icon {
@@ -123,23 +126,27 @@
 		height: 16px;
 	}
 	.note {
-		color: var(--muted);
-		font-size: 14px;
+		color: var(--ink-2);
+		font-size: 14.5px;
 		margin-bottom: 16px;
 	}
 	.reasons {
 		display: grid;
 		gap: 10px;
 	}
+	/* a reason is a sentence, not a key's word: no capitals, no lean */
 	.reasons .btn {
+		height: 52px;
 		justify-content: flex-start;
-		font-family: var(--body);
-		font-weight: 600;
+		font-family: var(--f-text);
+		font-weight: 700;
+		font-size: 16px;
 		letter-spacing: 0;
+		text-transform: none;
 	}
-	@media (max-width: 640px) {
+	@media (min-width: 961px) {
 		.page {
-			padding: 12px 16px 48px;
+			padding: 18px 40px 64px;
 		}
 	}
 </style>

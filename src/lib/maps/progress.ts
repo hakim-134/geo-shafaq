@@ -1,11 +1,16 @@
-// How much of the stars' gold a place gets on a map of places: a first street seen shows, and it
-// deepens with every street seen and learned; solid only when every street there is learned. Used
-// as `--known` in a color-mix with the paper. A map should say at a glance what the player knows.
+// How much gold a place gets on a map of places. Gold is what the player has learned (decision
+// 0024), never only played: a place stays milk until its first street is learned, then a light
+// gold wash that deepens with learned ÷ all, solid gold when every street there is learned (1 of
+// 25: the wash; 25 of 25: full gold). Used as `--known` in PlaceMap's color-mix, from the wash
+// (0%) to the rich gold (100%); `learnedAny` says whether a place is gold at all. A child reads
+// the picture: a gold district must be one they know.
 import type { Schemas } from '#lib/api/client.js';
 
+export const learnedAny = (p: Schemas['Progress']) => p.total > 0 && p.learned > 0;
+
 export function knownTint(p: Schemas['Progress']): string {
-	if (!p.total || !p.seen) return '0%';
-	return `${Math.round(22 + (78 * (p.seen + p.learned)) / (2 * p.total))}%`;
+	if (!learnedAny(p)) return '0%';
+	return `${Math.round((100 * Math.min(p.learned, p.total)) / p.total)}%`;
 }
 
 /** A place with fewer panoramas than the longest game: it plays, and its name in italics says

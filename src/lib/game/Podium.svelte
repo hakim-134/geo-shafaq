@@ -1,7 +1,8 @@
 <script lang="ts">
-	// The end of a room's game as a stage: third, second and first rise one by one, each with a
-	// note, then confetti for everyone and this phone's own place above it ("Siz 2-o‘rindasiz").
-	// Everyone after third stands in a short list under it.
+	// The end of a room's game as a stage on the turquoise ground: third, second and first rise
+	// one by one as raised tiles in bronze, silver and gold, each with a note, then confetti for
+	// everyone and this phone's own place floating above it ("Siz 2-o‘rindasiz"). Faces, names
+	// and totals stand on the tiles; everyone after third is a milk card of rows under them.
 	import type { RoomPlayer } from '#lib/api/client.js';
 	import { t } from '#lib/i18n/index.svelte.js';
 	import { fmtNum } from '#lib/format.js';
@@ -39,7 +40,7 @@
 </script>
 
 <div class="podium-wrap">
-	<h1 style:animation-delay={`${AT[2] + 300}ms`}>
+	<h1 class="d float" style:animation-delay={`${AT[2] + 300}ms`}>
 		{#if !anyScore || !mine}
 			{t('gameOver')}
 		{:else if myPlace === 1}
@@ -62,25 +63,25 @@
 						><em class="pc"></em>{p.avatar}</span
 					>
 					<span class="name">{p.name}</span>
-					<b>{fmtNum(p.total)}</b>
+					<b class="d">{fmtNum(p.total)}</b>
 					{#if costOf(p.id)}<span class="pill">💡 −{fmtNum(costOf(p.id))}</span>{/if}
 				</span>
-				<span class="block"><span>{placeOf(p)}</span></span>
+				<span class="block"><span class="d">{placeOf(p)}</span></span>
 			</li>
 		{/each}
 	</ol>
 
 	{#if rest.length}
-		<ol class="rest">
+		<ol class="rest panel-list">
 			{#each rest as p (p.id)}
 				<li class:me={p.id === you} class:off={p.left}>
-					<span class="pos">{placeOf(p)}</span>
+					<span class="pos d">{placeOf(p)}</span>
 					<span class="avatar ring" style:--ring={colorOf(p.id)} data-frame={p.frame}
 						><em class="pc"></em>{p.avatar}</span
 					>
 					<span class="name">{p.name}</span>
 					{#if costOf(p.id)}<span class="pill">💡 −{fmtNum(costOf(p.id))}</span>{/if}
-					<b>{fmtNum(p.total)}</b>
+					<b class="d">{fmtNum(p.total)}</b>
 				</li>
 			{/each}
 		</ol>
@@ -90,30 +91,45 @@
 {#if party && anyScore}<Confetti />{/if}
 
 <style>
-	/* the hints' cost: the same gold pill as the result's "−20% 💡" */
+	/* the hints' cost: the same gold chip as the result's "−20% 💡" */
 	.pill {
-		padding: 2px 9px;
-		border-radius: 999px;
-		background: var(--star); /* the bulb's gold, in both themes */
-		color: #3a2600;
-		font-size: 13.5px;
-		font-weight: 700;
+		padding: 1px 9px;
+		border-radius: 8px;
+		background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+		box-shadow: 0 2px 0 var(--gold-lo);
+		color: var(--gold-ink);
+		font-size: 13px;
+		font-weight: 800;
 		white-space: nowrap;
 		font-variant-numeric: tabular-nums;
 	}
 	.podium-wrap {
 		display: flex;
 		flex-direction: column;
-		gap: 14px;
+		gap: 16px;
 	}
+	/* this phone's own place, floating white on the ground; the lean stays in its keyframes */
 	h1 {
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 28px;
+		align-self: center;
+		max-width: 100%;
+		font-size: 32px;
 		line-height: 1.1;
-		letter-spacing: -0.02em;
 		text-align: center;
-		animation: pop-in 0.5s var(--pop) both;
+		color: var(--on-ground);
+		animation: title-in 0.5s var(--spring) both;
+	}
+	@keyframes title-in {
+		from {
+			transform: var(--lean) scale(0.4);
+			opacity: 0;
+		}
+		60% {
+			transform: var(--lean) scale(1.1);
+			opacity: 1;
+		}
+		to {
+			transform: var(--lean) scale(1);
+		}
 	}
 	.podium {
 		list-style: none;
@@ -121,8 +137,8 @@
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 		grid-template-areas: 's2 s1 s3';
 		align-items: end;
-		gap: 6px;
-		padding: 18px 4px 0;
+		gap: 8px;
+		padding: 22px 2px 0;
 	}
 	.podium.solo {
 		grid-template-columns: minmax(0, 1fr);
@@ -134,9 +150,9 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 6px;
+		gap: 8px;
 		min-width: 0;
-		animation: step-rise 0.6s var(--pop) both;
+		animation: step-rise 0.6s var(--spring) both;
 	}
 	.s1 {
 		grid-area: s1;
@@ -157,152 +173,189 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 2px;
+		gap: 3px;
 		width: 100%;
 		min-width: 0;
 		text-align: center;
 	}
+	/* a face: a milk disc with a lip, milk like the map's tiles by day and by night */
 	.avatar {
-		width: 46px;
-		height: 46px;
-		font-size: 25px;
-		background: var(--bg);
-		margin-bottom: 4px;
+		position: relative;
+		width: 50px;
+		height: 50px;
+		font-size: 27px;
+		background: var(--tile-a);
+		box-shadow:
+			0 3px 0 color-mix(in srgb, var(--tile-b) 70%, var(--stack)),
+			0 8px 16px var(--shade);
+		margin-bottom: 5px;
 	}
 	.s1 .avatar {
-		width: 58px;
-		height: 58px;
-		font-size: 32px;
+		width: 62px;
+		height: 62px;
+		font-size: 34px;
 	}
 	.s1 .avatar::after {
 		content: '👑';
 		position: absolute;
-		top: -20px;
-		font-size: 22px;
-	}
-	.avatar {
-		position: relative;
+		top: -22px;
+		font-size: 23px;
+		filter: drop-shadow(0 2px 0 var(--stack-2));
 	}
 	.name {
 		max-width: 100%;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		font-weight: 600;
+		font-weight: 700;
 		font-size: 14px;
+		color: var(--on-ground);
+		text-shadow: 0 1px 0 var(--stack-2);
 	}
+	/* this phone's own player: the name in gold */
 	.me .name {
-		color: var(--sky);
+		color: var(--gold-text);
 		font-weight: 800;
 	}
 	.who b {
-		font-family: var(--display);
-		font-size: 15px;
+		font-size: 19px;
+		line-height: 1.1;
+		color: var(--on-ground);
+		text-shadow: 0 2px 0 var(--stack);
 	}
+	/* the steps: raised tiles of gold, silver and bronze, a light line on top, a lip under,
+	   the place's number leaning in the tile's own dark */
 	.block {
+		--t-a: #fff;
+		--t-b: #ddd;
+		--t-c: #bbb;
+		--t-lip: #888;
+		--t-ink: #333;
 		width: 100%;
 		display: grid;
 		place-items: start center;
 		padding-top: 8px;
-		border-radius: 12px 12px 4px 4px;
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 30px;
-		color: rgba(0, 0, 0, 0.55);
+		border-radius: var(--r-s) var(--r-s) 6px 6px;
+		background: linear-gradient(180deg, var(--t-a), var(--t-b) 45%, var(--t-c));
 		box-shadow:
-			inset 0 -6px 0 rgba(0, 0, 0, 0.12),
-			0 3px 0 rgba(0, 0, 0, 0.12);
+			inset 0 2px 0 rgba(255, 255, 255, 0.6),
+			inset 0 -3px 0 rgba(0, 0, 0, 0.08),
+			0 5px 0 var(--t-lip),
+			0 16px 26px var(--shade);
+		color: var(--t-ink);
+		font-size: 36px;
+		line-height: 1.1;
+	}
+	.block .d {
+		text-shadow: 0 2px 0 rgba(255, 255, 255, 0.45);
 	}
 	.s1 .block {
-		height: 104px;
-		background: linear-gradient(var(--star), color-mix(in srgb, var(--star) 80%, #b07a00));
+		--t-a: var(--gold-hi);
+		--t-b: var(--gold);
+		--t-c: #e7a51d;
+		--t-lip: var(--gold-lo);
+		--t-ink: var(--gold-ink);
+		height: 108px;
+		font-size: 44px;
 	}
 	.s2 .block {
-		height: 74px;
-		background: linear-gradient(#d9dfe7, #b9c2ce);
+		--t-a: #f6f9fb;
+		--t-b: #d3dbe3;
+		--t-c: #b9c4cf;
+		--t-lip: #7d8b99;
+		--t-ink: #33414f;
+		height: 78px;
 	}
 	.s3 .block {
-		height: 52px;
-		background: linear-gradient(#e2a873, #c7834b);
-	}
-	.me .block {
-		outline: 3px solid var(--sky);
-		outline-offset: 2px;
+		--t-a: #f6cd9f;
+		--t-b: #dc9a5c;
+		--t-c: #c47f42;
+		--t-lip: #87491c;
+		--t-ink: #4a2408;
+		height: 56px;
 	}
 	.off {
 		opacity: 0.55;
 	}
+
+	/* fourth and after: a milk card of rows */
 	.rest {
-		list-style: none;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
 		animation: fade-in 0.4s ease both;
 		animation-delay: 2.2s;
 	}
 	.rest li {
-		display: flex;
-		align-items: center;
+		min-height: 54px;
 		gap: 10px;
-		padding: 7px 8px;
-		border-radius: 12px;
-		font-size: 14px;
+		padding: 8px 14px 8px 12px;
+		font-size: 15px;
 	}
 	.rest li.me {
-		background: color-mix(in srgb, var(--sky) 12%, transparent);
+		background: color-mix(in srgb, var(--gold) 16%, var(--panel));
 	}
 	.rest .pos {
 		width: 22px;
 		text-align: center;
-		color: var(--muted);
-		font-weight: 700;
+		color: var(--ink-3);
+		font-size: 17px;
 	}
 	.rest .avatar {
-		width: 30px;
-		height: 30px;
-		font-size: 17px;
+		width: 34px;
+		height: 34px;
+		font-size: 19px;
 		margin: 0;
+		background: var(--panel-2);
+		box-shadow: none;
 	}
 	.rest .name {
 		flex: 1;
 		min-width: 0;
 		text-align: left;
+		color: var(--ink);
+		text-shadow: none;
+	}
+	.rest .me .name {
+		color: var(--ink);
 	}
 	.rest b {
-		font-family: var(--display);
+		font-size: 17px;
+		color: var(--ink);
 	}
+	/* a laptop: a little bigger, still short enough for the streets to show under it */
 	@media (min-width: 761px) {
 		h1 {
-			font-size: 32px;
+			font-size: 40px;
 		}
 		.avatar {
-			width: 64px;
-			height: 64px;
-			font-size: 36px;
+			width: 58px;
+			height: 58px;
+			font-size: 32px;
 		}
 		.s1 .avatar {
-			width: 84px;
-			height: 84px;
-			font-size: 48px;
+			width: 72px;
+			height: 72px;
+			font-size: 40px;
 		}
 		.s1 .avatar::after {
 			top: -26px;
-			font-size: 28px;
+			font-size: 27px;
+		}
+		.name {
+			font-size: 15px;
 		}
 		.who b {
-			font-size: 18px;
+			font-size: 22px;
 		}
 		.s1 .block {
-			height: 150px;
+			height: 118px;
+			font-size: 52px;
 		}
 		.s2 .block {
-			height: 108px;
+			height: 86px;
+			font-size: 44px;
 		}
 		.s3 .block {
-			height: 76px;
-		}
-		.block {
-			font-size: 38px;
+			height: 62px;
+			font-size: 40px;
 		}
 	}
 	@keyframes fade-in {

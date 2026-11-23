@@ -1,8 +1,10 @@
 <script lang="ts">
-	// The player's own page, kept short: who, the streets learned (why the game exists), three
-	// numbers, and a menu to the rest, each a simple page of its own: games, streets, records,
-	// settings, ways to sign in, name and picture.
-	import TopBar from '#lib/components/TopBar.svelte';
+	// The player's own page, kept short: who (the face as a big gold coin, a tap changes it), the
+	// player's own Tashkent (why the game exists: a tap on a district shows its streets), up to
+	// three numbers on a milk strip (never a 0), and a menu to the rest, each a simple page of its own. A guest is
+	// asked, once, at the end, to keep the games with Telegram. On a laptop the map stands large
+	// at the right and the rest beside it, as the home's map does.
+	import GameBar from '#lib/components/GameBar.svelte';
 	import MenuRow from '#lib/components/MenuRow.svelte';
 	import Coin from '#lib/barg/Coin.svelte';
 	import CityMap from '#lib/maps/CityMap.svelte';
@@ -44,37 +46,32 @@
 
 <svelte:head><title>{me?.user.name ?? t('profile')} — GeoShafaq</title></svelte:head>
 
-<TopBar />
+<!-- the page is the player's face already: no coin in the bar -->
+<GameBar standalone face={false} />
 
 <main class="me">
 	{#if profile && me}
 		<section class="who">
-			<a
-				class="avatar big"
-				href="/me/edit"
-				aria-label={t('editNameAvatar')}
-				data-frame={me.user.prefs?.frame}>{me.user.avatar}</a
-			>
+			<a class="face" href="/me/edit" aria-label={t('editNameAvatar')} title={t('editNameAvatar')}>
+				<span class="avatar coin" data-frame={me.user.prefs?.frame}>{me.user.avatar}</span>
+				<span class="pen" aria-hidden="true"
+					><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" /></svg></span
+				>
+			</a>
 			<div class="who-text">
-				<h1 use:fitWords={me.user.name}>{me.user.name}</h1>
-				<p>
-					{#if me.user.guest}<span class="badge">{t('guestBadge')}</span>{/if}
-					<span>{t('joined', { date: fmtMonth(profile.user.joinedAt, i18n.lang) })}</span>
-				</p>
+				{#if me.user.guest}<span class="kick-tag">{t('guestBadge')}</span>{/if}
+				<h1 class="d float" use:fitWords={me.user.name}>{me.user.name}</h1>
+				<p class="joined">{t('joined', { date: fmtMonth(profile.user.joinedAt, i18n.lang) })}</p>
 				{#if me.barg}
-					<a class="barg" href="/me/wallet" aria-label={t('walletTitle')}>
-						<Coin size={20} />
-						<b>{fmtNum(me.barg)}</b>
+					<a class="barg chip" href="/me/wallet" aria-label={t('walletTitle')}>
+						<Coin size={22} />
+						<b class="d">{fmtNum(me.barg)}</b>
 						<svg viewBox="0 0 24 24" class="icon chev" aria-hidden="true"
 							><path d="m9 6 6 6-6 6" /></svg
 						>
 					</a>
 				{/if}
 			</div>
-			<a class="icon-btn" href="/me/edit" aria-label={t('editNameAvatar')}>
-				<svg viewBox="0 0 24 24" class="icon"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" /></svg
-				>
-			</a>
 		</section>
 
 		<!-- the big picture: the player's own Tashkent; a tap on a district shows its streets -->
@@ -82,18 +79,26 @@
 			<CityMap glow={profile.stats.games === 0} onpick={(c) => (district = c)} />
 		</section>
 
-		<section class="numbers">
-			<div><b>{fmtNum(profile.stats.games)}</b><span>{t('games')}</span></div>
-			<div><b>{fmtNum(profile.stats.best)}</b><span>{t('best')}</span></div>
-			<div><b>{fmtNum(profile.stats.perfect)}</b><span>{t('statPerfect')}</span></div>
-		</section>
+		<!-- up to three numbers: one at 0 has no cell, none at all before the first game -->
+		{#if profile.stats.games || profile.stats.best || profile.stats.perfect}
+			<div class="stats">
+				{#if profile.stats.games}
+					<div><b>{fmtNum(profile.stats.games)}</b><span>{t('games')}</span></div>
+				{/if}
+				{#if profile.stats.best}
+					<div><b>{fmtNum(profile.stats.best)}</b><span>{t('best')}</span></div>
+				{/if}
+				{#if profile.stats.perfect}
+					<div><b>{fmtNum(profile.stats.perfect)}</b><span>{t('statPerfect')}</span></div>
+				{/if}
+			</div>
+		{/if}
 
-		<nav class="menu">
+		<nav class="panel-list menu">
 			<MenuRow
 				href="/games"
 				label={t('myGames')}
-				fact={t('nGames', { n: profile.stats.games })}
-				color="var(--sign-blue)"
+				fact={profile.stats.games ? t('nGames', { n: profile.stats.games }) : ''}
 			>
 				{#snippet icon()}<svg viewBox="0 0 24 24"
 						><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></svg
@@ -103,17 +108,17 @@
 				href="/me/streets"
 				label={t('myStreets')}
 				fact={streets?.learned ? `${fmtNum(streets.learned)} / ${fmtNum(streets.total)}` : ''}
-				color="var(--green)"
+				color="var(--gold)"
 			>
 				{#snippet icon()}<svg viewBox="0 0 24 24"
-						><rect x="3" y="7" width="18" height="10" rx="2" /><path d="M7 12h10" /></svg
+						><path d="M4 20 9.5 4M20 20 14.5 4M12 6v2.5M12 11v2.5M12 16v2.5" /></svg
 					>{/snippet}
 			</MenuRow>
 			<MenuRow
 				href="/me/records"
 				label={t('myRecords')}
 				fact={profile.maps.length ? t('nMaps', { n: profile.maps.length }) : ''}
-				color="var(--gold)"
+				color="var(--gold-lo)"
 			>
 				{#snippet icon()}<svg viewBox="0 0 24 24"
 						><path
@@ -121,12 +126,12 @@
 						/></svg
 					>{/snippet}
 			</MenuRow>
-			<MenuRow href="/shop" label={t('shopTitle')} color="var(--green)">
+			<MenuRow href="/shop" label={t('shopTitle')} color="var(--key)">
 				{#snippet icon()}<svg viewBox="0 0 24 24"
 						><path d="M4 9.5 5.5 4h13L20 9.5M4 9.5V20h16V9.5M4 9.5h16M9.5 20v-6h5v6" /></svg
 					>{/snippet}
 			</MenuRow>
-			<MenuRow href="/settings" label={t('settings')} color="var(--lapis-2)">
+			<MenuRow href="/settings" label={t('settings')} color="#4f6f76">
 				{#snippet icon()}<svg viewBox="0 0 24 24"
 						><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle
 							cx="10"
@@ -150,16 +155,21 @@
 		</nav>
 
 		{#if me.user.guest}
-			<section class="save">
-				<b>{t('nudgeTitle')}</b>
+			<section class="panel save">
+				<h2 class="section-title">{t('nudgeTitle')}</h2>
 				<p>{t('nudgeText')}</p>
-				<button class="btn btn-telegram" onclick={() => openSignIn('save')}>{t('signIn')}</button>
+				<button class="btn btn-telegram" onclick={() => openSignIn('save')}>
+					<svg viewBox="0 0 24 24" aria-hidden="true"
+						><path d="m21 4.5-3 15-5.5-4.5-3 3v-5l8-7.5-10 6L3 10z" /></svg
+					>
+					{t('signIn')}
+				</button>
 			</section>
 		{/if}
 	{:else if failed}
-		<div class="center">
+		<div class="empty-state center">
 			<p>{t('err_network')}</p>
-			<button class="btn btn-primary" onclick={load}>{t('retry')}</button>
+			<button class="btn btn-primary" onclick={load}><span class="lbl">{t('retry')}</span></button>
 		</div>
 	{:else}
 		<div class="center"><span class="spinner"></span></div>
@@ -169,162 +179,185 @@
 <DistrictSheet place={district} onclose={() => (district = null)} />
 
 <style>
+	/* one column on a phone; on a laptop the map at the right, the rest at the left */
 	.me {
 		max-width: 640px;
 		margin: 0 auto;
-		padding: 12px 24px 64px;
-		display: flex;
-		flex-direction: column;
-		gap: 22px;
+		padding: 8px 16px calc(48px + env(safe-area-inset-bottom));
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 24px;
 	}
 	.center {
+		grid-column: 1 / -1;
 		min-height: 50vh;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 16px;
-		color: var(--muted);
+		display: grid;
+		place-content: center;
+		justify-items: center;
 	}
+
+	/* who: the face as a big gold coin (a tap changes it: the small pen says so), the name
+	   floating on the ground, "mehmon" as the gold tag over it */
 	.who {
 		display: flex;
 		align-items: center;
-		gap: 16px;
+		gap: 18px;
 	}
-	.avatar.big {
-		width: 80px;
-		height: 80px;
-		font-size: 44px;
-		background: var(--surface);
-		border: 1px solid var(--border);
-		box-shadow: 0 4px 0 var(--edge);
+	.face {
+		position: relative;
+		flex: none;
 		text-decoration: none;
+		transition: transform 0.15s var(--spring);
+	}
+	.face:hover {
+		transform: translateY(-1px) rotate(-4deg);
+	}
+	.face:active {
+		transform: translateY(3px);
+	}
+	.coin {
+		width: 92px;
+		height: 92px;
+		font-size: 50px;
+		background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+		box-shadow:
+			inset 0 3px 0 rgba(255, 255, 255, 0.6),
+			inset 0 -3px 0 rgba(0, 0, 0, 0.08),
+			0 5px 0 var(--gold-lo),
+			0 14px 24px var(--shade);
+	}
+	.pen {
+		position: absolute;
+		right: -2px;
+		bottom: 0;
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+		background: var(--panel);
+		color: var(--ink);
+		display: grid;
+		place-items: center;
+		box-shadow:
+			0 2px 0 var(--panel-lip),
+			0 4px 10px var(--shade);
+	}
+	.pen svg {
+		width: 16px;
+		height: 16px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 2.4;
+		stroke-linecap: round;
+		stroke-linejoin: round;
 	}
 	.who-text {
 		flex: 1;
 		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 6px;
 	}
 	h1 {
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 26px;
+		display: block;
+		width: 100%;
+		font-size: 32px;
 		line-height: 1.1;
-		letter-spacing: -0.02em;
+		color: var(--on-ground);
+		transform-origin: 0 75%;
 	}
-	.who-text p {
-		margin-top: 6px;
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 6px 8px;
+	.joined {
 		font-size: 14px;
-		color: var(--muted);
+		font-weight: 600;
+		color: var(--on-ground-3);
 	}
+	/* the Barg: a quiet chip on the ground, the coin and the sum; a tap opens the wallet */
 	.barg {
-		margin-top: 6px;
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
-		min-height: 32px;
-		color: var(--text);
-		text-decoration: none;
+		gap: 7px;
+		height: 38px;
+		padding: 0 8px 0 7px;
+		border-radius: 999px;
+		transition: transform 0.1s var(--out);
+	}
+	.barg:active {
+		transform: scale(0.96);
+	}
+	.barg b {
+		font-size: 18px;
+		line-height: 1;
 	}
 	.barg .chev {
 		width: 16px;
 		height: 16px;
-		color: var(--muted);
-	}
-	.barg b {
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 17px;
-		font-variant-numeric: tabular-nums;
-	}
-	.badge {
-		font-size: 13px;
-		font-weight: 700;
-		padding: 2px 10px;
-		border-radius: 999px;
-		background: var(--surface-2);
-		color: var(--text);
+		color: var(--on-ground-3);
+		stroke-width: 2.6;
 	}
 
-	/* the big picture: my map (its empty caption takes no room under it) */
+	/* the map lies on the ground; its empty caption takes no room under it */
 	.my-map :global(.caption:not(:has(b))) {
 		display: none;
 	}
-	.my-map {
-		padding: 18px 20px 14px;
-		border-radius: 22px;
-		background: var(--surface);
-		border: 1px solid var(--border);
-		box-shadow: 0 4px 0 var(--edge);
-	}
 
-	.numbers {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		border-radius: 20px;
-		overflow: hidden;
-		background: var(--lapis);
-		color: #fff;
-	}
-	.numbers div {
-		padding: 14px 14px 12px;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		min-width: 0;
-	}
-	.numbers div + div {
-		border-left: 1px solid rgba(255, 255, 255, 0.12);
-	}
-	.numbers b {
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 22px;
-		font-variant-numeric: tabular-nums;
-	}
-	.numbers span {
-		font-size: 13px;
-		opacity: 0.75;
+	.stats b {
+		font-size: 30px;
 	}
 
 	.save {
-		padding: 18px;
-		border-radius: 22px;
-		background: color-mix(in srgb, var(--telegram) 10%, var(--surface));
-		border: 1px solid color-mix(in srgb, var(--telegram) 30%, transparent);
-	}
-	.save b {
-		font-family: var(--display);
-		font-size: 15px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
 	}
 	.save p {
-		margin: 6px 0 14px;
-		font-size: 14px;
-		color: var(--muted);
+		font-size: 14.5px;
+		line-height: 1.45;
+		color: var(--ink-2);
+		margin-bottom: 8px;
 	}
 	.save .btn {
 		width: 100%;
-		height: 50px;
+	}
+	.save .btn svg {
+		width: 20px;
+		height: 20px;
+		stroke-width: 2;
 	}
 
-	.menu {
-		display: flex;
-		flex-direction: column;
-		margin: 0 -12px;
-	}
-	@media (max-width: 640px) {
+	@media (min-width: 961px) {
 		.me {
-			padding: 8px 16px 48px;
+			max-width: 1180px;
+			padding: 18px 40px 64px;
+			grid-template-columns: minmax(0, 420px) minmax(0, 1fr);
+			grid-template-areas:
+				'who map'
+				'stats map'
+				'menu map'
+				'save map'
+				'. map';
+			grid-template-rows: auto auto auto auto 1fr;
+			column-gap: 56px;
+			align-items: start;
 		}
-		/* the map from edge to edge of the card, its names as big as a phone allows */
+		.who {
+			grid-area: who;
+		}
+		.stats {
+			grid-area: stats;
+		}
+		.menu {
+			grid-area: menu;
+		}
+		.save {
+			grid-area: save;
+		}
 		.my-map {
-			padding: 14px 0 6px;
+			grid-area: map;
+			position: sticky;
+			top: 18px;
 		}
-		.my-map :global(.head) {
-			padding: 0 16px;
+		.my-map :global(.title) {
+			font-size: 34px;
 		}
 	}
 </style>

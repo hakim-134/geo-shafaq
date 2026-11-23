@@ -1,258 +1,189 @@
 <script lang="ts">
-	// Another player's page, kept short: who, the streets of Tashkent learned (why the game
-	// exists), three numbers, the last games. `action` goes next to the name, `children` at
-	// the end. The player's own page is a menu of its own (routes/me).
+	// Another player's page, kept short: who (the face as a gold coin, the name floating on the
+	// ground), the streets of Tashkent learned (why the game exists) on a milk card with
+	// Tashkent's face, up to three numbers, the last games; `children` at the end. No zeros (what
+	// isn't earned stays out of sight): before the first street learned the card counts the
+	// streets seen; before the first street seen there is no card; a number at 0 has no cell.
+	// The player's own page is a menu of its own (routes/me).
 	import { fitWords } from '#lib/fit.js';
 	import type { Snippet } from 'svelte';
 	import type { Profile } from '#lib/api/client.js';
-	import MapSign from '#lib/maps/MapSign.svelte';
+	import PlaceInParent from '#lib/maps/PlaceInParent.svelte';
+	import Progress from '#lib/maps/Progress.svelte';
 	import GameRow from '#lib/game/GameRow.svelte';
 	import { i18n, t } from '#lib/i18n/index.svelte.js';
 	import { fmtMonth, fmtNum } from '#lib/format.js';
 
-	let {
-		profile,
-		own = false,
-		action,
-		children
-	}: { profile: Profile; own?: boolean; action?: Snippet; children?: Snippet } = $props();
+	let { profile, children }: { profile: Profile; children?: Snippet } = $props();
 
 	const u = $derived(profile.user);
 	const st = $derived(profile.stats);
 	const streets = $derived(profile.streets);
-	const pct = (n: number) => `${(n / Math.max(streets.total, 1)) * 100}%`;
 </script>
 
 <section class="who">
-	<span class="avatar big" data-frame={u.frame}>{u.avatar}</span>
+	<span class="avatar coin" data-frame={u.frame}>{u.avatar}</span>
 	<div class="who-text">
-		<h1 use:fitWords={u.name}>{u.name}</h1>
-		<p>
-			{#if u.guest}<span class="badge">{t('guestBadge')}</span>{/if}
-			{#if u.banned}<span class="badge red">{t('bannedBadge')}</span>{/if}
-			<span>{t('joined', { date: fmtMonth(u.joinedAt, i18n.lang) })}</span>
-		</p>
+		{#if u.banned}<span class="kick-tag banned">{t('bannedBadge')}</span>
+		{:else if u.guest}<span class="kick-tag">{t('guestBadge')}</span>{/if}
+		<h1 class="d float" use:fitWords={u.name}>{u.name}</h1>
+		<p class="joined">{t('joined', { date: fmtMonth(u.joinedAt, i18n.lang) })}</p>
 	</div>
-	{#if action}<div class="who-action">{@render action()}</div>{/if}
 </section>
 
-{#if streets.total > 0}
-	<section class="streets">
-		<MapSign slug="tashkent-streets" name={t('streetsTitle')} size="small" />
-		<p class="learned">
-			<b>{fmtNum(streets.learned)}</b>
-			<span>{t(own ? 'streetsLearnedMe' : 'streetsLearnedOther', { n: streets.learned })}</span>
-		</p>
-		<div
-			class="bar"
-			role="img"
-			aria-label={t('streetsLine', { seen: streets.seen, total: streets.total })}
-		>
-			<i class="seen" style:width={pct(streets.seen)}></i>
-			<i class="got" style:width={pct(streets.learned)}></i>
+{#if streets.total > 0 && streets.seen > 0}
+	<!-- the streets of Tashkent: Tashkent's face, the number learned (or, before the first, the
+	     number seen), the bar -->
+	<section class="panel streets">
+		<span class="face"><PlaceInParent place="toshkent" on="panel" /></span>
+		<div class="known">
+			<span class="kind">{t('streetsTitle')}</span>
+			{#if streets.learned}
+				<p class="learned">
+					<b class="d">{fmtNum(streets.learned)}</b>
+					<span>{t('streetsLearnedOther', { n: streets.learned })}</span>
+				</p>
+			{:else}
+				<p class="learned">
+					<b class="d">{fmtNum(streets.seen)}</b>
+					<span>{t('streetsSeenOther', { n: streets.seen })}</span>
+				</p>
+			{/if}
+			<Progress
+				progress={{
+					unit: 'street',
+					total: streets.total,
+					seen: streets.seen,
+					learned: streets.learned
+				}}
+				wide
+				bare
+			/>
+			{#if streets.learned}
+				<p class="line">{t('streetsLine', { seen: streets.seen, total: streets.total })}</p>
+			{/if}
 		</div>
-		<p class="line">
-			<span class="key got"></span>{fmtNum(streets.learned)}
-			<span class="key seen"></span>{t('streetsLine', { seen: streets.seen, total: streets.total })}
-		</p>
-		{#if own}<p class="hint">{t('streetsHint')}</p>{/if}
 	</section>
 {/if}
 
-<section class="numbers">
-	<div><b>{fmtNum(st.games)}</b><span>{t('games')}</span></div>
-	<div><b>{fmtNum(st.best)}</b><span>{t('best')}</span></div>
-	<div><b>{fmtNum(st.perfect)}</b><span>{t('statPerfect')}</span></div>
-</section>
+{#if st.games || st.best || st.perfect}
+	<div class="stats">
+		{#if st.games}<div><b>{fmtNum(st.games)}</b><span>{t('games')}</span></div>{/if}
+		{#if st.best}<div><b>{fmtNum(st.best)}</b><span>{t('best')}</span></div>{/if}
+		{#if st.perfect}<div><b>{fmtNum(st.perfect)}</b><span>{t('statPerfect')}</span></div>{/if}
+	</div>
+{/if}
 
-<section>
-	<div class="head">
-		<h2 class="section-title">{t('history')}</h2>
-	</div>
-	<div class="list">
-		{#each profile.recent as g (g.id)}
-			<GameRow game={g} />
-		{:else}
-			<p class="empty">{t('historyEmpty')}</p>
-		{/each}
-	</div>
+<section class="history">
+	<h2 class="section-title">{t('history')}</h2>
+	{#if profile.recent.length}
+		<div class="panel-list">
+			{#each profile.recent as g (g.id)}<GameRow game={g} />{/each}
+		</div>
+	{:else}
+		<div class="empty-state"><p>{t('historyEmpty')}</p></div>
+	{/if}
 </section>
 
 {@render children?.()}
 
 <style>
-	section + section {
-		margin-top: 30px;
-	}
 	.who {
 		display: flex;
 		align-items: center;
-		gap: 16px;
+		gap: 18px;
 	}
-	.avatar.big {
-		width: 84px;
-		height: 84px;
-		font-size: 46px;
-		background: var(--surface);
-		border: 1px solid var(--border);
-		box-shadow: 0 6px 18px rgba(19, 35, 63, 0.1);
+	.coin {
+		width: 92px;
+		height: 92px;
+		font-size: 50px;
+		background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+		box-shadow:
+			inset 0 3px 0 rgba(255, 255, 255, 0.6),
+			inset 0 -3px 0 rgba(0, 0, 0, 0.08),
+			0 5px 0 var(--gold-lo),
+			0 14px 24px var(--shade);
 	}
 	.who-text {
 		flex: 1;
 		min-width: 0;
-	}
-	h1 {
-		font-family: var(--display);
-		font-weight: 800;
-		font-size: 28px;
-		line-height: 1.1;
-		letter-spacing: -0.02em;
-	}
-	.who-text p {
-		margin-top: 6px;
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 6px 8px;
-		font-size: 13.5px;
-		color: var(--muted);
-	}
-	.badge {
-		font-size: 13px;
-		font-weight: 700;
-		padding: 2px 10px;
-		border-radius: 999px;
-		background: var(--surface-2);
-		color: var(--text);
-	}
-	.badge.red {
-		background: color-mix(in srgb, var(--red) 18%, transparent);
-	}
-	.who-action {
-		flex: none;
-	}
-
-	/* the streets of Tashkent */
-	.streets {
-		padding: 18px 18px 16px;
-		border-radius: 20px;
-		background: var(--surface);
-		border: 1px solid var(--border);
-	}
-	.learned {
-		margin-top: 12px;
-		display: flex;
-		align-items: baseline;
-		gap: 10px;
-		flex-wrap: wrap;
-	}
-	.learned b {
-		font-family: var(--display);
-		font-size: 44px;
-		line-height: 1;
-		color: var(--green-ink);
-	}
-	:global(:root[data-theme='dark']) .learned b {
-		color: var(--green);
-	}
-	.learned span {
-		font-size: 16px;
-		font-weight: 600;
-	}
-	.bar {
-		position: relative;
-		margin-top: 14px;
-		height: 12px;
-		border-radius: 6px;
-		background: var(--surface-2);
-		overflow: hidden;
-	}
-	.bar i {
-		position: absolute;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		border-radius: 6px;
-	}
-	.bar .seen,
-	.key.seen {
-		background: color-mix(in srgb, var(--gold) 70%, transparent);
-	}
-	.bar .got,
-	.key.got {
-		background: var(--green);
-	}
-	.line {
-		margin-top: 10px;
-		display: flex;
-		align-items: center;
-		flex-wrap: wrap;
-		gap: 6px;
-		font-size: 13px;
-		color: var(--muted);
-	}
-	.key {
-		width: 10px;
-		height: 10px;
-		border-radius: 3px;
-		display: inline-block;
-	}
-	.key.seen {
-		margin-left: 8px;
-	}
-	.hint {
-		margin-top: 10px;
-		font-size: 12.5px;
-		color: var(--muted);
-	}
-
-	/* the numbers, as a scoreboard */
-	.numbers {
-		display: grid;
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-		border-radius: 18px;
-		background: var(--lapis);
-		color: #fff;
-		overflow: hidden;
-	}
-	.numbers div {
-		padding: 14px 10px 12px;
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
-		min-width: 0;
+		align-items: flex-start;
+		gap: 6px;
 	}
-	.numbers div + div {
-		border-left: 1px solid rgba(255, 255, 255, 0.1);
+	h1 {
+		display: block;
+		width: 100%;
+		font-size: 32px;
+		line-height: 1.1;
+		color: var(--on-ground);
+		transform-origin: 0 75%;
 	}
-	.numbers b {
-		font-family: var(--display);
-		font-size: 20px;
-		font-variant-numeric: tabular-nums;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+	.joined {
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--on-ground-3);
 	}
-	.numbers span {
-		font-size: 11.5px;
-		line-height: 1.25;
-		color: rgba(255, 255, 255, 0.7);
+	/* a player shut out: the tag in red, not gold */
+	.kick-tag.banned {
+		background: var(--red);
+		box-shadow: 0 2px 0 #8e0a1a;
+		color: #fff;
 	}
 
-	.head {
+	/* the streets of Tashkent: the city's face beside the number learned */
+	.streets {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+	}
+	.face {
+		flex: none;
+		width: 84px;
+		height: 84px;
+	}
+	.known {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.kind {
+		font-size: 12.5px;
+		font-weight: 800;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--gold-on-panel);
+	}
+	.learned {
 		display: flex;
 		align-items: baseline;
-		justify-content: space-between;
+		gap: 8px;
+		flex-wrap: wrap;
+		font-weight: 700;
+		font-size: 15px;
+		color: var(--ink-2);
 	}
-	.list {
-		margin-top: 6px;
+	.learned b {
+		font-size: 40px;
+		line-height: 1;
+		color: var(--ink);
 	}
-	.list > :global(* + *) {
-		border-top: 1px solid var(--border);
+	.line {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--ink-3);
 	}
-	.empty {
-		color: var(--muted);
-		font-size: 14px;
-		padding: 8px 0;
+
+	.stats b {
+		font-size: 30px;
+	}
+
+	.history {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
 	}
 </style>

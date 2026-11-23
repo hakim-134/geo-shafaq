@@ -16,23 +16,21 @@
 		type LatLon,
 		type MapSummary,
 		type RoomPlayer,
-		type RoomResult,
 		type RoomState
 	} from '#lib/api/client.js';
 	import { RoomLink, justMade } from '#lib/room.svelte.js';
 	import RoundView, { type Status } from '#lib/game/RoundView.svelte';
 	import ResultMap, { type Pair } from '#lib/map/ResultMap.svelte';
 	import { savedLayer, type BBox } from '#lib/map/map.js';
-	import MapSign from '#lib/maps/MapSign.svelte';
-	import TopBar from '#lib/components/TopBar.svelte';
+	import PlaceInParent from '#lib/maps/PlaceInParent.svelte';
+	import GameBar from '#lib/components/GameBar.svelte';
 	import Sheet from '#lib/components/Sheet.svelte';
 	import RulesForm from '#lib/game/RulesForm.svelte';
 	import Loader from '#lib/game/Loader.svelte';
-	import { newLook } from '#lib/look.svelte.js';
 	import ResultLayout from '#lib/game/ResultLayout.svelte';
 	import RoundReveal from '#lib/game/RoundReveal.svelte';
-	import StreetPlate from '#lib/game/StreetPlate.svelte';
 	import Podium from '#lib/game/Podium.svelte';
+	import EndStreets, { type EndRound } from '#lib/game/EndStreets.svelte';
 	import NextRing from '#lib/game/NextRing.svelte';
 	import { extras } from '#lib/game/summary.js';
 	import RulesFacts from '#lib/game/RulesFacts.svelte';
@@ -58,8 +56,6 @@
 	let rv = $state<ReturnType<typeof RoundView>>();
 
 	const st = $derived<RoomState | null>(link?.state ?? null);
-	// the new look is on a round and its result; the lobby and the podium keep the old one for now
-	newLook(() => !!st?.joined && (st.phase === 'playing' || st.phase === 'result'));
 	const code = $derived(st?.code ?? (page.params.code ?? '').toUpperCase());
 	const players = $derived(st?.players ?? []);
 	const me = $derived(players.find((p) => p.id === st?.you));
@@ -342,10 +338,19 @@
 		else finalPick = null;
 	});
 
-	function where(r: RoomResult): string {
-		const p = r.place;
-		return tx(p.street ?? p.district ?? p.city ?? p.region) || '—';
-	}
+	// the end's list of this game's streets, with my points on each, as a solo game's end
+	const endRounds = $derived<EndRound[]>(
+		(st?.results ?? []).map((r) => {
+			const s = r.scores.find((x) => x.player === st?.you);
+			return {
+				n: r.n,
+				place: r.place,
+				score: s?.score ?? 0,
+				base: s?.base,
+				hintsUsed: s?.hintsUsed
+			};
+		})
+	);
 
 	// ---------- the host ----------
 	let busy = $state(false);
@@ -465,7 +470,7 @@
 	// laptop copies it and shows the QR code for the phones in the same room.
 	const phone = matchMedia('(pointer: coarse)').matches;
 	let qrOpen = $state(false);
-	const qr = $derived(renderSVG(roomUrl, { border: 1, blackColor: '#13233f', whiteColor: '#fff' }));
+	const qr = $derived(renderSVG(roomUrl, { border: 1, blackColor: '#06282f', whiteColor: '#fff' }));
 	const inviteText = $derived(st ? t('invite', { map: tx(st.map.name), code }) : '');
 	// the phone's share sheet where there is one (https); our own sheet (copy, Telegram) anywhere else
 	let sharing = $state<{ share: Share; title: string } | null>(null);
@@ -486,9 +491,11 @@
 	async function offerInvite() {
 		const share = { url: roomUrl, text: inviteText };
 		if (!phone) {
+			// the word says so for a moment, then the key is the invite again
 			if (await copyText(`${inviteText}\n${roomUrl}`)) {
 				copied = true;
-				copiedTimer = setTimeout(() => (copied = false), 4000);
+				clearTimeout(copiedTimer);
+				copiedTimer = setTimeout(() => (copied = false), 2500);
 			}
 		} else if (navigator.share && window.isSecureContext) {
 			await navigator
@@ -582,154 +589,168 @@
 <svelte:head><title>{t('room')} {code} — GeoShafaq</title></svelte:head>
 
 {#if loadError || link?.gone}
-	<TopBar />
+	<GameBar standalone />
 	<main class="gone">
-		<img class="mark" src="/mark.svg" alt="" width="64" height="64" />
-		<p>{t(loadError ?? goneKey[link?.gone ?? ''] ?? 'roomClosed')}</p>
+		<img class="mark" src="/mark.svg" alt="" width="72" height="72" />
+		<h1 class="d float">{t(loadError ?? goneKey[link?.gone ?? ''] ?? 'roomClosed')}</h1>
 		<div class="row">
 			{#if loadError === 'err_network'}
-				<button class="btn btn-primary" onclick={() => open(code)}>{t('retry')}</button>
+				<button class="btn btn-primary" onclick={() => open(code)}
+					><span class="lbl">{t('retry')}</span></button
+				>
+				<a class="btn btn-chip" href="/">{t('menu')}</a>
+			{:else}
+				<a class="btn btn-primary" href="/"><span class="lbl">{t('menu')}</span></a>
 			{/if}
-			<a class="btn btn-ghost" href="/">{t('menu')}</a>
 		</div>
 	</main>
 {:else if !st}
 	<Loader text={t('connecting')} />
 {:else if st.phase === 'lobby' || !st.joined}
-	<TopBar />
-	<main class="lobby" class:guest={!isHost} class:host={isHost}>
-		<section class="invite">
-			<button
-				class="btn invite-btn"
-				class:btn-sky={isHost && players.length < 2}
-				class:btn-ghost={!isHost || players.length > 1}
-				class:quiet={!isHost || players.length > 1}
-				class:done={copied}
-				onclick={invite}
-			>
-				{#if copied}
-					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
-						><path d="m5 12.5 4.5 4.5L19 7" /></svg
-					>
-					{t('linkCopied')}
-				{:else}
-					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
-						><circle cx="9" cy="8" r="3.4" /><path
-							d="M2.5 20c.6-3.6 3.2-5.6 6.5-5.6s5.9 2 6.5 5.6"
-						/><path d="M19 8v6M16 11h6" /></svg
-					>
-					{t('inviteTitle')}
-				{/if}
-			</button>
-			<div class="plate-row">
-				<div class="plate" role="img" aria-label={`${t('room')} ${code}`}>
-					<b>{code}</b>
-					<span class="plate-end" aria-hidden="true">
-						<span class="plate-flag"><i></i><i></i><i></i></span>
-						<span class="plate-uz">UZ</span>
-					</span>
-				</div>
+	<GameBar standalone />
+	<!-- a laptop: the lobby's block in the middle of the window's height -->
+	<div class="lobby-wrap">
+		<main class="lobby" class:guest={!isHost} class:host={isHost}>
+			<section class="invite">
 				<button
-					class="icon-btn qr-btn"
-					onclick={() => (qrOpen = true)}
-					aria-label={t('qrCode')}
-					title={t('qrCode')}
+					class="btn invite-btn"
+					class:btn-sky={isHost && players.length < 2}
+					class:btn-chip={!isHost || players.length > 1}
+					class:quiet={!isHost || players.length > 1}
+					class:done={copied}
+					onclick={invite}
 				>
-					<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
-						><rect x="3.5" y="3.5" width="7" height="7" rx="1" /><rect
-							x="13.5"
-							y="3.5"
-							width="7"
-							height="7"
-							rx="1"
-						/><rect x="3.5" y="13.5" width="7" height="7" rx="1" /><path
-							d="M14 14h2.5v2.5H14zM18 18h2.5v2.5H18zM18 14h2.5M14 18v2.5"
+					{#if copied}
+						<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+							><path d="m5 12.5 4.5 4.5L19 7" /></svg
+						>
+						<span class="lbl">{t('linkCopied')}</span>
+					{:else}
+						<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+							><circle cx="9" cy="8" r="3.4" /><path
+								d="M2.5 20c.6-3.6 3.2-5.6 6.5-5.6s5.9 2 6.5 5.6"
+							/><path d="M19 8v6M16 11h6" /></svg
+						>
+						<span class="lbl">{t('inviteTitle')}</span>
+					{/if}
+				</button>
+				<div class="plate-row">
+					<div class="plate" role="img" aria-label={`${t('room')} ${code}`}>
+						<b>{code}</b>
+						<span class="plate-end" aria-hidden="true">
+							<span class="plate-flag"><i></i><i></i><i></i></span>
+							<span class="plate-uz">UZ</span>
+						</span>
+					</div>
+					<button
+						class="icon-btn qr-btn"
+						onclick={() => (qrOpen = true)}
+						aria-label={t('qrCode')}
+						title={t('qrCode')}
+					>
+						<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+							><rect x="3.5" y="3.5" width="7" height="7" rx="1" /><rect
+								x="13.5"
+								y="3.5"
+								width="7"
+								height="7"
+								rx="1"
+							/><rect x="3.5" y="13.5" width="7" height="7" rx="1" /><path
+								d="M14 14h2.5v2.5H14zM18 18h2.5v2.5H18zM18 14h2.5M14 18v2.5"
+							/></svg
+						>
+					</button>
+				</div>
+				<!-- a laptop shows it at once, for the phones in the same room -->
+				<!-- eslint-disable-next-line svelte/no-at-html-tags -- our own SVG from uqr -->
+				<div class="qr qr-wide" aria-label={t('qrCode')}>{@html qr}</div>
+			</section>
+
+			<section class="players" aria-label={t('players')}>
+				<ul>
+					{#each players as p, i (p.id)}
+						<li class:off={!p.online} class:me={p.id === st.you}>
+							<button
+								class="player"
+								disabled={!(p.id === st.you && st.joined) && !isHost}
+								onclick={() => (p.id === st.you ? startNaming() : (target = p))}
+								aria-label={p.id === st.you ? t('changeName') : `${p.name}: ${t('playerMenu')}`}
+							>
+								<span class="avatar ring" style:--ring={playerColor(i)} data-frame={p.frame}
+									><em class="pc"></em>
+									{p.avatar}
+									{#if p.id === st.host}<span class="crown" aria-hidden="true">👑</span>{/if}
+								</span>
+								<span class="name">{p.name}</span>
+								{#if p.id === st.you}<span class="tag">{t('youTag')}</span>{/if}
+							</button>
+						</li>
+					{/each}
+					{#if players.length < st.maxPlayers}
+						<li class="slot">
+							<button class="player" onclick={invite} aria-label={t('inviteTitle')}>
+								<span class="avatar empty" aria-hidden="true">+</span>
+							</button>
+						</li>
+					{/if}
+				</ul>
+			</section>
+
+			<!-- the place and the rules, one card: the place's face, its name, the facts; the
+		     host's opens the settings -->
+			{#snippet setupInside()}
+				{#if st?.map.face}
+					<span class="setup-pic"><PlaceInParent place={st.map.face} on="panel" /></span>
+				{/if}
+				<span class="setup-words">
+					<b class="setup-name d">{tx(st?.map.name)}</b>
+					{#if st}<RulesFacts choice={choiceFrom(st.rules, st.map.slug)} compact />{/if}
+				</span>
+			{/snippet}
+			{#if isHost}
+				<button class="setup on-panel" onclick={openSettings} aria-label={t('changeMapRules')}>
+					{@render setupInside()}
+					<svg viewBox="0 0 24 24" class="icon change" aria-hidden="true"
+						><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle
+							cx="10"
+							cy="17"
+							r="2"
 						/></svg
 					>
 				</button>
-			</div>
-			<!-- a laptop shows it at once, for the phones in the same room -->
-			<!-- eslint-disable-next-line svelte/no-at-html-tags -- our own SVG from uqr -->
-			<div class="qr qr-wide" aria-label={t('qrCode')}>{@html qr}</div>
-		</section>
-
-		<section class="players" aria-label={t('players')}>
-			<ul>
-				{#each players as p, i (p.id)}
-					<li class:off={!p.online} class:me={p.id === st.you}>
-						<button
-							class="player"
-							disabled={!(p.id === st.you && st.joined) && !isHost}
-							onclick={() => (p.id === st.you ? startNaming() : (target = p))}
-							aria-label={p.id === st.you ? t('changeName') : `${p.name}: ${t('playerMenu')}`}
-						>
-							<span class="avatar ring" style:--ring={playerColor(i)} data-frame={p.frame}
-								><em class="pc"></em>
-								{p.avatar}
-								{#if p.id === st.host}<span class="crown" aria-hidden="true">👑</span>{/if}
-							</span>
-							<span class="name">{p.name}</span>
-							{#if p.id === st.you}<span class="tag">{t('youTag')}</span>{/if}
-						</button>
-					</li>
-				{/each}
-				{#if players.length < st.maxPlayers}
-					<li class="slot">
-						<button class="player" onclick={invite} aria-label={t('inviteTitle')}>
-							<span class="avatar empty" aria-hidden="true">+</span>
-						</button>
-					</li>
-				{/if}
-			</ul>
-		</section>
-
-		{#if isHost}
-			<button class="setup" onclick={openSettings} aria-label={t('changeMapRules')}>
-				<MapSign slug={st.map.slug} name={tx(st.map.name)} size="small" />
-				<RulesFacts choice={choiceFrom(st.rules, st.map.slug)} compact />
-				<svg viewBox="0 0 24 24" class="icon change" aria-hidden="true"
-					><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle
-						cx="10"
-						cy="17"
-						r="2"
-					/></svg
-				>
-			</button>
-		{:else}
-			<div class="setup">
-				<MapSign slug={st.map.slug} name={tx(st.map.name)} size="small" />
-				<RulesFacts choice={choiceFrom(st.rules, st.map.slug)} compact />
-			</div>
-		{/if}
-
-		<button class="link-btn leave" onclick={leave}>{t('leave')}</button>
-		<div class="go">
-			{#if !st.joined}
-				<p class="wait"><span class="spinner"></span>{t('connecting')}</p>
-			{:else if isHost}
-				<button
-					class="btn btn-play"
-					class:btn-primary={players.length > 1}
-					class:btn-ghost={players.length < 2}
-					onclick={() => hostAct('/v1/rooms/{code}/start')}
-					disabled={busy}
-				>
-					<span>{busy ? t('starting') : t('start')}</span>
-					<svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" /></svg>
-				</button>
 			{:else}
-				<p class="wait">
-					{#if hostP}<span
-							class="avatar host-face"
-							style:--ring={colorOf(hostP.id)}
-							data-frame={hostP.frame}
-							><em class="pc"></em>{hostP.avatar}<i aria-hidden="true">👑</i></span
-						>{/if}
-					{t('waitHost')}
-				</p>
+				<div class="setup on-panel">{@render setupInside()}</div>
 			{/if}
-		</div>
-	</main>
+
+			<button class="link-btn leave" onclick={leave}>{t('leave')}</button>
+			<div class="go">
+				{#if !st.joined}
+					<p class="wait"><span class="spinner"></span>{t('connecting')}</p>
+				{:else if isHost}
+					<button
+						class="btn btn-play"
+						class:btn-primary={players.length > 1}
+						class:btn-chip={players.length < 2}
+						onclick={() => hostAct('/v1/rooms/{code}/start')}
+						disabled={busy}
+					>
+						<span class="lbl">{busy ? t('starting') : t('start')}</span>
+						<svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" /></svg>
+					</button>
+				{:else}
+					<p class="wait">
+						{#if hostP}<span
+								class="avatar host-face"
+								style:--ring={colorOf(hostP.id)}
+								data-frame={hostP.frame}
+								><em class="pc"></em>{hostP.avatar}<i aria-hidden="true">👑</i></span
+							>{/if}
+						{t('waitHost')}
+					</p>
+				{/if}
+			</div>
+		</main>
+	</div>
 {:else}
 	<div class="game">
 		<RoundView
@@ -774,7 +795,7 @@
 			<Loader text={t('loading')} />
 		{/if}
 		{#if blind && st.phase === 'playing'}
-			<div class="blind">{t('roomNoPano')}</div>
+			<div class="blind cap">{t('roomNoPano')}</div>
 		{/if}
 
 		{#if st.phase === 'result' && last}
@@ -875,27 +896,18 @@
 		{/if}
 
 		{#if st.phase === 'final'}
-			<ResultLayout tall stage legend={false}>
-				{#snippet map()}
-					<ResultMap bbox={st.map.bbox as BBox} layer={savedLayer()} pairs={finalPairs} />
-				{/snippet}
-				<div class="final">
+			<!-- the end is a stage on the turquoise ground: the podium, this game's streets on a
+			     milk card, the map with every round's badge; on a laptop the map stands beside them -->
+			<div class="end">
+				<div class="end-body">
 					<Podium {standings} you={st.you ?? ''} {colorOf} costOf={hintCostOf} />
-					<div class="trip">
-						<h2 class="section-title">{t('streetsThisGame')}</h2>
-						<div class="rounds">
-							{#each st.results as r, i (r.n)}
-								<button
-									aria-pressed={finalPick === i}
-									onclick={() => (finalPick = finalPick === i ? null : i)}
-								>
-									<StreetPlate place={r.place} size="small" />
-								</button>
-							{/each}
-						</div>
-					</div>
+					<!-- after the podium has risen -->
+					<EndStreets rounds={endRounds} bind:pick={finalPick} delay={2300} />
 				</div>
-				{#snippet actions()}
+				<div class="end-map">
+					<ResultMap bbox={st.map.bbox as BBox} layer={savedLayer()} pairs={finalPairs} />
+				</div>
+				<div class="end-actions">
 					{#if isHost}
 						<button
 							class="btn btn-primary again"
@@ -905,10 +917,10 @@
 							<svg viewBox="0 0 24 24"
 								><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3L3.5 8.3M3.5 3.5v4.8h4.8" /></svg
 							>
-							{busy ? t('starting') : t('playAgain')}
+							<span class="lbl">{busy ? t('starting') : t('playAgain')}</span>
 						</button>
 					{:else}
-						<p class="wait">
+						<p class="wait end-wait">
 							{#if hostP}<span
 									class="avatar host-face"
 									style:--ring={colorOf(hostP.id)}
@@ -920,7 +932,7 @@
 					{/if}
 					<div class="row">
 						{#if st.yourGame}
-							<button class="btn btn-ghost" disabled={inviting} onclick={shareResults}>
+							<button class="btn btn-chip share-btn" disabled={inviting} onclick={shareResults}>
 								<svg viewBox="0 0 24 24"
 									><path
 										d="M12 15V3.5M7.5 8 12 3.5 16.5 8M5 12.5V19a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-6.5"
@@ -930,7 +942,7 @@
 							</button>
 						{/if}
 						<button
-							class="btn btn-ghost more-btn"
+							class="btn btn-chip more-btn"
 							onclick={() => (moreOpen = true)}
 							aria-label={t('more')}
 							title={t('more')}
@@ -944,14 +956,14 @@
 							>
 						</button>
 					</div>
-				{/snippet}
-			</ResultLayout>
+				</div>
+			</div>
 		{/if}
 	</div>
 {/if}
 
 {#if away}
-	<div class="away">{t('connLost')}</div>
+	<div class="away cap">{t('connLost')}</div>
 {/if}
 
 <ShareSheet
@@ -963,25 +975,30 @@
 <Sheet open={settingsOpen} onclose={() => (settingsOpen = false)} title={t('changeMapRules')}>
 	{#if choice}
 		<div class="sheet-body">
-			<div class="field-label">{t('map')}</div>
-			<div class="map-list">
-				{#each maps as m (m.slug)}
-					<button
-						aria-pressed={choice.map === m.slug}
-						onclick={() => choice && (choice.map = m.slug)}
-					>
-						<MapSign
-							slug={m.slug}
-							name={tx(m.name)}
-							top={tx(m.description)}
-							outline={m.outline}
-							size="small"
-						/>
-					</button>
-				{/each}
+			<div>
+				<div class="field-label">{t('map')}</div>
+				<div class="map-list">
+					{#each maps as m (m.slug)}
+						<button
+							class="map-card"
+							aria-pressed={choice.map === m.slug}
+							onclick={() => choice && (choice.map = m.slug)}
+						>
+							<span class="map-pic">
+								{#if m.face}<PlaceInParent place={m.face} on="panel" />{/if}
+							</span>
+							<span class="map-words">
+								<b class="d">{tx(m.name)}</b>
+								<small>{tx(m.description)}</small>
+							</span>
+						</button>
+					{/each}
+				</div>
 			</div>
 			<RulesForm bind:choice canMove={chosenMap?.canMove ?? true} />
-			<button class="btn btn-primary" onclick={saveSettings} disabled={busy}>{t('save')}</button>
+			<button class="btn btn-primary" onclick={saveSettings} disabled={busy}
+				><span class="lbl">{t('save')}</span></button
+			>
 		</div>
 	{/if}
 </Sheet>
@@ -991,79 +1008,117 @@
 	<div class="qr qr-big">{@html qr}</div>
 </Sheet>
 
-<Sheet open={moreOpen} onclose={() => (moreOpen = false)}>
-	<div class="sheet-body">
+<!-- the rest of the end, under ⋯: rows like a menu's, the way out last and red -->
+<Sheet open={moreOpen} onclose={() => (moreOpen = false)} title={t('menu')}>
+	<div class="menu-list">
 		{#if isHost}
 			<button
-				class="btn btn-ghost"
 				onclick={() => {
 					moreOpen = false;
 					openSettings();
-				}}>{t('changeMapRules')}</button
+				}}
 			>
+				<span class="tile" aria-hidden="true"
+					><svg viewBox="0 0 24 24"
+						><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle
+							cx="10"
+							cy="17"
+							r="2"
+						/></svg
+					></span
+				>
+				{t('changeMapRules')}
+			</button>
 		{/if}
 		{#if st?.yourGame}
-			<a class="btn btn-ghost" href={`/game/${st.yourGame}`}>{t('myGame')}</a>
+			<a href={`/game/${st.yourGame}`}>
+				<span class="tile gold" aria-hidden="true"
+					><svg viewBox="0 0 24 24"><path d="M5 20V10M12 20V4M19 20v-7" /></svg></span
+				>
+				{t('myGame')}
+			</a>
 		{/if}
-		<button class="btn btn-ghost" onclick={leave}>{t('leave')}</button>
+		<button class="out" onclick={leave}>
+			<span class="tile red" aria-hidden="true"
+				><svg viewBox="0 0 24 24"
+					><path
+						d="M14 4.5h4a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5h-4M10 8l-4 4 4 4M6 12h9"
+					/></svg
+				></span
+			>
+			{t('leave')}
+		</button>
 	</div>
 </Sheet>
 
 <Sheet open={!!target} onclose={() => (target = null)} title={target?.name}>
 	<div class="sheet-body">
-		<button class="btn btn-sky" onclick={() => onPlayer('/v1/rooms/{code}/host')}
-			>{t('makeHost')}</button
+		<button class="btn" onclick={() => onPlayer('/v1/rooms/{code}/host')}
+			><span aria-hidden="true">👑</span><span class="lbl">{t('makeHost')}</span></button
 		>
 		<button class="btn btn-danger" onclick={() => onPlayer('/v1/rooms/{code}/kick')}
-			>{t('kick')}</button
+			><span class="lbl">{t('kick')}</span></button
 		>
 	</div>
 </Sheet>
 
 <Sheet open={naming} onclose={() => (naming = false)} title={t('changeName')}>
 	<form class="sheet-body" onsubmit={saveName}>
-		<input class="name-input" bind:value={newName} maxlength="24" aria-label={t('changeName')} />
+		<input class="field" bind:value={newName} maxlength="24" aria-label={t('changeName')} />
 		{#if nameError}<p class="field-note bad">{t('badName')}</p>{/if}
-		<button class="btn btn-primary" disabled={newName.trim().length < 2}>{t('save')}</button>
+		<button class="btn btn-primary" disabled={newName.trim().length < 2}
+			><span class="lbl">{t('save')}</span></button
+		>
 	</form>
 </Sheet>
 
 <style>
-	/* ---------- the lobby ---------- */
-	/* one job: bring friends in. The host meets the invite first; a friend, the players */
+	/* ---------- the lobby ----------
+	   One job: bring friends in. On the turquoise ground: the big invite, the code as a real
+	   Uzbek number plate, the players as milk faces popping in, the place and the rules on one
+	   milk card, and "Boshlash" (the green key once a friend is in) under the thumb. The host
+	   meets the invite first; a friend, the players. */
 	.lobby {
 		max-width: 560px;
 		margin: 0 auto;
-		padding: 8px 16px 24px;
+		padding: 6px 16px 24px;
 		display: flex;
 		flex-direction: column;
-		gap: 18px;
+		gap: 22px;
 	}
 	.invite {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 14px;
+		gap: 16px;
 	}
+	/* alone, the host's one strong key (turquoise: Boshlash keeps the green); once a friend
+	   is in, a quiet chip */
 	.invite-btn {
 		width: 100%;
 		height: 68px;
-		border-radius: 20px;
-		font-size: 20px;
+		font-size: 21px;
 		gap: 12px;
+	}
+	.invite-btn.btn-sky {
+		--b-a: #40d0d9;
+		--b-b: #18a8b4;
+		--b-c: #0f8f9c;
+		--b-lip: #04434b;
+		box-shadow:
+			inset 0 2px 0 rgba(255, 255, 255, 0.5),
+			inset 0 -2px 0 rgba(0, 0, 0, 0.1),
+			0 6px 0 var(--b-lip),
+			0 16px 26px var(--shade);
 	}
 	.invite-btn .icon {
 		width: 28px;
 		height: 28px;
-	}
-	.invite-btn.done {
-		background: var(--green);
-		color: #fff;
+		stroke-width: 2.4;
 	}
 	.invite-btn.quiet {
 		height: 52px;
 		font-size: 16px;
-		border-radius: 16px;
 	}
 	.invite-btn.quiet .icon {
 		width: 22px;
@@ -1072,36 +1127,39 @@
 	.plate-row {
 		display: flex;
 		align-items: center;
-		gap: 10px;
+		gap: 12px;
 	}
 	.qr-btn {
-		width: 48px;
-		height: 48px;
+		width: 52px;
+		height: 52px;
 	}
 	.qr-btn .icon {
 		width: 26px;
 		height: 26px;
 	}
-	/* the code as an Uzbek number plate: white, a black rim, the flag and UZ at the right end */
+	/* the code as an Uzbek number plate: a real-world thing, so it keeps its own white and
+	   black on the turquoise; it stands on the ground with a lip, like a raised tile */
 	.plate {
 		display: inline-flex;
 		align-items: stretch;
-		border: 2.5px solid #13151a;
-		border-radius: 8px;
+		border: 3px solid #101418;
+		border-radius: 10px;
 		background: #fff;
-		color: #13151a;
+		color: #101418;
 		box-shadow:
-			0 2px 0 rgba(0, 0, 0, 0.25),
-			0 8px 20px rgba(0, 0, 0, 0.1);
+			inset 0 0 0 2px #fff,
+			0 4px 0 var(--stack),
+			0 12px 22px var(--shade);
 		overflow: hidden;
 	}
 	.plate b {
-		padding: 4px 10px 2px 14px;
-		font-family: var(--display);
-		font-size: 28px;
-		font-weight: 800;
-		letter-spacing: 0.14em;
-		line-height: 1.1;
+		padding: 3px 12px 1px 16px;
+		font-family: var(--f-disp);
+		font-weight: 900;
+		font-size: 32px;
+		letter-spacing: 0.16em;
+		line-height: 1.15;
+		font-variant-numeric: tabular-nums;
 	}
 	.plate-end {
 		display: flex;
@@ -1110,14 +1168,14 @@
 		justify-content: center;
 		gap: 3px;
 		padding: 0 8px;
-		border-left: 2px solid #13151a;
+		border-left: 2.5px solid #101418;
 	}
 	.plate-flag {
 		display: flex;
 		flex-direction: column;
-		width: 20px;
-		height: 12px;
-		border: 1px solid #13151a;
+		width: 22px;
+		height: 13px;
+		border: 1px solid #101418;
 	}
 	.plate-flag i {
 		flex: 1;
@@ -1133,14 +1191,15 @@
 		background: #1eb53a;
 	}
 	.plate-uz {
-		font-size: 11px;
-		font-weight: 800;
+		font-family: var(--f-disp);
+		font-size: 11.5px;
+		font-weight: 900;
 		letter-spacing: 0.06em;
 		line-height: 1;
 	}
 	.qr {
 		padding: 10px;
-		border-radius: 16px;
+		border-radius: var(--r-s);
 		background: #fff;
 	}
 	.qr :global(svg) {
@@ -1150,66 +1209,86 @@
 	}
 	.qr-wide {
 		display: none;
+		box-shadow:
+			0 4px 0 var(--stack),
+			0 12px 22px var(--shade);
 	}
 	.qr-big {
 		width: min(300px, 80vw);
 		margin: 0 auto 8px;
+		box-shadow: inset 0 0 0 2px var(--panel-line);
 	}
 
-	/* the players: faces popping in */
+	/* the players: milk faces with a lip, popping in */
 	.players ul {
 		list-style: none;
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
-		gap: 12px 6px;
+		grid-template-columns: repeat(auto-fill, minmax(78px, 1fr));
+		gap: 14px 6px;
 	}
 	.player {
 		width: 100%;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 4px;
+		gap: 5px;
 		padding: 4px 0;
 		border: none;
 		background: none;
-		color: var(--text);
+		color: var(--on-ground);
 		cursor: pointer;
 	}
 	.player:disabled {
 		opacity: 1;
 		cursor: default;
 	}
+	.player:not(:disabled):active .avatar {
+		transform: translateY(3px);
+		box-shadow:
+			0 1px 0 color-mix(in srgb, var(--tile-b) 70%, var(--stack)),
+			0 4px 8px var(--shade);
+	}
 	.players li {
-		animation: pop-in 0.45s var(--pop) both;
+		animation: pop-in 0.45s var(--spring) both;
 	}
 	.players li.off {
 		opacity: 0.5;
 	}
+	/* a face on the ground is milk like the map's tiles, by day and by night */
 	.players .avatar {
-		position: relative;
-		width: 58px;
-		height: 58px;
-		font-size: 32px;
-		background: var(--surface);
+		width: 62px;
+		height: 62px;
+		font-size: 34px;
+		background: var(--tile-a);
+		box-shadow:
+			0 4px 0 color-mix(in srgb, var(--tile-b) 70%, var(--stack)),
+			0 10px 18px var(--shade);
+		transition:
+			transform 0.1s var(--out),
+			box-shadow 0.1s var(--out);
 	}
 	.crown {
 		position: absolute;
-		top: -14px;
+		top: -15px;
 		right: -8px;
-		font-size: 20px;
+		font-size: 21px;
 		transform: rotate(18deg);
+		filter: drop-shadow(0 2px 0 var(--stack-2));
 	}
+	/* the "+" seat: an empty place in the row, glass with a dashed rim; it invites too */
 	.avatar.empty {
-		border: 2.5px dashed var(--border);
-		background: none;
-		color: var(--muted);
-		font-size: 30px;
-		font-weight: 300;
+		border: 2.5px dashed var(--chip-line);
+		background: var(--chip-bg);
+		box-shadow: none;
+		color: var(--on-ground-2);
+		font-family: var(--f-disp);
+		font-size: 32px;
+		font-weight: 900;
 		transition: border-color 0.15s;
 	}
 	.slot .player:hover .avatar.empty {
-		border-color: var(--sky);
-		color: var(--sky);
+		border-color: var(--on-ground);
+		color: var(--on-ground);
 	}
 	/* "Qisqichbaqa 42": a long name takes two lines, its number never cut */
 	.players .name {
@@ -1217,37 +1296,78 @@
 		text-align: center;
 		overflow-wrap: anywhere;
 		line-height: 1.15;
-		font-size: 13.5px;
-		font-weight: 600;
+		font-size: 14px;
+		font-weight: 700;
+		text-shadow: 0 1px 0 var(--stack-2);
+	}
+	.players .me .name {
+		color: var(--gold-text);
 	}
 	.players .tag {
 		margin-top: -3px;
-		font-size: 11.5px;
-		color: var(--muted);
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--on-ground-3);
 	}
 
-	/* the place and the rules: one line (on a phone the rules are short: RulesFacts compact);
-	   the host's opens the settings */
+	/* the place and the rules: one milk card, the place's face at its left, its name in the
+	   leaning letters over the facts; the host's opens the settings and goes down when pressed */
 	.setup {
 		display: flex;
 		align-items: center;
-		flex-wrap: wrap;
-		gap: 8px 12px;
-		min-height: 56px;
-		padding: 8px 14px;
+		gap: 14px;
+		min-height: 76px;
+		padding: 12px 16px 12px 12px;
 		border: none;
-		border-radius: 16px;
-		background: var(--surface-2);
-		color: var(--text);
-		font-size: 14px;
+		border-radius: var(--r);
+		background: var(--panel);
+		color: var(--ink);
+		font-size: 14.5px;
 		text-align: left;
+		box-shadow:
+			0 4px 0 var(--panel-lip),
+			0 14px 28px var(--shade);
 	}
-	button.setup:hover {
-		filter: brightness(0.97);
+	button.setup {
+		transition:
+			transform 0.1s var(--out),
+			box-shadow 0.1s var(--out);
+	}
+	button.setup:active {
+		transform: translateY(3px);
+		box-shadow:
+			0 1px 0 var(--panel-lip),
+			0 6px 14px var(--shade);
+	}
+	.setup-pic {
+		width: 52px;
+		height: 52px;
+		flex: none;
+	}
+	.setup-words {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 4px;
+	}
+	.setup-name {
+		max-width: 100%;
+		font-size: 19px;
+		line-height: 1.15;
+		color: var(--ink);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.setup-words :global(.facts) {
+		color: var(--ink-2);
 	}
 	.setup .change {
-		margin-left: auto;
-		color: var(--muted);
+		width: 26px;
+		height: 26px;
+		color: var(--link);
 	}
 
 	.go {
@@ -1260,9 +1380,8 @@
 		width: 100%;
 		height: 66px;
 		justify-content: space-between;
-		padding: 0 22px 0 24px;
-		font-size: 20px;
-		border-radius: 20px;
+		padding: 0 24px 0 26px;
+		font-size: 22px;
 	}
 	.btn-play svg {
 		width: 24px;
@@ -1271,14 +1390,20 @@
 		stroke: none;
 	}
 	.wait {
-		color: var(--muted);
-		font-size: 14.5px;
-		text-align: center;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
 		min-height: 52px;
+		color: var(--fg-2);
+		font-size: 15px;
+		font-weight: 600;
+		text-align: center;
 	}
 	.leave {
 		align-self: center;
-		color: var(--muted);
+		color: var(--on-ground-2);
+		font-size: 14.5px;
 	}
 
 	/* ---------- the game ---------- */
@@ -1296,9 +1421,9 @@
 		transform: translate(-50%, -50%);
 		max-width: min(360px, calc(100vw - 32px));
 		padding: 14px 18px;
-		border-radius: 14px;
-		background: var(--hud);
+		border-radius: var(--r-s);
 		text-align: center;
+		font-weight: 600;
 		z-index: 500;
 	}
 	.away {
@@ -1307,41 +1432,46 @@
 		left: 50%;
 		transform: translateX(-50%);
 		z-index: 4000;
-		padding: 8px 14px;
+		padding: 8px 16px;
 		border-radius: 999px;
-		background: var(--hud);
-		color: #fff;
-		font-size: 13.5px;
-		font-weight: 600;
-		box-shadow: var(--shadow);
+		font-size: 14px;
+		font-weight: 700;
+		white-space: nowrap;
 	}
 
+	/* a room that can't be had (gone, full, kicked, no network): the mark bobbing, the reason
+	   in the leaning letters on the ground, one key home */
 	.gone {
-		position: fixed;
-		inset: 0;
-		z-index: 3000;
-		background: var(--bg);
-		color: var(--text);
+		min-height: calc(100dvh - 140px);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 18px;
-		padding: 24px;
+		gap: 22px;
+		padding: 24px 24px 64px;
 		text-align: center;
 	}
-	.gone {
-		position: static;
-		min-height: 60vh;
-		font-family: var(--display);
-		font-weight: 700;
-		font-size: 17px;
+	.gone h1 {
+		max-width: 22ch;
+		text-wrap: balance;
+		font-size: 24px;
+		line-height: 1.25;
+		color: var(--on-ground);
+	}
+	@media (min-width: 761px) {
+		.gone h1 {
+			font-size: 32px;
+		}
 	}
 	.gone .row {
 		display: flex;
-		gap: 10px;
+		gap: 12px;
+	}
+	.gone .btn {
+		min-width: 200px;
 	}
 	.mark {
+		filter: drop-shadow(0 4px 0 var(--stack)) drop-shadow(0 12px 18px var(--shade));
 		animation: bob 1.4s ease-in-out infinite;
 	}
 	@keyframes bob {
@@ -1350,37 +1480,48 @@
 		}
 	}
 
-	/* a round's table: everyone's guess, best first */
+	/* a round's table: everyone's guess, best first; a row per player on the panel's second
+	   tone, the points in display lettering, the hint's cost the same gold chip as the score's
+	   "−20% 💡" */
 	.table {
 		list-style: none;
 		display: flex;
 		flex-direction: column;
-		gap: 2px;
+		gap: 6px;
 		margin-top: 4px;
 	}
 	.table li {
 		display: flex;
 		align-items: center;
 		gap: 10px;
-		padding: 8px;
-		border-radius: 12px;
-		font-size: 14px;
-		animation: rise 0.35s var(--settle) both;
+		padding: 7px 10px 7px 8px;
+		border-radius: var(--r-s);
+		background: var(--panel-2);
+		color: var(--ink);
+		font-size: 15px;
+		animation: rise 0.35s var(--out) both;
 	}
 	.table li.me {
-		background: color-mix(in srgb, var(--sky) 12%, transparent);
+		box-shadow: inset 0 0 0 2px var(--link);
+	}
+	.table .pos,
+	.table b {
+		display: inline-block;
+		font-family: var(--f-disp);
+		font-weight: 900;
+		transform: var(--lean);
+		font-variant-numeric: tabular-nums;
 	}
 	.table .pos {
 		width: 18px;
 		text-align: center;
-		color: var(--muted);
-		font-weight: 700;
+		color: var(--ink-3);
 	}
 	.table .avatar {
 		width: 30px;
 		height: 30px;
 		font-size: 17px;
-		background: var(--bg);
+		background: var(--panel);
 		flex: none;
 	}
 	.table .name {
@@ -1389,21 +1530,23 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		font-weight: 600;
+		font-weight: 700;
 	}
 	.table .km {
-		color: var(--muted);
+		color: var(--ink-3);
 		font-size: 13px;
+		font-weight: 600;
 		white-space: nowrap;
+		font-variant-numeric: tabular-nums;
 	}
-	/* the hint's cost, the same gold pill as the result's "−20% 💡" */
 	.table .pill {
-		padding: 2px 8px;
-		border-radius: 999px;
-		background: var(--star); /* the bulb's gold, in both themes */
-		color: #3a2600;
+		padding: 1px 8px;
+		border-radius: 8px;
+		background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+		color: var(--gold-ink);
+		box-shadow: 0 2px 0 var(--gold-lo);
 		font-size: 13px;
-		font-weight: 700;
+		font-weight: 800;
 		white-space: nowrap;
 		font-variant-numeric: tabular-nums;
 	}
@@ -1411,56 +1554,54 @@
 		text-decoration-thickness: 2px;
 	}
 	.table b {
-		font-family: var(--display);
 		min-width: 56px;
 		text-align: right;
-		font-variant-numeric: tabular-nums;
+		font-size: 17px;
+		color: var(--ink);
 	}
 
-	/* the ring before the next round; the host's hold and "Hozir" beside it */
+	/* the ring before the next round; the host's pause a square quiet key, "Hozir" the green
+	   one (ResultLayout stretches a row's keys: these keep their own widths) */
 	.ring-row {
 		align-items: center;
-		min-height: 60px;
+		min-height: 64px;
 	}
 	.ring-row :global(.next-ring) {
 		flex: 1;
 	}
 	.hold-btn {
 		flex: none !important;
-		width: 56px !important;
+		width: 58px !important;
+		height: 58px;
 		padding: 0 !important;
 	}
 	.now-btn {
 		flex: none !important;
 		width: auto !important;
 		padding: 0 22px !important;
-		height: 56px;
-		font-size: 17px;
-	}
-
-	/* results and the podium */
-	.next,
-	.again {
 		height: 60px;
-		font-size: 17px;
+		font-size: 21px;
+		white-space: nowrap;
 	}
-	.wait {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 10px;
+	/* a round result's one key, bigger on a laptop */
+	.next {
+		height: 64px;
+		font-size: clamp(18px, 5.6vw, 22px);
+		white-space: nowrap;
 	}
-	.final {
-		display: flex;
-		flex-direction: column;
-		gap: 22px;
+	@media (min-width: 761px) {
+		.next {
+			height: 70px;
+			font-size: 25px;
+		}
 	}
 	.host-face {
 		position: relative;
-		width: 30px;
-		height: 30px;
-		font-size: 17px;
-		background: var(--bg);
+		width: 32px;
+		height: 32px;
+		font-size: 18px;
+		background: var(--tile-a);
+		box-shadow: 0 2px 0 color-mix(in srgb, var(--tile-b) 70%, var(--stack));
 		flex: none;
 	}
 	.host-face i {
@@ -1471,170 +1612,273 @@
 		font-style: normal;
 		transform: rotate(18deg);
 	}
-	/* ResultLayout stretches the row's buttons; ⋯ stays a square */
-	.more-btn {
-		flex: none !important;
-		width: 56px !important;
-		padding: 0 !important;
-	}
-	.trip .rounds {
-		margin-top: 10px;
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-	.rounds button {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 7px 8px;
-		border: none;
-		border-radius: 12px;
-		background: none;
-		color: var(--text);
-		text-align: left;
-	}
-	.rounds button[aria-pressed='true'],
-	.rounds button:hover {
-		background: color-mix(in srgb, var(--sky) 12%, transparent);
-	}
 	.game :global(.players-chip > .icon) {
 		width: 20px;
 		height: 20px;
-		opacity: 0.8;
 	}
 
-	/* ---------- the new look (P1111 1.1): a round and its result ----------
-	   The players' chip rides in the round's HUD as one of its capsules; it outranks the look's
-	   quiet glass .chip, which is for buttons on the ground */
-	:global(:root.look2) .players-chip {
-		background: var(--cap-bg);
-		color: var(--cap-ink);
+	/* ---------- the end: a stage ----------
+	   A phone: one page on the turquoise ground that scrolls (the podium, the streets' card,
+	   the map), its keys held at the bottom over a fade of the ground. A laptop: the podium,
+	   the streets and the keys in a column at the left, the map as a big card beside them. */
+	.end {
+		position: fixed;
+		inset: 0;
+		z-index: 2000;
+		background:
+			radial-gradient(120% 60% at 50% 18%, var(--ground-glow), transparent 60%),
+			linear-gradient(180deg, var(--ground-top), var(--ground-bot));
+		color: var(--on-ground);
+		display: grid;
+		grid-template-columns: minmax(0, 540px) minmax(0, 1fr);
+		grid-template-rows: minmax(0, 1fr) auto;
+		grid-template-areas: 'body map' 'actions map';
+		column-gap: 28px;
+		padding: 0 24px 0 32px;
+	}
+	/* a long game's streets scroll under the keys: the column's foot fades, so a row cut in
+	   half reads as "more below" */
+	.end-body {
+		grid-area: body;
+		min-height: 0;
+		overflow-y: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 22px;
+		padding: 26px 6px 22px;
+		-webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
+		mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
+	}
+	.end-map {
+		grid-area: map;
+		position: relative;
+		min-height: 0;
+		margin: 24px 0;
+		border-radius: var(--r);
+		overflow: hidden;
+		background: var(--tile-b);
 		box-shadow:
-			inset 0 1px 0 rgba(255, 255, 255, 0.16),
-			inset 0 0 0 1px var(--cap-line),
-			0 3px 0 var(--cap-lip),
-			0 10px 20px rgba(0, 0, 0, 0.25);
-		backdrop-filter: blur(12px) saturate(1.3);
-		-webkit-backdrop-filter: blur(12px) saturate(1.3);
+			0 4px 0 var(--stack),
+			0 18px 36px var(--shade);
 	}
-	:global(:root.look2) .players-chip .chip-value {
-		display: inline-block;
-		font-family: var(--f-disp);
-		font-weight: 900;
-		transform: var(--lean);
+	.end-map > :global(div:first-child) {
+		position: absolute;
+		inset: 0;
 	}
-	/* the round's table: a row per player on the panel's second tone, the points in display
-	   lettering, the hint's cost the same gold chip as the score's "−20% 💡" */
-	:global(:root.look2) .table {
-		gap: 6px;
+	.end-actions {
+		grid-area: actions;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding: 6px 6px max(20px, env(safe-area-inset-bottom));
 	}
-	:global(:root.look2) .table li {
-		padding: 7px 10px 7px 8px;
-		border-radius: var(--r-s);
-		background: var(--panel-2);
-		color: var(--ink);
-		font-size: 15px;
+	.end-actions .btn {
+		width: 100%;
 	}
-	:global(:root.look2) .table li.me {
-		background: var(--panel-2);
-		box-shadow: inset 0 0 0 2px var(--sky);
+	.end-actions .row {
+		display: flex;
+		gap: 10px;
 	}
-	:global(:root.look2) .table .pos,
-	:global(:root.look2) .table b {
-		display: inline-block;
-		font-family: var(--f-disp);
-		font-weight: 900;
-		transform: var(--lean);
-		font-variant-numeric: tabular-nums;
+	.end-actions .row .btn {
+		flex: 1;
+		min-width: 0;
+		height: 52px;
+		padding: 0 14px;
+		font-size: 16px;
 	}
-	:global(:root.look2) .table .pos {
-		color: var(--ink-3);
+	.end-actions .row .more-btn {
+		flex: none;
+		width: 56px;
+		padding: 0;
 	}
-	:global(:root.look2) .table .avatar {
-		background: var(--panel);
+	/* the host's one key, as big as every screen's green key */
+	.again svg {
+		width: 26px;
+		height: 26px;
 	}
-	:global(:root.look2) .table .name {
-		font-weight: 700;
-	}
-	:global(:root.look2) .table .km {
-		color: var(--ink-3);
-		font-weight: 600;
-		font-variant-numeric: tabular-nums;
-	}
-	:global(:root.look2) .table .pill {
-		padding: 1px 8px;
-		border-radius: 8px;
-		background: linear-gradient(180deg, var(--gold-hi), var(--gold));
-		color: var(--gold-ink);
-		box-shadow: 0 2px 0 var(--gold-lo);
-		font-weight: 800;
-	}
-	:global(:root.look2) .table b {
-		font-size: 17px;
-		color: var(--ink);
-	}
-	/* the ring's row: the host's pause a square ghost, "Hozir" the green key */
-	:global(:root.look2) .ring-row {
-		min-height: 64px;
-	}
-	:global(:root.look2) .hold-btn {
-		width: 58px !important;
-		height: 58px;
-	}
-	:global(:root.look2) .now-btn {
-		height: 58px;
-		font-size: 19px;
-		white-space: nowrap;
-	}
-	:global(:root.look2) .next {
-		height: 64px;
-		font-size: clamp(18px, 5.6vw, 22px);
-		white-space: nowrap;
-	}
-	@media (min-width: 761px) {
-		:global(:root.look2) .next {
-			height: 70px;
-			font-size: 25px;
-		}
+	/* a friend's line where the host's key is: solid ground, so it reads over the map too */
+	.end-wait {
+		min-height: 56px;
+		padding: 0 16px;
+		border-radius: var(--r-m);
+		background: var(--ground-bot);
+		box-shadow:
+			inset 0 0 0 1.5px var(--chip-line),
+			0 8px 18px var(--shade);
+		color: var(--on-ground);
 	}
 
-	/* the sheets */
+	/* ---------- the sheets ---------- */
 	.sheet-body {
 		display: flex;
 		flex-direction: column;
 		gap: 14px;
 	}
+	/* the maps to choose from: milk tiles, each its place's face and its name; the chosen one
+	   a green rim and a tick, like the rules' tiles under it */
 	.map-list {
 		display: grid;
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: 8px;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 10px;
 	}
-	.map-list button {
-		padding: 6px;
-		border: 2px solid transparent;
-		border-radius: 14px;
-		background: var(--bg);
+	.map-card {
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		min-height: 64px;
+		padding: 8px 14px 8px 10px;
+		border: 2px solid var(--panel-line);
+		border-radius: var(--r-s);
+		background: var(--panel);
+		color: var(--ink);
+		text-align: left;
+		box-shadow: 0 3px 0 var(--panel-lip);
+		transition:
+			transform 0.1s var(--out),
+			border-color 0.15s,
+			background 0.15s;
 	}
-	.map-list button[aria-pressed='true'] {
-		border-color: var(--green);
+	.map-card:active {
+		transform: translateY(2px);
+		box-shadow: 0 1px 0 var(--panel-lip);
 	}
-	.name-input {
-		height: 48px;
-		padding: 0 14px;
-		border: 1px solid var(--border);
-		border-radius: 12px;
-		background: var(--surface);
-		color: var(--text);
-		font-size: 16px;
+	.map-card[aria-pressed='true'] {
+		border-color: var(--key);
+		background: color-mix(in srgb, var(--key) 10%, var(--panel));
+		box-shadow: 0 3px 0 color-mix(in srgb, var(--key-lip) 45%, var(--panel-lip));
+	}
+	.map-card[aria-pressed='true']::after {
+		content: '✓';
+		position: absolute;
+		top: -7px;
+		right: -7px;
+		width: 22px;
+		height: 22px;
+		border-radius: 50%;
+		background: var(--key);
+		box-shadow: 0 2px 0 var(--key-lip);
+		color: #fff;
+		font: 800 12px/22px var(--f-text);
+		text-align: center;
+		animation: pop-in 0.3s var(--spring);
+	}
+	.map-pic {
+		width: 44px;
+		height: 44px;
+		flex: none;
+	}
+	.map-words {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		line-height: 1.2;
+	}
+	.map-words b {
+		font-size: 17px;
+	}
+	.map-words small {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--ink-3);
 	}
 	.bad {
 		color: var(--red);
 	}
+	.sheet-body > .btn {
+		width: 100%;
+	}
 
+	/* ⋯ at the end: menu rows, a small raised tile with an icon, the name; leaving is red */
+	.menu-list {
+		display: flex;
+		flex-direction: column;
+		margin: 0 -8px;
+	}
+	.menu-list > * {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+		min-height: 64px;
+		padding: 8px;
+		border: none;
+		background: none;
+		color: var(--ink);
+		font-size: 16px;
+		font-weight: 700;
+		text-align: left;
+		text-decoration: none;
+		transition:
+			background 0.15s,
+			transform 0.1s var(--out);
+	}
+	.menu-list > * + * {
+		border-top: 1px solid var(--panel-line);
+	}
+	.menu-list > :hover {
+		background: var(--panel-2);
+	}
+	.menu-list > :active {
+		transform: scale(0.98);
+	}
+	.menu-list .out {
+		color: var(--red);
+	}
+	.menu-list .tile {
+		--c: #0f9aa8;
+		width: 42px;
+		height: 42px;
+		flex: none;
+		display: grid;
+		place-items: center;
+		border-radius: 13px;
+		background: linear-gradient(
+			180deg,
+			color-mix(in srgb, var(--c), #fff 18%),
+			var(--c) 55%,
+			color-mix(in srgb, var(--c), #000 8%)
+		);
+		color: #fff;
+		box-shadow:
+			inset 0 1.5px 0 rgba(255, 255, 255, 0.4),
+			0 3px 0 color-mix(in srgb, var(--c) 55%, #000);
+	}
+	.menu-list .tile.gold {
+		--c: var(--gold);
+		color: var(--gold-ink);
+	}
+	.menu-list .tile.red {
+		--c: var(--red);
+	}
+	.menu-list .tile svg {
+		width: 22px;
+		height: 22px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 2.4;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+
+	/* ---------- a laptop ---------- */
 	@media (min-width: 900px) {
+		/* the whole block in the middle of the window's height, not its top half: the space
+		   under the top bar, with the bar's height again at the foot, so its middle is the
+		   window's middle */
+		.lobby-wrap {
+			--bar: 60px; /* GameBar's height */
+			min-height: calc(100dvh - var(--bar));
+			display: flex;
+			flex-direction: column;
+			justify-content: center;
+			padding-bottom: var(--bar);
+		}
+		/* the host: the invite at the left (the key, the plate, the QR for phones in the same
+		   room), the players, the place and Boshlash at the right */
 		.lobby {
-			max-width: 980px;
+			width: 100%;
+			max-width: 1000px;
 			display: grid;
 			grid-template-columns: 380px minmax(0, 1fr);
 			grid-template-areas:
@@ -1644,16 +1888,15 @@
 				'leave .';
 			grid-template-rows: auto auto 1fr auto;
 			align-items: start;
-			gap: 18px 48px;
-			/* about the middle of the screen, not its top half */
-			padding-top: clamp(28px, calc(50dvh - 300px), 160px);
+			gap: 22px 56px;
+			padding-top: 12px;
 		}
 		.invite {
 			grid-area: invite;
 		}
 		.players {
 			grid-area: players;
-			min-height: 110px;
+			min-height: 120px;
 		}
 		.setup {
 			grid-area: setup;
@@ -1663,11 +1906,29 @@
 		}
 		.leave {
 			grid-area: leave;
-			justify-self: start;
 		}
 		.qr-wide {
 			display: block;
 			width: 220px;
+		}
+		/* the faces and the plate as big as the room the laptop gives them */
+		.players ul {
+			grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+		}
+		.players .avatar {
+			width: 78px;
+			height: 78px;
+			font-size: 43px;
+		}
+		.players .name {
+			font-size: 15px;
+		}
+		.crown {
+			top: -18px;
+			font-size: 25px;
+		}
+		.plate b {
+			font-size: 38px;
 		}
 		.qr-btn {
 			display: none;
@@ -1690,6 +1951,11 @@
 			display: grid;
 		}
 	}
+	@media (min-width: 961px) {
+		.lobby-wrap {
+			--bar: 78px;
+		}
+	}
 	@media (max-width: 899px) {
 		/* a friend meets the players first; the invite is the quiet second button */
 		.guest .invite {
@@ -1708,20 +1974,66 @@
 			order: 5;
 		}
 	}
+
+	/* ---------- a phone ---------- */
 	@media (max-width: 760px) {
-		/* the host's Start: a bar at the bottom, under the thumb */
-		.host {
-			padding-bottom: 110px;
+		/* the host's Boshlash and a friend's "the host will start": a bar at the bottom, under
+		   the thumb, over a fade of the ground */
+		.lobby {
+			padding-bottom: 120px;
 		}
-		.host .go {
+		.go {
 			position: fixed;
 			left: 0;
 			right: 0;
 			bottom: 0;
 			z-index: 10;
-			padding: 12px 16px max(12px, env(safe-area-inset-bottom));
-			background: var(--bg);
-			border-top: 1px solid var(--border);
+			padding: 28px 16px max(14px, env(safe-area-inset-bottom));
+			background: linear-gradient(180deg, transparent, var(--ground-bot) 34%);
+		}
+		.guest .go .wait {
+			width: 100%;
+			border-radius: var(--r-m);
+			background: var(--chip-bg);
+			box-shadow: inset 0 0 0 1.5px var(--chip-line);
+		}
+
+		/* the end: one page that scrolls, the keys held at the bottom */
+		.end {
+			display: flex;
+			flex-direction: column;
+			overflow-y: auto;
+			padding: 0;
+		}
+		/* at rest the first screen is the podium and the list: however short the list, the
+		   map begins under the keys' ground (their block is about 165 px tall), so no edge of it
+		   floats over the keys; it shows when scrolled to */
+		.end-body {
+			flex: none;
+			min-height: calc(100vh - 160px);
+			min-height: calc(100dvh - 160px);
+			overflow: visible;
+			padding: 26px 16px 8px;
+			gap: 24px;
+			-webkit-mask-image: none;
+			mask-image: none;
+		}
+		.end-map {
+			flex: none;
+			height: 52vh;
+			height: 52dvh;
+			margin: 18px 16px 4px;
+		}
+		/* the keys stand on the ground itself from 24 px above the green key down (a short fade
+		   over it), so the map under the list never peeks out behind them: it shows only when
+		   scrolled to */
+		.end-actions {
+			position: sticky;
+			bottom: 0;
+			z-index: 2;
+			margin-top: auto;
+			padding: 34px 16px max(14px, env(safe-area-inset-bottom));
+			background: linear-gradient(180deg, transparent, var(--ground-bot) 10px);
 		}
 	}
 </style>
