@@ -427,6 +427,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/maps/mix": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * One map made of several places (or ready-made maps), for a game across them.
+         * @description The map picker's list as one map that a game, a room and a challenge play by its slug,
+         *     like any other. Each round first picks one of the parts, each equally likely and each in
+         *     its turn (no part comes twice before every part with panoramas left has come once), then
+         *     a panorama inside it the way that part's own map picks, and is scored by that part's own
+         *     size, never by the size of everything mixed. The guess map opens on all of them (`bbox`).
+         *
+         *     The same parts, in any order, always give the same map (`mix-…`). Parts are deduplicated;
+         *     a place's map whose place lies inside another part's place is dropped (Yunusobod with
+         *     Toshkent: Toshkent). One part left gives that part's own map, not a mix.
+         */
+        post: operations["mixMap"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/maps/{slug}": {
         parameters: {
             query?: never;
@@ -1391,6 +1419,30 @@ export interface components {
              * @example toshkent
              */
             face?: string;
+            /** @description A mixed map (`POST /v1/maps/mix`): the maps it is made of, in the order first given. Absent on every other map. */
+            parts?: components["schemas"]["MapPart"][];
+        };
+        MixMap: {
+            /** @description The maps to play together, by slug: a place's own map (`place-<slug>`) or a ready-made one (`tashkent-streets`, `historic`, `uzbekistan`). Not a mix, not a player's own map. */
+            parts: string[];
+        };
+        /** @description One map inside a mixed map. */
+        MapPart: {
+            /**
+             * @description The part's own map.
+             * @example place-buxoro-viloyati
+             */
+            slug: string;
+            name: components["schemas"]["Text"];
+            /**
+             * @description The place whose picture stands for the part (as `MapSummary.face`).
+             * @example buxoro-viloyati
+             */
+            face?: string;
+            /** @description The slugs of the part's places (the picker marks them in the part's colour). */
+            places: string[];
+            /** @description The part's panoramas, on the players' providers. */
+            panoramas: number;
         };
         /** @description A place, by name. On a map, the map's one place (or its parent). */
         PlaceRef: {
@@ -2514,6 +2566,32 @@ export interface operations {
                     "application/json": components["schemas"]["MapSummary"][];
                 };
             };
+        };
+    };
+    mixMap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MixMap"];
+            };
+        };
+        responses: {
+            /** @description The mixed map (or the one part's own map) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapSummary"];
+                };
+            };
+            400: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     getMap: {

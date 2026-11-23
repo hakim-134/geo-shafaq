@@ -233,8 +233,11 @@ const uz = {
 	finishGame: 'O‘yinni tugatish',
 	// places (Phase 4)
 	placesTitle: 'Qayerda o‘ynaymiz?',
-	choosePlace: 'Shu joyni tanlash',
-	nPanoramas: '{n} panorama',
+	// the map picker (P1111 1.3)
+	pickThis: 'Tanlash',
+	pickedOne: '✓ Tanlangan',
+	pickLimit: 'Ko‘pi bilan 8 ta joy tanlanadi',
+	removePick: 'Olib tashlash: {name}',
 	learnedOf: '{n} / {m} o‘rganildi',
 	learnedLabel: 'O‘rganilgan',
 	goWider: 'Zo‘r natija! Endi kengroq joyda sinab ko‘ring:',
@@ -268,8 +271,8 @@ const uz = {
 	change: 'O‘zgartirish',
 	startHere: 'Shu yerdan boshlang',
 	soon: 'Tez orada',
-	placesList: 'Ro‘yxat',
-	readyMaps: 'Tayyor xaritalar',
+	addMaps: 'Xaritalar qo‘shish',
+	nCities: '{n} shahar',
 	yourTashkent: 'Sizning Toshkentingiz',
 	playHere: 'Shu yerda o‘ynash',
 	firstLearnHint: 'Birinchi ko‘chani 500 m ichida toping',
@@ -610,8 +613,10 @@ const en: Dict = {
 	dirW: 'W',
 	finishGame: 'Finish the game',
 	placesTitle: 'Where shall we play?',
-	choosePlace: 'Choose this place',
-	nPanoramas: '{n} panorama|{n} panoramas',
+	pickThis: 'Pick',
+	pickedOne: '✓ Picked',
+	pickLimit: 'You can pick up to 8 places',
+	removePick: 'Remove {name}',
 	learnedOf: '{n} / {m} learned',
 	learnedLabel: 'Learned',
 	goWider: 'Great game! Now try somewhere wider:',
@@ -644,8 +649,8 @@ const en: Dict = {
 	change: 'Change',
 	startHere: 'Start here',
 	soon: 'Coming soon',
-	placesList: 'List',
-	readyMaps: 'Ready-made maps',
+	addMaps: 'Add maps',
+	nCities: '{n} city|{n} cities',
 	yourTashkent: 'Your Tashkent',
 	playHere: 'Play here',
 	firstLearnHint: 'Find your first street within 500 m',
@@ -982,8 +987,10 @@ const ru: Dict = {
 	dirW: 'З',
 	finishGame: 'Закончить игру',
 	placesTitle: 'Где играем?',
-	choosePlace: 'Выбрать это место',
-	nPanoramas: '{n} панорама|{n} панорамы|{n} панорам',
+	pickThis: 'Выбрать',
+	pickedOne: '✓ Выбрано',
+	pickLimit: 'Можно выбрать до 8 мест',
+	removePick: 'Убрать: {name}',
 	learnedOf: '{n} / {m} выучено',
 	learnedLabel: 'Изучили',
 	goWider: 'Отличная игра! Теперь попробуйте пошире:',
@@ -1016,8 +1023,8 @@ const ru: Dict = {
 	change: 'Изменить',
 	startHere: 'Начните отсюда',
 	soon: 'Скоро',
-	placesList: 'Список',
-	readyMaps: 'Готовые карты',
+	addMaps: 'Добавить карты',
+	nCities: '{n} город|{n} города|{n} городов',
 	yourTashkent: 'Ваш Ташкент',
 	playHere: 'Играть здесь',
 	firstLearnHint: 'Найдите первую улицу в пределах 500 м',
@@ -1131,5 +1138,5 @@ const ru: Dict = {
 	tipsOn: 'Включатся в следующей игре'
 };
 
-export const strings: Record<Lang, Dict> = { uz, en, ru };
-export const langs: Lang[] = ['uz', 'en', 'ru'];
+export const strings: Record<Lang, Dict> = { uz, ru, en };
+export const langs: Lang[] = ['uz', 'ru', 'en'];

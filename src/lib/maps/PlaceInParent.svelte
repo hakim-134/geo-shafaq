@@ -106,7 +106,9 @@
 	// round it, so the eye finds it.
 	// Lines get thinner as the picture gets smaller, so a 32 px face is still a shape, not a blot.
 	// A caller sets its own colours with custom properties: --pip-tile, --pip-seam, --pip-out
-	// (the parent's outline), --pip-on, --pip-edge, --pip-ring, --pip-dot, --pip-dot-line.
+	// (the parent's outline), --pip-on, --pip-edge, --pip-ring, --pip-dot, --pip-dot-line; or
+	// `color`, the place (and its ring and dots) in one colour instead of gold: a picked place
+	// wears its pick colour (var(--pick-2)).
 	// label: the place's name for screen readers; without it the picture is decoration (it
 	// stands beside the name).
 	let {
@@ -119,6 +121,7 @@
 		round = false,
 		trim = true,
 		on = 'ground',
+		color,
 		label
 	}: {
 		place?: string;
@@ -130,8 +133,10 @@
 		round?: boolean;
 		trim?: boolean;
 		on?: 'ground' | 'panel';
+		color?: string;
 		label?: string;
 	} = $props();
+	const deep = $derived(color && `color-mix(in srgb, ${color} 62%, #000)`);
 
 	const id = $props.id();
 	// what is drawn, and what of it is lit, as one: a face brings both
@@ -269,6 +274,10 @@
 	style:--w-out="{lines.out * 2}px"
 	style:--w-edge="{lines.edge}px"
 	style:--w-ring="{lines.ring}px"
+	style:--pip-on={color}
+	style:--pip-edge={deep}
+	style:--pip-ring={deep}
+	style:--pip-dot={color}
 	role={label ? 'img' : undefined}
 	aria-label={label}
 	aria-hidden={label ? undefined : 'true'}

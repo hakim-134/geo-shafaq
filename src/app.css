@@ -5,9 +5,10 @@
    little, capitals on keys, soft corners, raised, tiles; tmp/look-lab/). Khiva's turquoise is
    the ground, deep at night; text straight on it is white. Raised things are milk panels, never
    plain white, with ink text; the map of Uzbekistan lies on the ground as milk tiles. Gold is
-   the chosen place, stars and what the player has learned; the picked blue is a place marked
-   but not yet chosen; green is the real place and the one key to press; red is a miss and low
-   time. Titles, numbers and keys are M PLUS Rounded 1c Black, leaning 8° (it has no italic: the
+   stars, a place's face and what the player has learned; green is the real place and the one
+   key to press; red is a miss and low time. The places picked to play (the home's map picker)
+   wear the eight pick colours, --pick-1 … --pick-8, each its own, on the map and on their
+   faces. Titles, numbers and keys are M PLUS Rounded 1c Black, leaning 8° (it has no italic: the
    lean is a skew, --lean, on an inline-block: the .d class, or .lbl inside a key); text is Onest.
    Shared parts only; each screen keeps its own styles.
 
@@ -94,8 +95,18 @@
 	--seam: rgba(10, 96, 108, 0.55);
 	--map-glow: rgba(3, 45, 52, 0.38);
 	--map-shadow: rgba(3, 45, 52, 0.38);
-	--picked: #2457c5; /* a place marked on the map, not yet chosen */
+	--picked: #2457c5; /* blue (the wallet's tile) */
 	--picked-line: #163a8c;
+	/* the places picked to play, in the order picked: clear on the map's milk tiles, none of them
+	   gold (learned), green (the real place) or the ground's turquoise */
+	--pick-1: #2563d9; /* blue */
+	--pick-2: #d23a85; /* magenta */
+	--pick-3: #e0620c; /* orange */
+	--pick-4: #7445d6; /* violet */
+	--pick-5: #8a5528; /* brown */
+	--pick-6: #1c3a8c; /* navy */
+	--pick-7: #5f7410; /* olive */
+	--pick-8: #a83cb8; /* orchid */
 	--stack: #064e58; /* the stacked shadow titles float on */
 	--stack-2: rgba(3, 40, 48, 0.35);
 	--shade: rgba(2, 30, 36, 0.3); /* soft shadows under raised things */
@@ -149,6 +160,16 @@
 	--map-shadow: rgba(0, 0, 0, 0.45);
 	--picked: #3f79e6;
 	--picked-line: #1e4fb0;
+	/* the night's tiles are a darker milk: the orange a little deeper, the navy a little lighter
+	   (a whole country picked stands on the night's ground) */
+	--pick-1: #2563d9;
+	--pick-2: #d23a85;
+	--pick-3: #d65a08;
+	--pick-4: #7445d6;
+	--pick-5: #8a5528;
+	--pick-6: #2a4cae;
+	--pick-7: #5f7410;
+	--pick-8: #a83cb8;
 	--stack: #021a1f;
 	--stack-2: rgba(0, 0, 0, 0.35);
 	--shade: rgba(0, 0, 0, 0.4);

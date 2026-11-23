@@ -20,6 +20,8 @@ export interface HintChoice {
 /** What the player picked on the menu, remembered on this device. */
 export interface Choice {
 	map: string;
+	/** The player has chosen the home's list, even if it is still Tashkent's streets. */
+	ownList?: boolean;
 	preset: Preset;
 	rounds: number; // 0 = endless
 	timeSec: number; // 0 = no limit
@@ -39,7 +41,8 @@ const defaults: Choice = {
 };
 
 export function loadChoice(): Choice {
-	const c = loadJSON('choice', defaults);
+	const c = loadJSON('choice', { ...defaults });
+	c.ownList = c.ownList === true || c.map !== defaults.map;
 	if (!PRESETS.includes(c.preset)) c.preset = 'easy';
 	// a choice saved before Phase 4 has no hints or movement
 	c.hints = { ...defaults.hints, ...c.hints };

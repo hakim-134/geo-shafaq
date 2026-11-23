@@ -1,12 +1,12 @@
 <script module lang="ts">
-	// A place's children as cards (names, panoramas, their own maps), fetched once and kept, like
-	// the drawings: zooming back into a part draws its names at once.
+	// A place's children as cards (names, panoramas, their own maps) and the places round it,
+	// fetched once and kept, like the drawings: zooming back into a part draws its names at once.
 	import { api, call, type Schemas } from '#lib/api/client.js';
 
 	type Detail = Schemas['PlaceDetail'];
 	const details = new Map<string, Promise<Detail>>();
 
-	function placeDetail(slug: string): Promise<Detail> {
+	export function placeDetail(slug: string): Promise<Detail> {
 		let got = details.get(slug);
 		if (!got) {
 			got = call(api().GET('/v1/places/{slug}', { params: { path: { slug } } }));
@@ -18,20 +18,25 @@
 </script>
 
 <script lang="ts">
-	// The home's map (the owner, 2026-11-13: "by clicking it, it shouldn't go to another page;
-	// just make it look like it zoomed in; don't change the other buttons around it"). One map,
-	// one behaviour, as the look lab shows it: Uzbekistan's 14 parts as milk tiles; a tap on a
-	// part zooms into it in place (the drawing's view moves until the part fills the box, then
-	// its districts and towns come up inside it, with their names); the square at the top left,
-	// the part's face (the picture it wears on every screen), zooms back out; a tap on a
-	// district (or its name) marks it blue; the gold button at the bottom right chooses what is
-	// marked, or else what is on screen. The place being played stays gold at every level.
-	// Zoomed in, the land round the part fades away softly before the box's edge (no box shows),
-	// and Tashkent lies in its region's districts, faint tiles. Nothing outside the box moves.
-	import { untrack } from 'svelte';
-	import type { MapSummary } from '#lib/api/client.js';
+	// The home's map, the map picker (P1111 §5, 1.3; the owner, 2026-11-13: "by clicking it, it
+	// shouldn't go to another page; just make it look like it zoomed in"). One map, one behaviour:
+	// it opens on Uzbekistan's 14 parts as milk tiles, with no way up. A tap goes in, in place: the
+	// drawing's view moves until the place fills the box, the land round it fades away softly before
+	// the box's edge, and its neighbours stay as faint tiles. In a part (a region, Tashkent) its
+	// districts and towns come up with their names; a tap on one goes into it, a third level. The
+	// square at the top left is the place on screen in its parent (its face); a tap on it goes up one
+	// level: a district to its part, a region to the country, Tashkent to Toshkent viloyati (where
+	// the city is one tile among the region's districts) and on to the country. Inside a place one
+	// quiet key, "Tanlash", adds it to the home's list of picked places (picks.ts); when it is in
+	// the list the key says "✓ Tanlangan" and a tap takes it out. The picked places wear their own
+	// colours at every level: a picked region's playable districts, a picked district in its region,
+	// Tashkent's badge for a pick in Tashkent, the historic cities' stars. A place
+	// with no panoramas is hatched, "Tez orada", and can't be picked; one with few has its name in
+	// italics (decision 0016). Nothing outside the box moves.
+	import { tick, untrack } from 'svelte';
 	import { t, tx } from '#lib/i18n/index.svelte.js';
-	import { shortName } from './progress.js';
+	import { fewPlaces, shortName } from './progress.js';
+	import { COUNTRY, type NewPick, type Pick } from './picks.js';
 	import PlaceInParent, {
 		placeDrawing,
 		pieces,
@@ -40,41 +45,44 @@
 	} from './PlaceInParent.svelte';
 
 	let {
-		map,
-		onchoose,
-		zoomed = $bindable(false)
+		picks,
+		ownList,
+		locked,
+		shownPlace = $bindable(),
+		onpick,
+		onunpick
 	}: {
-		map?: MapSummary; // what "O‘ynash" plays now
-		onchoose: (slug: string) => Promise<boolean>; // make this map the home's; false if it failed
-		zoomed?: boolean; // out: a part fills the box (its square shows the face: the home hides its own)
+		picks: Pick[];
+		ownList: boolean;
+		locked: boolean;
+		shownPlace: NewPick | undefined; // the playable place on screen
+		onpick: (p: NewPick) => void; // "Tanlash": the place on screen joins the list
+		onunpick: (map: string) => void; // "✓ Tanlangan" tapped: it leaves the list
 	} = $props();
 
 	type Card = Schemas['PlaceCard'];
 	type Box = [number, number, number, number];
-	/** What is being played, as the map sees it: the whole country, a part, a district in a
-	 * part, or the places of a ready map of several (stars). */
-	type Chosen = { whole?: boolean; part?: string; dist?: string; stars?: string[] };
 
-	const COUNTRY = 'uzbekistan';
 	const CITY = 'toshkent'; // Tashkent city plays its main streets, never its own place map
 	// a part that lies inside another (Tashkent in Toshkent viloyati): zoomed into it, the other's
-	// districts are the faint tiles round it, as in its face, not one flat sheet
+	// districts are the faint tiles round it, as in its face, not one flat sheet; and going up
+	// from it shows the other, the city one tile among its districts
 	const AROUND: Record<string, string> = { [CITY]: 'toshkent-viloyati' };
+	const HOLDS: Record<string, string> = { 'toshkent-viloyati': CITY };
 	const uid = $props.id();
 	const reduced =
 		typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 	let country = $state<Drawing | null>(null);
 	let parts = $state<Record<string, Drawing>>({}); // a part's districts, by the part
-	let veil = $state(0); // 0 on the country, 1 zoomed in: how far the land round the part has faded
-	let settled = $state<string | null>(null); // the part the view has finished gliding into
+	let veil = $state(0); // 0 on the country, 1 zoomed in: how far the land round has faded
+	let settled = $state<string | null>(null); // the place the view has finished gliding into
 	let cards = $state<Record<string, Card>>({}); // every place seen, by its slug
-	let level = $state(COUNTRY); // what fills the box: the country or one part
+	let countryName = $state<Schemas['Text'] | undefined>();
+	let level = $state(COUNTRY); // what fills the box: the country, a part, or a district
 	let shown = $state<string | null>(null); // the part whose districts are drawn (also while leaving)
-	let marked = $state<string | null>(null);
 	let up = $state(false); // the districts' turn to come up
 	let zin = $state(false); // zoomed in: the drawing is clipped to the box, its edges fade
-	let pending = $state<{ map: string; chosen: Chosen } | null>(null); // chosen, not yet the home's
 	let W = $state(0);
 	let H = $state(0);
 	let vw = $state(0);
@@ -84,16 +92,18 @@
 	// drawing units per screen px (the view is fitted, "meet"): the hatch's scale
 	const hk = $derived(vb && W && H ? Math.max(vb[2] / W, vb[3] / H) : 1);
 
+	const addedDetails = new Set<string>();
 	function addCards(d: Detail) {
-		const add: Record<string, Card> = {};
-		for (const c of d.children) add[c.slug] = c;
-		cards = { ...cards, ...add };
+		if (addedDetails.has(d.place.slug)) return;
+		addedDetails.add(d.place.slug);
+		cards[d.place.slug] = d.place;
+		for (const c of d.children) cards[c.slug] = c;
 	}
 
-	// the country at once; again whenever the home's map comes (after being offline) until it's here
+	// the country at once; again whenever the list changes (after being offline) until it's here
 	let countryCards = false;
 	$effect(() => {
-		void map;
+		void picks.length;
 		if (!untrack(() => country))
 			placeDrawing(COUNTRY).then(
 				(d) => (country = d),
@@ -105,20 +115,18 @@
 			placeDetail(COUNTRY).then(
 				(d) => {
 					countryCards = true;
+					countryName = d.place.name;
 					addCards(d);
 				},
 				() => {}
 			);
 	});
 
+	function loadDrawing(slug: string): Promise<Drawing> {
+		return placeDrawing(slug).then((d) => (parts[slug] ??= d));
+	}
 	function loadPart(slug: string) {
-		for (const s of [slug, AROUND[slug]])
-			if (s && !parts[s])
-				placeDrawing(s).then(
-					(d) => (parts[s] = d),
-					() => {}
-				);
-		placeDetail(slug).then(addCards, () => {});
+		return Promise.all([parts[slug] ?? loadDrawing(slug), placeDetail(slug).then(addCards)]);
 	}
 
 	function boxOf(d: string): Box {
@@ -131,17 +139,46 @@
 		}
 		return [x0, y0, x1, y1];
 	}
-	const boxes = $derived(
+	/** A part's own drawing laid onto its box in the country's drawing. */
+	const laidOn = (slug: string, d: Drawing) => {
+		const b = boxes[slug];
+		return `translate(${b[0]} ${b[1]}) scale(${(b[2] - b[0]) / d.width} ${(b[3] - b[1]) / d.height})`;
+	};
+	// every place's box in the country's drawing: the parts, and the districts of the parts drawn
+	const partBoxes = $derived(
 		Object.fromEntries((country?.shapes ?? []).map((s) => [s.slug, boxOf(s.d)])) as Record<
 			string,
 			Box
 		>
 	);
+	const boxes = $derived.by(() => {
+		const out: Record<string, Box> = { ...partBoxes };
+		for (const [p, d] of Object.entries(parts)) {
+			const b = partBoxes[p];
+			if (!b) continue;
+			const sx = (b[2] - b[0]) / d.width;
+			const sy = (b[3] - b[1]) / d.height;
+			for (const s of d.shapes) {
+				const [x0, y0, x1, y1] = boxOf(s.d);
+				out[s.slug] ??= [b[0] + x0 * sx, b[1] + y0 * sy, b[0] + x1 * sx, b[1] + y1 * sy];
+			}
+		}
+		return out;
+	});
+	// a district's part, from the parts drawn
+	const parentOf = $derived(
+		Object.fromEntries(
+			Object.entries(parts).flatMap(([p, d]) => d.shapes.map((s) => [s.slug, p]))
+		) as Record<string, string>
+	);
+	const isPart = (slug: string) => !!partBoxes[slug];
+	/** What lies on screen at full strength, round the place: the city in its region's hole. */
+	const isCur = (slug: string) => slug === level || HOLDS[level] === slug;
 
 	// ---------- the view: a box of the drawing, fitted into the map's box ----------
 
 	/** The view that shows `bb` as large as the box allows, with room for the square, the name
-	 * and the button when zoomed in. */
+	 * and the key when zoomed in. */
 	function fit(bb: Box, zoomed: boolean): number[] {
 		const ins = zoomed
 			? lap
@@ -152,8 +189,8 @@
 				: { t: 10, b: 14, l: 12, r: 12 };
 		const aw = Math.max(40, W - ins.l - ins.r);
 		const ah = Math.max(40, H - ins.t - ins.b);
-		const bw = bb[2] - bb[0];
-		const bh = bb[3] - bb[1];
+		const bw = Math.max(bb[2] - bb[0], 1e-6);
+		const bh = Math.max(bb[3] - bb[1], 1e-6);
 		const k = Math.min(aw / bw, ah / bh);
 		return [
 			bb[0] - (ins.l + (aw - bw * k) / 2) / k,
@@ -162,43 +199,16 @@
 			H / k
 		];
 	}
-	// every corner of the country's parts, to keep the gold button off the map
-	const corners = $derived(country ? country.shapes.flatMap((s) => points(s.d)) : []);
-	let btnW = $state(0); // the gold button's width while it says "Shu joyni tanlash"
-
-	/** The country as large as the box allows, but clear of the gold button at the bottom right
-	 * (a short phone has no room under the map): first up to the box's top, then a little
-	 * smaller, never under 72%. The room is kept whether the button shows or not: choosing
-	 * doesn't make the map jump. */
-	function countryView(): number[] {
-		const w = country!.width;
-		const base = fit([0, 0, w, country!.height], false);
-		if (!btnW) return base;
-		const rx = W - (lap ? 16 : 12) - btnW - 6;
-		const ry = H - (lap ? 16 : 10) - (lap ? 52 : 46) - 6;
-		const clear = (v: number[]) => {
-			const k = W / v[2];
-			return !corners.some(([x, y]) => (x - v[0]) * k > rx && (y - v[1]) * k > ry);
-		};
-		if (clear(base)) return base;
-		const k0 = W / base[2];
-		let v = base;
-		for (let f = 1; f >= 0.72; f -= 0.02) {
-			const k = k0 * f;
-			v = [-(W - w * k) / 2 / k, -(lap ? 20 : 10) / k, W / k, H / k];
-			if (clear(v)) break;
-		}
-		return v;
-	}
-	const viewOf = (lv: string) => (lv === COUNTRY ? countryView() : fit(boxes[lv], true));
+	const viewOf = (lv: string) =>
+		lv === COUNTRY ? fit([0, 0, country!.width, country!.height], false) : fit(boxes[lv], true);
 	const target = $derived(
 		country && W && H && (level === COUNTRY || boxes[level]) ? viewOf(level) : null
 	);
 
 	let raf = 0;
 	let moving = false;
-	/** The view glides to `to` in 450 ms, easing out, and the land round the part fades with it
-	 * (`fade`: 1 zooming in, 0 going out); with reduced motion it cuts. */
+	/** The view glides to `to` in 450 ms, easing out, and the land round fades with it (`fade`: 1
+	 * zooming in, 0 going out); with reduced motion it cuts. */
 	function glide(to: number[], fade: number, done?: () => void) {
 		cancelAnimationFrame(raf);
 		const from = vb;
@@ -240,25 +250,35 @@
 
 	// ---------- moving round the map ----------
 
+	let navigation = 0; // a tap or going up can supersede a fly-to while its drawing loads
 	let upTimer: ReturnType<typeof setTimeout> | undefined;
-	function open(slug: string) {
-		if (slug === level || !boxes[slug]) return;
+	/** Into a part or a district, in place. */
+	function open(slug: string, request = ++navigation) {
+		if (request !== navigation) return false;
+		if (slug === level) return true;
+		if (!boxes[slug]) return false;
+		const part = isPart(slug) ? slug : parentOf[slug];
+		if (!part) return false;
 		level = slug;
-		marked = null;
-		shown = slug;
 		zin = true;
-		up = false;
 		settled = null;
-		loadPart(slug);
-		clearTimeout(upTimer);
-		upTimer = setTimeout(() => level === slug && (up = true), reduced ? 0 : 300);
+		if (part !== shown) {
+			shown = part;
+			up = false;
+			loadPart(part).catch(() => {});
+			if (AROUND[part]) loadPart(AROUND[part]).catch(() => {});
+		}
+		if (!up) {
+			clearTimeout(upTimer);
+			upTimer = setTimeout(() => shown === part && (up = true), reduced ? 0 : 300);
+		}
 		// the names come once the view stands still: laid out for where it stops
 		glide(viewOf(slug), 1, () => level === slug && (settled = slug));
+		return true;
 	}
-	function back() {
-		if (level === COUNTRY) return;
+	function toCountry() {
+		clearTimeout(upTimer);
 		level = COUNTRY;
-		marked = null;
 		up = false;
 		settled = null;
 		glide(viewOf(COUNTRY), 0, () => {
@@ -267,128 +287,172 @@
 			zin = false;
 		});
 	}
-	function mark(d: string) {
-		if (level === COUNTRY) return;
-		marked = marked === d ? null : d;
+	/** One level up: a district to its part, Tashkent to its region, a part to the country. */
+	function goUp() {
+		const request = ++navigation;
+		if (level === COUNTRY || !country) return;
+		const part = isPart(level) ? (AROUND[level] ?? null) : parentOf[level];
+		if (part) open(part, request);
+		else toCountry();
 	}
 	$effect(() => () => clearTimeout(upTimer));
-	$effect(() => {
-		zoomed = level !== COUNTRY;
-	});
+
+	/** Flies to a place (a picked one in the list; an old link to the places page): the country,
+	 * a part, or a district (loading its part first). */
+	export async function flyTo(slug: string | undefined) {
+		const request = ++navigation;
+		try {
+			const drawing = country ?? (await placeDrawing(COUNTRY));
+			if (request !== navigation) return false;
+			country ??= drawing;
+			if (!slug || slug === COUNTRY) {
+				if (level !== COUNTRY) toCountry();
+				return true;
+			}
+			let to = slug;
+			let part = slug;
+			if (!isPart(part)) {
+				const path = (await placeDetail(slug)).path.map((p) => p.slug);
+				if (request !== navigation) return false;
+				part = path[1];
+				if (!part || !isPart(part)) return false;
+				to = path[2] ?? slug; // a place under a district: its district
+			}
+			await loadPart(part);
+			await tick();
+			if (!open(to, request)) return false;
+			await tick();
+			return request === navigation && level === to;
+		} catch {
+			return false;
+		}
+	}
 
 	const press = (e: KeyboardEvent, act: () => void) => {
 		if (e.key !== 'Enter' && e.key !== ' ') return;
 		e.preventDefault();
 		act();
 	};
-
-	// ---------- what is chosen ----------
-
-	function chosenOf(m?: MapSummary): Chosen {
-		if (!m) return {};
-		const p = m.place;
-		if (!p) return { stars: m.places ?? [] };
-		if (p.kind === 'country') return { whole: true };
-		if (!m.parent || m.parent.kind === 'country') return { part: p.slug };
-		return { part: m.parent.slug, dist: p.slug };
-	}
-	// a choice shows at once; the home's name follows when its map has come
-	const live = $derived(pending ?? { map: map?.slug, chosen: chosenOf(map) });
-	const chosen = $derived(live.chosen);
-	$effect(() => {
-		if (pending && map?.slug === pending.map) pending = null;
-	});
-
-	// what the gold button would choose: the marked district, or else what is on screen
-	const what = $derived(marked ?? level);
-	const whatMap = $derived(
-		what === COUNTRY
-			? 'uzbekistan'
-			: what === CITY
-				? 'tashkent-streets'
-				: (cards[what]?.map ?? `place-${what}`)
-	);
-	const soon = $derived(what !== COUNTRY && cards[what]?.panoramas === 0);
-	let shownW = $state(0);
-	$effect(() => {
-		if (shownW && !soon) btnW = shownW;
-	});
-	// Not on the whole country: there the home at rest would show a second big button beside the
-	// green key (the owner picked the lab's home, which has none). Choosing the whole country
-	// waits for the map picker (P1111 1.3).
-	const offer = $derived(!!country && !!map && what !== COUNTRY && whatMap !== live.map);
-
-	async function choose(): Promise<boolean> {
-		if (!offer || soon) return false;
-		const slug = whatMap;
-		pending = {
-			map: slug,
-			chosen:
-				what === COUNTRY
-					? { whole: true }
-					: what === level
-						? { part: level }
-						: { part: level, dist: what }
-		};
-		// the chosen district stays named and lit (gold, no longer blue): the button goes away
-		// until another place is marked; a tap on it lets go, to choose the whole part
-		const ok = await onchoose(slug);
-		if (!ok && pending?.map === slug) pending = null;
-		return ok;
+	function onKey(e: KeyboardEvent) {
+		// a sheet open over the map closes on its own Escape
+		if (e.key === 'Escape' && !document.querySelector('[aria-modal="true"]')) goUp();
 	}
 
-	/** The home's keys play what the player is looking at: a marked place that can be played
-	 * becomes the home's first ("O‘ynash", a room with friends), so a blue district and the green
-	 * key never point at two places. false only if choosing it failed. */
-	export async function takeMarked(): Promise<boolean> {
-		if (!marked || !offer || soon) return true;
-		return choose();
-	}
-
-	// ---------- how each piece looks ----------
+	// ---------- "Tanlash": the place on screen joins the list ----------
 
 	const quiet = (slug: string) => cards[slug]?.panoramas === 0;
-	const isGold = (d: string) => chosen.part === shown && chosen.dist === d;
-	const isPale = (d: string) =>
-		!quiet(d) && (chosen.whole || (chosen.part === shown && !chosen.dist));
-	const named = $derived(marked ?? (level === COUNTRY ? null : level));
-	const namedGold = $derived(
-		named !== null &&
-			(marked ? isGold(marked) : chosen.part === level && !chosen.dist && !chosen.whole)
+	const playable = (slug: string) => (cards[slug]?.panoramas ?? 0) > 0;
+	const onScreen = $derived.by((): NewPick | undefined => {
+		if (level === COUNTRY || !playable(level)) return;
+		const part = isPart(level) ? null : parentOf[level];
+		const card = cards[level];
+		return {
+			map: level === CITY ? 'tashkent-streets' : card.map,
+			place: level,
+			path: part ? [COUNTRY, part] : [COUNTRY],
+			name: card.name,
+			top: part ? cards[part]?.name : countryName,
+			face: level
+		};
+	});
+	$effect(() => {
+		shownPlace = onScreen;
+	});
+	const soon = $derived(level !== COUNTRY && quiet(level));
+	const taken = $derived(ownList ? picks.find((p) => p.map === onScreen?.map) : undefined);
+	const offer = $derived(!!country && level !== COUNTRY && picks.length > 0 && !!cards[level]);
+	let takeW = $state(0);
+
+	function take() {
+		if (locked || !offer || !onScreen) return;
+		if (taken) {
+			if (picks.length > 1) onunpick(taken.map);
+			return;
+		}
+		onpick(onScreen);
+	}
+
+	// ---------- the picked places, in their colours ----------
+
+	/** The pick that holds a place: the place itself, its part, or the whole country. A place with
+	 * nothing to play wears none. */
+	function pickFor(slug: string, part?: string | null): Pick | undefined {
+		if (quiet(slug)) return undefined;
+		return (
+			picks.find((p) => p.place === slug) ??
+			(part && playable(slug) ? picks.find((p) => p.place === part) : undefined) ??
+			picks.find((p) => p.place === COUNTRY)
+		);
+	}
+	const pc = (p?: Pick) => (p ? `var(--pick-${p.color})` : undefined);
+	// Tashkent's badge: Tashkent picked, or a place in it, or the whole country
+	const cityPick = $derived(
+		picks.find((p) => p.place === CITY || p.path?.includes(CITY)) ??
+			picks.find((p) => p.place === COUNTRY)
 	);
 
-	// Tashkent city is a dot on the country: a round badge a finger can find
-	const city = $derived(
-		boxes[CITY]
-			? { x: (boxes[CITY][0] + boxes[CITY][2]) / 2, y: (boxes[CITY][1] + boxes[CITY][3]) / 2 }
-			: null
+	// On the country and from neighbouring parts, lay the coloured districts over their region.
+	const regions = $derived(
+		new Set(picks.flatMap((p) => (p.place && cards[p.place]?.kind === 'region' ? [p.place] : [])))
 	);
-	const badgeR = $derived((lap ? 21 : 18) / k);
+	$effect(() => {
+		for (const region of regions) untrack(() => loadPart(region)).catch(() => {});
+		for (const p of picks) {
+			const part = p.path?.[1];
+			if (part && !untrack(() => parts[part])) loadDrawing(part).catch(() => {});
+		}
+	});
+	const deep = $derived(
+		picks.flatMap((p) => {
+			const region = p.place && regions.has(p.place);
+			const part = region ? p.place : p.path?.[1];
+			const d = part ? parts[part] : undefined;
+			if (!part || !d || !partBoxes[part]) return [];
+			const at = laidOn(part, d);
+			return d.shapes
+				.filter((s) => (region ? playable(s.slug) : s.slug === p.place && p.path?.length === 2))
+				.map((s) => ({ slug: s.slug, part, d: s.d, at, color: pc(p) }));
+		})
+	);
 
-	// a ready map of several places: a gold star on each; stars that would touch on screen are
-	// one (Buxoro and Kogon on the country, two apart in Buxoro's region)
-	let marks = $state<{ x: number; y: number }[]>([]);
-	const starKey = $derived([...(chosen.stars ?? [])].sort().join(','));
+	// a ready map of several places (the historic cities): a star on each, in its colour; stars
+	// that would touch on screen are one (Buxoro and Kogon on the country)
+	let starSets = $state<{ color: string; marks: { x: number; y: number }[] }[]>([]);
+	const starKey = $derived(
+		picks
+			.filter((p) => !p.place && p.places?.length)
+			.map((p) => `${p.color}:${[...p.places!].sort().join(',')}`)
+			.join('|')
+	);
 	$effect(() => {
 		const key = starKey;
 		if (!key) {
-			marks = [];
+			starSets = [];
 			return;
 		}
-		placeDrawing(COUNTRY, key.split(',')).then(
-			(d) => {
-				if (key === starKey) marks = d.marks;
+		Promise.all(
+			key.split('|').map(async (it) => {
+				const [c, list] = it.split(':');
+				const d = await placeDrawing(COUNTRY, list.split(','));
+				return { color: `var(--pick-${c})`, marks: d.marks };
+			})
+		).then(
+			(s) => {
+				if (key === starKey) starSets = s;
 			},
 			() => {}
 		);
 	});
 	const starR = $derived((lap ? 13 : 11) / k);
-	const stars = $derived.by(() => {
-		const out: { x: number; y: number }[] = [];
-		for (const m of marks)
-			if (!out.some((o) => Math.hypot(o.x - m.x, o.y - m.y) < starR * 1.8)) out.push(m);
-		return out;
-	});
+	const stars = $derived(
+		starSets.flatMap((set) => {
+			const out: { x: number; y: number; color: string }[] = [];
+			for (const m of set.marks)
+				if (!out.some((o) => Math.hypot(o.x - m.x, o.y - m.y) < starR * 1.8))
+					out.push({ x: m.x, y: m.y, color: set.color });
+			return out;
+		})
+	);
 	const star = (x: number, y: number, r: number) => {
 		const p: string[] = [];
 		for (let i = 0; i < 10; i++) {
@@ -399,36 +463,53 @@
 		return `M${p.join('L')}Z`;
 	};
 
+	// Tashkent city is a dot on the country: a round badge a finger can find
+	const city = $derived(
+		partBoxes[CITY]
+			? {
+					x: (partBoxes[CITY][0] + partBoxes[CITY][2]) / 2,
+					y: (partBoxes[CITY][1] + partBoxes[CITY][3]) / 2
+				}
+			: null
+	);
+	const badgeR = $derived((lap ? 21 : 18) / k);
+
 	const inner = $derived(shown ? parts[shown] : undefined);
-	/** A place's own drawing laid onto its box in the country's drawing. */
-	const laidOn = (slug: string, d: Drawing) => {
-		const b = boxes[slug];
-		return `translate(${b[0]} ${b[1]}) scale(${(b[2] - b[0]) / d.width} ${(b[3] - b[1]) / d.height})`;
-	};
-	const innerAt = $derived(shown && inner && boxes[shown] ? laidOn(shown, inner) : '');
+	const innerAt = $derived(shown && inner && partBoxes[shown] ? laidOn(shown, inner) : '');
+	const third = $derived(level !== COUNTRY && !!shown && level !== shown); // inside a district
 
 	// the region round a part that lies inside one (Tashkent), drawn as its districts in its
 	// place; the region's own shape stays underneath, clear, and takes the taps. Only while in
 	// the part: going back out, the region is one tile again at once (no seams popping off)
-	const ringOf = $derived(shown && level === shown ? AROUND[shown] : undefined);
-	const ring = $derived(ringOf && boxes[ringOf] ? parts[ringOf] : undefined);
+	const ringOf = $derived(shown && level !== COUNTRY ? AROUND[shown] : undefined);
+	const ring = $derived(ringOf && partBoxes[ringOf] ? parts[ringOf] : undefined);
 	const ringAt = $derived(ringOf && ring ? laidOn(ringOf, ring) : '');
 
-	// zoomed in, the land round the part fades out in an oval inside the box (the mask is the
-	// box's view, larger at first, so the fade comes in with the zoom); the part itself stays whole
+	// zoomed in, the land round the place fades out in an oval inside the box (the mask is the
+	// box's view, larger at first, so the fade comes in with the zoom); the place itself stays
+	// whole (and the city in its region's hole)
 	const fadeBox = $derived.by(() => {
 		if (!zin || !vb) return null;
 		const f = 1 + 4 * (1 - veil);
 		return [vb[0] - (vb[2] * (f - 1)) / 2, vb[1] - (vb[3] * (f - 1)) / 2, vb[2] * f, vb[3] * f];
 	});
-	const shownD = $derived(country?.shapes.find((s) => s.slug === shown)?.d);
+	const keep = $derived.by((): { d: string; at?: string }[] => {
+		const lv = level === COUNTRY ? shown : level;
+		if (!lv || !country) return [];
+		if (isPart(lv))
+			return country.shapes
+				.filter((s) => s.slug === lv || HOLDS[lv] === s.slug)
+				.map((s) => ({ d: s.d }));
+		const s = inner?.shapes.find((x) => x.slug === lv);
+		return s ? [{ d: s.d, at: innerAt }] : [];
+	});
 
 	// ---------- the names of what is inside ----------
 	// Laid out once the view stands still, in screen pixels for that view, as the profile's
 	// Tashkent names them: a name inside its place where it fits, else a milk pill on its place,
-	// else a pill beside it with a line back. Clear of the square, the pill, the gold button and
-	// the box's faded edge; a name with nowhere to stand is left out (its place is still a tap).
-	// The order never depends on what is marked, so names don't jump when a place lights up.
+	// else a pill beside it with a line back. Clear of the square, the pill, the key and the box's
+	// faded edge; a name with nowhere to stand is left out (its place is still a tap). The order
+	// never depends on what is picked, so names don't jump when a place lights up.
 	type Name = {
 		slug: string;
 		text: string;
@@ -440,6 +521,7 @@
 		pill: boolean;
 		line?: [number, number][]; // a pill beside its place: from the place's dot to its side
 	};
+	type Dot = { slug: string; x: number; y: number };
 	const FONT = $derived(lap ? 14 : 12.5);
 
 	// names are measured in the game's fonts: laid out again once the names' own face has
@@ -489,24 +571,30 @@
 		return false;
 	};
 
-	const names = $derived.by((): Name[] => {
+	const labels = $derived.by((): { names: Name[]; dots: Dot[] } => {
 		void fonts;
 		const part = settled;
 		const v = target;
-		if (!part || part !== level || part !== shown || !v || !inner || !boxes[part]) return [];
+		if (!part || part !== level || part !== shown || !v || !inner || !partBoxes[part])
+			return { names: [], dots: [] };
 		const kk = W / v[2];
-		const b = boxes[part];
+		const b = partBoxes[part];
 		const sx = (b[2] - b[0]) / inner.width;
 		const sy = (b[3] - b[1]) / inner.height;
-		const px = (x: number, y: number): [number, number] => [
+		// the part's districts are in its own drawing; the city in a region's hole is the country's
+		const inPart = (x: number, y: number): [number, number] => [
 			(b[0] + x * sx - v[0]) * kk,
 			(b[1] + y * sy - v[1]) * kk
 		];
+		const onCountry = (x: number, y: number): [number, number] => [
+			(x - v[0]) * kk,
+			(y - v[1]) * kk
+		];
 		// where a name may stand: inside the box's faded edge, out of the square's corner, under
-		// the name pill's row, and clear of the gold button
+		// the name pill's row, and clear of the key
 		const edge = 14;
 		const top = lap ? 70 : 58;
-		const bw = (shownW || 200) + 8;
+		const bw = (takeW || 160) + 8;
 		const keepOut: Box[] = [
 			[-1e4, -1e4, 1e4, top],
 			[-1e4, -1e4, lap ? 88 : 74, lap ? 88 : 72],
@@ -525,11 +613,16 @@
 		const full = (slug: string) => tx(cards[slug]?.name);
 		const base = (slug: string) =>
 			full(slug).replace(/\s+(tumani|shahri|viloyati|Respublikasi|район|город|область)$/i, '');
-		const bases = inner.shapes.map((s) => base(s.slug));
+		const held = HOLDS[part] ? country?.shapes.filter((s) => s.slug === HOLDS[part]) : [];
+		const shapes = [
+			...inner.shapes.map((s) => ({ s, px: inPart })),
+			...(held ?? []).map((s) => ({ s, px: onCountry }))
+		];
+		const bases = shapes.map(({ s }) => base(s.slug));
 		const twice = new Set(bases.filter((n, i) => bases.indexOf(n) !== i));
 		const nameOf = (slug: string) => (twice.has(base(slug)) ? full(slug) : shortName(full(slug)));
-		const items = inner.shapes
-			.map((s) => {
+		const items = shapes
+			.map(({ s, px }) => {
 				const rings = pieces(s.d).map((r) => points(r).map(([x, y]) => px(x, y)));
 				const area = rings.reduce((a, r) => {
 					let sum = 0;
@@ -639,11 +732,20 @@
 				break;
 			}
 		}
-		return out;
+		const named = new Set(out.map((n) => n.slug));
+		const dots = left.filter(
+			({ slug }) => cards[slug]?.kind === 'city' && playable(slug) && !named.has(slug)
+		);
+		return { names: out, dots };
 	});
+	/** A name's colour: its place's pick (the city in its region is a part of the country). */
+	const namePick = (slug: string) => (isPart(slug) ? pickFor(slug) : pickFor(slug, shown));
+	const levelPick = $derived(
+		level === COUNTRY ? undefined : isPart(level) ? pickFor(level) : pickFor(level, shown)
+	);
 </script>
 
-<svelte:window bind:innerWidth={vw} onkeydown={(e) => e.key === 'Escape' && back()} />
+<svelte:window bind:innerWidth={vw} onkeydown={onKey} />
 
 <div class="mapbox" class:zin role="group" aria-label={t('placesTitle')}>
 	<div class="mclip" bind:clientWidth={W} bind:clientHeight={H}>
@@ -653,12 +755,11 @@
 				viewBox={vb.map((v) => v.toFixed(2)).join(' ')}
 				preserveAspectRatio="xMidYMid meet"
 				style:--tg="url(#{uid}-tg)"
-				style:--tau="url(#{uid}-tau)"
 				style:--hatch="url(#{uid}-hatch)"
 			>
 				<defs>
-					<!-- "Tez orada": the regions with nothing to play yet, hatched as /places hatches
-					     them (8 px apart on screen, whatever the zoom) -->
+					<!-- "Tez orada": the places with nothing to play yet, hatched (8 px apart on
+					     screen, whatever the zoom) -->
 					<pattern
 						id="{uid}-hatch"
 						width={8 * hk}
@@ -667,15 +768,18 @@
 						patternTransform="rotate(45)"
 					>
 						<rect width={8 * hk} height={8 * hk} class="hatch-bg" />
-						<line x1="0" y1="0" x2="0" y2={8 * hk} class="hatch-line" style:stroke-width={2.5 * hk} />
+						<line
+							x1="0"
+							y1="0"
+							x2="0"
+							y2={8 * hk}
+							class="hatch-line"
+							style:stroke-width={2.5 * hk}
+						/>
 					</pattern>
 					<linearGradient id="{uid}-tg" x1="0" y1="0" x2="0" y2="1">
 						<stop offset="0" style:stop-color="var(--tile-a)" />
 						<stop offset="1" style:stop-color="var(--tile-b)" />
-					</linearGradient>
-					<linearGradient id="{uid}-tau" x1="0" y1="0" x2="0" y2="1">
-						<stop offset="0" style:stop-color="var(--gold-hi)" />
-						<stop offset="1" style:stop-color="var(--gold)" />
 					</linearGradient>
 					<radialGradient id="{uid}-vg">
 						<stop offset="0.6" stop-color="#fff" />
@@ -697,69 +801,85 @@
 								height={fadeBox[3]}
 								fill="url(#{uid}-vg)"
 							/>
-							{#if shownD}<path class="keep" d={shownD} />{/if}
+							{#each keep as kp, i (i)}
+								<path class="keep" d={kp.d} transform={kp.at} />
+							{/each}
 						</mask>
 					{/if}
 				</defs>
-				<g
-					class="uzl"
-					class:dim={level !== COUNTRY}
-					mask={fadeBox ? `url(#${uid}-fade)` : undefined}
-				>
-					{#each country.shapes as s (s.slug)}
-						<path
-							class="p"
-							class:hid={!!ringAt && s.slug === ringOf}
-							class:q={quiet(s.slug)}
-							class:aw={chosen.whole && !quiet(s.slug)}
-							class:au={chosen.part === s.slug && (level === COUNTRY || s.slug !== level)}
-							class:cur={s.slug === level}
-							d={s.d}
-							data-s={s.slug}
-							role="button"
-							tabindex={level === COUNTRY && s.slug !== CITY ? 0 : -1}
-							aria-label={tx(cards[s.slug]?.name)}
-							onclick={() => open(s.slug)}
-							onkeydown={(e) => press(e, () => open(s.slug))}
-						/>
+				<g mask={fadeBox ? `url(#${uid}-fade)` : undefined}>
+					<g class="uzl" class:dim={level !== COUNTRY}>
+						{#each country.shapes as s (s.slug)}
+							{@const p = playable(s.slug) && !regions.has(s.slug) ? pickFor(s.slug) : undefined}
+							<path
+								class="p"
+								class:hid={(!!ringAt && s.slug === ringOf) || (up && s.slug === shown)}
+								class:q={quiet(s.slug)}
+								class:pc={!!p}
+								class:cur={isCur(s.slug)}
+								style:--pc={pc(p)}
+								d={s.d}
+								data-s={s.slug}
+								role="button"
+								tabindex={(level === COUNTRY && s.slug !== CITY) || HOLDS[level] === s.slug
+									? 0
+									: -1}
+								aria-label={tx(cards[s.slug]?.name)}
+								onclick={() => open(s.slug)}
+								onkeydown={(e) => press(e, () => open(s.slug))}
+							/>
+						{/each}
+						{#if ring && ringAt}
+							<g class="ring" transform={ringAt}>
+								{#each ring.shapes as s (s.slug)}
+									{@const p = pickFor(s.slug, ringOf)}
+									<path class="p" class:pc={!!p} style:--pc={pc(p)} d={s.d} />
+								{/each}
+							</g>
+						{/if}
+					</g>
+					<!-- coloured districts where their region's districts aren't up -->
+					{#each deep as dp (dp.slug)}
+						{#if dp.part !== ringOf && !(up && dp.part === shown)}
+							<path
+								class="p pc deep"
+								class:dim={level !== COUNTRY && !isCur(dp.part)}
+								style:--pc={dp.color}
+								d={dp.d}
+								transform={dp.at}
+							/>
+						{/if}
 					{/each}
-					{#if ring && ringAt}
-						<g class="ring" transform={ringAt}>
-							{#each ring.shapes as s (s.slug)}
-								<path class="p" d={s.d} />
-							{/each}
-						</g>
-					{/if}
+					{#key shown}
+						{#if inner && innerAt}
+							<g class="dl" class:up class:third transform={innerAt}>
+								{#each inner.shapes as s (s.slug)}
+									{@const p = pickFor(s.slug, shown)}
+									<path
+										class="p"
+										class:q={quiet(s.slug)}
+										class:pc={!!p}
+										class:cur={s.slug === level}
+										style:--pc={pc(p)}
+										d={s.d}
+										data-d={s.slug}
+										role="button"
+										tabindex={level !== COUNTRY ? 0 : -1}
+										aria-label={tx(cards[s.slug]?.name)}
+										onclick={() => open(s.slug)}
+										onkeydown={(e) => press(e, () => open(s.slug))}
+									/>
+								{/each}
+							</g>
+						{/if}
+					{/key}
 				</g>
-				{#key shown}
-					{#if inner && innerAt}
-						<g class="dl" class:up transform={innerAt}>
-							{#each inner.shapes as s (s.slug)}
-								<path
-									class="p"
-									class:q={quiet(s.slug)}
-									class:aw={isPale(s.slug)}
-									class:au={isGold(s.slug)}
-									class:pk={marked === s.slug && !isGold(s.slug)}
-									d={s.d}
-									data-d={s.slug}
-									role="button"
-									tabindex={level === shown ? 0 : -1}
-									aria-label={tx(cards[s.slug]?.name)}
-									aria-pressed={marked === s.slug}
-									onclick={() => mark(s.slug)}
-									onkeydown={(e) => press(e, () => mark(s.slug))}
-								/>
-							{/each}
-						</g>
-					{/if}
-				{/key}
 				{#if city}
 					<g
 						class="bdg"
-						class:au={chosen.part === CITY}
-						class:aw={chosen.whole}
+						class:pc={!!cityPick}
 						class:off={level !== COUNTRY}
+						style:--pc={pc(cityPick)}
 						data-s={CITY}
 						role="button"
 						tabindex={level === COUNTRY ? 0 : -1}
@@ -773,22 +893,24 @@
 					</g>
 				{/if}
 				{#each stars as s, i (i)}
-					<path class="star" d={star(s.x, s.y, starR)} />
+					<path class="star" style:--pc={s.color} d={star(s.x, s.y, starR)} />
 				{/each}
 			</svg>
 		{/if}
-		{#if names.length}
+		{#if labels.names.length || labels.dots.length}
 			<!-- a name is a tap on the place it names; the plain ones let the tap through to it -->
-			<svg class="names" viewBox="0 0 {W} {H}" style:--tau="url(#{uid}-tau)" aria-hidden="true">
-				{#each names as n (n.slug)}
+			<svg class="names" viewBox="0 0 {W} {H}" aria-hidden="true">
+				{#each labels.names as n (n.slug)}
+					{@const p = namePick(n.slug)}
 					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 					<g
 						class="nm"
 						class:pill={n.pill}
 						class:q={quiet(n.slug)}
-						class:pk={marked === n.slug && !isGold(n.slug)}
-						class:au={isGold(n.slug)}
-						onclick={() => mark(n.slug)}
+						class:few={!!cards[n.slug] && fewPlaces(cards[n.slug])}
+						class:pc={!!p}
+						style:--pc={pc(p)}
+						onclick={() => open(n.slug)}
 					>
 						{#if n.line}
 							{@const [a, b] = n.line}
@@ -801,18 +923,24 @@
 						<text x={n.x} y={n.y} style:font-size="{n.size}px">{n.text}</text>
 					</g>
 				{/each}
+				{#each labels.dots as dot (dot.slug)}
+					<!-- The shape below the dot takes keyboard input. -->
+					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+					<circle class="spot-hit" cx={dot.x} cy={dot.y} r="16" onclick={() => open(dot.slug)} />
+					<circle class="spot" cx={dot.x} cy={dot.y} r="3.5" />
+				{/each}
 			</svg>
 		{/if}
 	</div>
 
-	<!-- where you are, as its face (Tashkent in its region, a region in Uzbekistan): a tap goes
-	     back out to the country -->
+	<!-- where you are, as its face (a district in its city or region, Tashkent in its region, a
+	     region in Uzbekistan): a tap goes up one level -->
 	<button
 		class="mback"
 		class:off={level === COUNTRY}
 		tabindex={level === COUNTRY ? -1 : 0}
 		aria-label={t('zoomOut')}
-		onclick={back}
+		onclick={goUp}
 	>
 		{#if level !== COUNTRY}
 			<span class="mpic"><PlaceInParent place={level} on="panel" /></span>
@@ -821,33 +949,40 @@
 			><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" /></svg></span
 		>
 	</button>
-	<!-- the pill names what the gold button would choose, and only then: inside the chosen place
-	     the title above already says it -->
+	<!-- the place on screen, by name; its dot in the colour of the pick that holds it -->
 	<div
 		class="mpill"
-		class:off={!named || !offer}
-		class:pk={!!marked && !namedGold}
-		class:au={namedGold}
+		class:off={level === COUNTRY}
+		class:pc={!!levelPick}
+		style:--pc={pc(levelPick)}
 	>
-		<i></i><span>{named ? tx(cards[named]?.name) : ''}</span>
+		<i></i><span>{level !== COUNTRY ? tx(cards[level]?.name) : ''}</span>
 	</div>
+	<!-- the one key on the map, quiet (the green "O‘ynash" is the home's only filled key): the
+	     place on screen joins the list; in the list, it says so in its colour and a tap takes it
+	     out (never the last one) -->
 	<button
-		class="mchoose"
+		class="btn btn-ghost on-panel mtake"
 		class:off={!offer}
 		class:soon
-		bind:offsetWidth={shownW}
+		class:taken={!!taken}
+		style:--pc={pc(taken)}
+		bind:offsetWidth={takeW}
 		tabindex={offer ? 0 : -1}
-		aria-disabled={soon}
-		onclick={choose}
+		disabled={locked}
+		aria-disabled={soon || (!!taken && picks.length < 2)}
+		onclick={take}
 	>
 		{#if soon}
 			<svg viewBox="0 0 24 24" aria-hidden="true"
 				><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2M9.5 2.5h5" /></svg
 			>
-			<span>{t('soon')}</span>
+			<span class="lbl">{t('soon')}</span>
+		{:else if taken}
+			<span class="lbl">{t('pickedOne')}</span>
 		{:else}
-			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12.5l5 5L19.5 7" /></svg>
-			<span>{t('choosePlace')}</span>
+			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+			<span class="lbl">{t('pickThis')}</span>
 		{/if}
 	</button>
 </div>
@@ -915,20 +1050,10 @@
 	.hatch-line {
 		stroke: color-mix(in srgb, var(--seam) 22%, transparent);
 	}
-	/* a whole place chosen: its parts pale gold; one part chosen: full gold; marked: blue */
-	.p.aw {
-		fill: color-mix(in srgb, var(--gold-hi) 60%, var(--tile-a));
-		stroke: var(--gold-lo);
-		stroke-opacity: 0.8;
-	}
-	.p.au {
-		fill: var(--tau);
-		stroke: var(--gold-lo);
-		stroke-opacity: 1;
-	}
-	.p.pk {
-		fill: var(--picked);
-		stroke: var(--picked-line);
+	/* a picked place, and everything in it: its pick's colour */
+	.p.pc {
+		fill: var(--pc);
+		stroke: color-mix(in srgb, var(--pc) 45%, #fff);
 		stroke-opacity: 1;
 	}
 	.p:focus-visible {
@@ -941,13 +1066,21 @@
 	.uzl.dim .p.cur {
 		opacity: 1;
 	}
-	/* the place being played stays lit from a neighbouring part too */
-	.uzl.dim .p.au {
+	/* a picked place stays lit from a neighbouring part too */
+	.uzl.dim .p.pc:not(.cur),
+	.deep.dim {
 		opacity: 0.85;
+	}
+	.deep {
+		pointer-events: none;
+		stroke-width: 1;
 	}
 	.dl {
 		opacity: 0;
 		transition: opacity 0.15s;
+	}
+	.dl:not(.up) {
+		pointer-events: none;
 	}
 	.dl.up {
 		opacity: 1;
@@ -961,8 +1094,15 @@
 	.dl .p {
 		stroke-width: 1;
 	}
+	/* inside a district: its neighbours are faint tiles round it (a picked one a little less) */
+	.dl.third .p:not(.cur) {
+		opacity: 0.32;
+	}
+	.dl.third .p.pc:not(.cur) {
+		opacity: 0.6;
+	}
 	/* the region round Tashkent: its districts drawn in its place, the region's own shape under
-	   them clear (it still takes a tap, to go there) */
+	   them clear (it still takes a tap, to go there); so is a part under its own districts */
 	.p.hid {
 		fill: transparent;
 		stroke: none;
@@ -1012,6 +1152,12 @@
 		fill: var(--map-ink-2);
 		stroke: color-mix(in srgb, var(--tile-quiet) 85%, transparent);
 	}
+	/* few panoramas there yet: the name in italics (decision 0016; the font has none: a lean) */
+	.nm.few text {
+		transform: skewX(-11deg);
+		transform-box: fill-box;
+		transform-origin: center;
+	}
 	/* a pill takes its whole box; a plain name lets the tap through to its place */
 	.nm.pill {
 		cursor: pointer;
@@ -1032,22 +1178,19 @@
 	.spot {
 		fill: var(--map-line);
 	}
-	/* the marked place's name: white on its blue (a pill turns blue with it) */
-	.nm.pk text {
+	.spot-hit {
+		fill: transparent;
+		pointer-events: all;
+		cursor: pointer;
+	}
+	/* a picked place's name: white on its colour (a pill takes the colour with it) */
+	.nm.pc text {
 		fill: #fff;
-		stroke: var(--picked);
+		stroke: var(--pc);
 	}
-	.nm.pill.pk rect {
-		fill: var(--picked);
-		stroke: var(--picked-line);
-	}
-	/* the chosen one's pill: gold */
-	.nm.pill.au rect {
-		fill: var(--tau);
-		stroke: var(--gold-lo);
-	}
-	.nm.au text {
-		fill: var(--gold-ink);
+	.nm.pill.pc rect {
+		fill: var(--pc);
+		stroke: color-mix(in srgb, var(--pc) 55%, #000);
 	}
 
 	/* Tashkent city's badge */
@@ -1069,18 +1212,14 @@
 	.bdot {
 		fill: var(--seam);
 	}
-	.bdg.aw .bdisc {
-		fill: color-mix(in srgb, var(--gold-hi) 60%, var(--tile-a));
-		stroke: var(--gold-lo);
-	}
-	.bdg.au .bdisc {
-		fill: var(--tau);
+	.bdg.pc .bdisc {
+		fill: var(--pc);
 		stroke: #fff;
 		stroke-width: 2.5;
 	}
-	.bdg.au .bdot {
+	.bdg.pc .bdot {
 		fill: #fff;
-		stroke: var(--gold-lo);
+		stroke: color-mix(in srgb, var(--pc) 55%, #000);
 		stroke-width: 2;
 		vector-effect: non-scaling-stroke;
 	}
@@ -1090,12 +1229,12 @@
 	}
 	.bpulse {
 		fill: none;
-		stroke: var(--gold);
+		stroke: var(--pc, var(--seam));
 		stroke-width: 3;
 		vector-effect: non-scaling-stroke;
 		opacity: 0;
 	}
-	.bdg.au .bpulse {
+	.bdg.pc .bpulse {
 		animation: pulse 2.2s var(--out) infinite;
 		transform-box: fill-box;
 		transform-origin: center;
@@ -1111,15 +1250,15 @@
 		}
 	}
 	.star {
-		fill: var(--tau);
-		stroke: var(--gold-lo);
-		stroke-width: 1.4;
+		fill: var(--pc);
+		stroke: #fff;
+		stroke-width: 1.6;
 		stroke-linejoin: round;
 		vector-effect: non-scaling-stroke;
 		pointer-events: none;
 	}
 
-	/* the small place-in-parent square: where you are; a tap goes back out */
+	/* the small place-in-parent square: where you are; a tap goes up one level */
 	.mback {
 		position: absolute;
 		left: 12px;
@@ -1168,7 +1307,7 @@
 		stroke-linejoin: round;
 	}
 	.mback:focus-visible,
-	.mchoose:focus-visible {
+	.mtake:focus-visible {
 		outline: 3px solid var(--gold);
 		outline-offset: 2px;
 	}
@@ -1205,66 +1344,61 @@
 		flex: none;
 		background: var(--ink-3);
 	}
-	.mpill.pk i {
-		background: var(--picked);
-		box-shadow: 0 0 0 2px color-mix(in srgb, var(--picked) 30%, transparent);
+	.mpill.pc i {
+		background: var(--pc);
+		box-shadow: 0 0 0 2px color-mix(in srgb, var(--pc) 30%, transparent);
 	}
-	.mpill.au i {
-		background: var(--gold);
-		box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 35%, transparent);
-	}
-	/* the one gold button: choose what is marked, or what is on screen */
-	.mchoose {
+	/* "Tanlash": the kit's quiet key on a milk ground of its own, so it reads over the tiles */
+	.mtake {
 		position: absolute;
 		right: 12px;
 		bottom: 10px;
 		z-index: 3;
 		height: 46px;
 		padding: 0 16px 0 12px;
-		border: none;
-		border-radius: var(--r-s);
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-family: var(--f-text);
-		font-weight: 800;
-		font-size: 15px;
+		gap: 7px;
+		font-size: 16px;
 		white-space: nowrap;
-		color: var(--gold-ink);
-		background: linear-gradient(180deg, var(--gold-hi), var(--gold));
+		background: var(--panel);
 		box-shadow:
-			inset 0 2px 0 rgba(255, 255, 255, 0.55),
-			0 4px 0 var(--gold-lo),
-			0 10px 18px -6px rgba(0, 0, 0, 0.35);
+			inset 0 0 0 2px var(--fg-line),
+			0 8px 16px -6px rgba(0, 0, 0, 0.35);
 		transition:
 			opacity 0.2s,
 			transform 0.3s var(--spring);
 	}
-	.mchoose svg {
+	.mtake:hover:not(.soon) {
+		box-shadow:
+			inset 0 0 0 2px color-mix(in srgb, var(--b-ink) 55%, transparent),
+			0 8px 16px -6px rgba(0, 0, 0, 0.35);
+	}
+	.mtake svg {
 		width: 20px;
 		height: 20px;
-		flex: none;
-		fill: none;
-		stroke: currentColor;
-		stroke-width: 3.2;
-		stroke-linecap: round;
-		stroke-linejoin: round;
+		stroke-width: 3;
 	}
-	.mchoose:active:not(.soon) {
-		transform: translateY(3px);
+	/* in the list: its colour, words and edge */
+	.mtake.taken {
+		--b-ink: var(--pc);
+		padding: 0 16px;
 		box-shadow:
-			inset 0 2px 0 rgba(255, 255, 255, 0.5),
-			0 1px 0 var(--gold-lo),
-			0 4px 8px -4px rgba(0, 0, 0, 0.35);
+			inset 0 0 0 2.5px var(--pc),
+			0 8px 16px -6px rgba(0, 0, 0, 0.35);
+	}
+	:global(:root[data-theme='dark']) .mtake.taken {
+		--b-ink: color-mix(in srgb, var(--pc) 45%, #fff);
 	}
 	/* no panoramas there yet: the same place, quiet, and it does nothing */
-	.mchoose.soon {
+	.mtake.soon {
 		cursor: default;
-		color: var(--ink-3);
+		--b-ink: var(--ink-3);
 		background: color-mix(in srgb, var(--panel) 82%, transparent);
 		box-shadow: inset 0 0 0 1px var(--panel-line);
 	}
-	.mchoose.soon svg {
+	.mtake.soon:active {
+		transform: none;
+	}
+	.mtake.soon svg {
 		stroke-width: 2.4;
 	}
 	.off {
@@ -1293,11 +1427,11 @@
 			height: 34px;
 			font-size: 15px;
 		}
-		.mchoose {
+		.mtake {
 			right: 16px;
 			bottom: 16px;
 			height: 52px;
-			font-size: 17px;
+			font-size: 18px;
 			padding: 0 20px 0 16px;
 		}
 	}

@@ -1,18 +1,34 @@
 <script lang="ts">
-	// The home: one job, start playing. Above the map, where you'll play: the place's picture
-	// (place-in-parent) beside its gold tag over its name (zoomed in, the map's square wears the
-	// picture instead). The map of Uzbekistan is where you change it, in place: a tap zooms in,
-	// a tap marks, "Shu joyni tanlash" chooses (HomeMap). One quiet line says how; "O‘ynash"
-	// puts you on a street. Under it, quietly: a room with friends, opened at once, and a
-	// friend's code on a number plate. What a player hasn't
-	// earned stays out of sight: the key breathes only before the first game; the count, the
-	// last game and "keep your results" show only after one. On a laptop the words and the key
-	// stand in a left column and the map takes all the rest.
-	import { goto } from '$app/navigation';
+	// The home: one job, start playing. Above the map, what you'll play: the picked places (P1111
+	// 1.3). One place is its picture (place-in-parent, in its pick colour) beside its gold tag
+	// over its name; two or more are a row of their pictures, each with its ×, and on a laptop a
+	// column of rows (picture, name, ×). A tap on a picture flies the map there; the small "+"
+	// opens the ready maps (Butun O‘zbekiston, Tarixiy shaharlar). The map of Uzbekistan is where
+	// the list changes, in place: a tap goes in, the square goes up, "Tanlash" adds the place on
+	// screen (HomeMap). "O‘ynash" and a room with friends play the playable place on screen when
+	// it is outside the list. Otherwise they play the list: one map or a mix (POST /v1/maps/mix).
+	// Under the key, quietly: a room with friends, opened at once, and a friend's code
+	// on a number plate. What a player hasn't earned stays out of sight: the key breathes only
+	// before the first game; the count, the last game and "keep your results" show only after
+	// one. On a laptop the words and the key stand in a left column and the map takes the rest.
+	import { goto, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
+	import { untrack } from 'svelte';
 	import GameBar from '#lib/components/GameBar.svelte';
 	import Sheet from '#lib/components/Sheet.svelte';
-	import HomeMap from '#lib/maps/HomeMap.svelte';
+	import HomeMap, { placeDetail } from '#lib/maps/HomeMap.svelte';
 	import PlaceInParent from '#lib/maps/PlaceInParent.svelte';
+	import {
+		addPick,
+		COUNTRY,
+		listOf,
+		pickOfMap,
+		removePick,
+		within,
+		type NewPick,
+		type Pick
+	} from '#lib/maps/picks.js';
+	import { shortName } from '#lib/maps/progress.js';
 	import { api, call, ApiError, type GameListItem, type MapSummary } from '#lib/api/client.js';
 	import { t, tx, type Key } from '#lib/i18n/index.svelte.js';
 	import { ensureSession, session } from '#lib/session.svelte.js';
@@ -27,8 +43,8 @@
 
 	type Mode = 'solo' | 'friends';
 
-	let maps = $state<MapSummary[]>([]);
-	let placeMap = $state<MapSummary | null>(null); // a place's own map, chosen on the map
+	let maps = $state<MapSummary[]>([]); // the ready maps
+	let own = $state<MapSummary | null>(null); // a place's own map, or a mix of the list
 	let last = $state<GameListItem | null>(null);
 	let choice = $state(loadChoice());
 	let busy = $state<Mode | null>(null);
@@ -40,15 +56,34 @@
 	let loaded = $state(false);
 	let settingsOpen = $state(false);
 	let codeOpen = $state(false);
+	let readyOpen = $state(false);
+
+	// the picked places: on screen at once; the home's map follows when the server has answered
+	let picks = $state<Pick[]>([]);
+	let confirmed: Pick[] = []; // the list the home's map is (a failed change goes back to it)
+	let pending = $state<Promise<boolean> | null>(null);
+	let seq = 0;
+	const ownList = $derived(!!choice.ownList || !!pending);
+	let shownPlace = $state<NewPick>();
+	const playPlace = $derived.by(() => {
+		const place = shownPlace;
+		return place && !picks.some((p) => within(place, p)) ? place : undefined;
+	});
+	const playName = $derived(
+		playPlace ? tx(playPlace.name) : picks.map((p) => shortName(tx(p.name))).join(' · ')
+	);
 
 	const me = $derived(session.me);
 	const banned = $derived(!!me?.user.banned);
 	const newPlayer = $derived(loaded && (me?.stats.games ?? 0) === 0);
 	const current = $derived(
-		placeMap?.slug === choice.map ? placeMap : (maps.find((m) => m.slug === choice.map) ?? maps[0])
+		own?.slug === choice.map ? own : maps.find((m) => m.slug === choice.map)
 	);
+	const canPlay = $derived(!!current && !busy && !banned);
 	const canMove = $derived(current?.canMove ?? true);
 	const progress = $derived(loaded && !newPlayer ? current?.progress : undefined);
+	// Butun O‘zbekiston first: "all", then the narrower ones
+	const ready = $derived([...maps].sort((a, b) => +(b.slug === COUNTRY) - +(a.slug === COUNTRY)));
 
 	$effect(() => saveChoice($state.snapshot(choice)));
 
@@ -66,11 +101,12 @@
 		try {
 			await ensureSession();
 			const want = choice.map;
-			// a place's own map comes with the list, so the name above the map is right at once
-			const [m, h, own] = await Promise.all([
+			const revision = seq;
+			// a place's own map, or a mix, comes with the list, so the list is right at once
+			const [m, h, mine] = await Promise.all([
 				call(api().GET('/v1/maps')),
 				call(api().GET('/v1/me/games', { params: { query: { limit: 1 } } })),
-				want.startsWith('place-')
+				want.startsWith('place-') || want.startsWith('mix-')
 					? mapSummary(want).catch((e) => {
 							if (e instanceof ApiError && e.status === 404) return null; // gone
 							throw e;
@@ -81,9 +117,15 @@
 			last = h.games[0] ?? null;
 			offline = false;
 			waiting = false;
-			placeMap = own;
-			// a map that left the home (a place gone, or "Toshkent"): back to the first one
-			if (!own && !m.some((x) => x.slug === choice.map) && m.length) choice.map = m[0].slug;
+			if (choice.map === want && seq === revision && !pending) {
+				own = mine;
+				// A map that left the home: back to the first ready map.
+				const cur = mine ?? m.find((x) => x.slug === want) ?? m[0];
+				if (cur) {
+					choice.map = cur.slug;
+					picks = confirmed = listOf(cur, picks);
+				}
+			}
 		} catch (e) {
 			waiting = e instanceof ApiError && e.code === 'rate_limited';
 			offline = !waiting;
@@ -93,25 +135,104 @@
 		loaded = true;
 	}
 
-	/** The map's gold button: this map plays from now on (its summary first, so the name, the
-	 * count and the rules change together). */
-	let homeMap = $state<ReturnType<typeof HomeMap>>();
-	let zoomed = $state(false); // the map is in a part: its square wears the face, the header doesn't
+	// a mix's parts come without the places round them: asked once each, for the map's colours
+	$effect(() => {
+		for (const p of picks)
+			if (p.place && !p.path) {
+				const slug = p.place;
+				placeDetail(slug).then(
+					(d) => {
+						const path = d.path.map((x) => x.slug);
+						picks = picks.map((x) => (x.place === slug && !x.path ? { ...x, path } : x));
+					},
+					() => {}
+				);
+			}
+	});
 
-	async function choose(slug: string): Promise<boolean> {
-		if (slug === choice.map) return true;
-		if (!maps.some((m) => m.slug === slug)) {
+	/** The list changes: on screen now; the home's map becomes the one place's map, or the mix of
+	 * them all (the server may fold it: its answer is the list). A change that fails goes back. */
+	function setList(next: Pick[]) {
+		picks = next;
+		const my = ++seq;
+		const job = (async () => {
 			try {
-				placeMap = await mapSummary(slug);
+				const m =
+					next.length === 1
+						? (maps.find((x) => x.slug === next[0].map) ?? (await mapSummary(next[0].map)))
+						: await call(api().POST('/v1/maps/mix', { body: { parts: next.map((p) => p.map) } }));
+				if (my !== seq) return true;
+				if (!maps.some((x) => x.slug === m.slug)) own = m;
+				choice.map = m.slug;
+				choice.ownList = true;
+				picks = confirmed = listOf(m, picks);
+				return true;
 			} catch (e) {
+				if (my !== seq) return false;
+				picks = confirmed;
 				const code = e instanceof ApiError ? e.code : 'other';
 				showToast(t(errorKeys[code] ?? 'err_other'), 3000);
 				return false;
 			}
-		}
-		choice.map = slug;
-		return true;
+		})();
+		pending = job;
+		job.finally(() => {
+			if (pending === job) pending = null;
+		});
 	}
+
+	/** "Tanlash" on the map, or a ready map from the sheet: into the list. */
+	function add(p: NewPick): boolean {
+		if (busy) return false;
+		const readyMap = maps.find((m) => m.slug === p.map);
+		const { list, outcome } = addPick(
+			picks,
+			readyMap ? { ...p, ...pickOfMap(readyMap) } : p,
+			!ownList
+		);
+		if (outcome === 'full') showToast(t('pickLimit'), 2500);
+		if (outcome === 'added') setList(list);
+		return outcome !== 'full';
+	}
+	function remove(map: string) {
+		if (busy) return;
+		const next = removePick(picks, map);
+		if (next !== picks) setList(next);
+	}
+
+	/** A pick's picture: its place in its parent; a map of several places, their points on the
+	 * country (the historic cities never wear the whole country's picture). */
+	const faceOf = (p: { place?: string; face?: string; places?: string[] }) =>
+		p.place
+			? { place: p.face ?? p.place }
+			: { parent: COUNTRY, marks: p.places ?? [], trim: false };
+	const colorOf = (p: Pick) => `var(--pick-${p.color})`;
+	function pickTag(p?: Pick): string {
+		if (p?.map !== 'historic') return tx(p?.top);
+		// The official map description lists the cities served by this map.
+		const description = p.top ?? maps.find((m) => m.slug === p.map)?.description;
+		const cities = description?.uz.split(',').filter((name) => name.trim()).length;
+		return cities ? t('nCities', { n: cities }) : '';
+	}
+
+	let homeMap = $state<ReturnType<typeof HomeMap>>();
+
+	// an old link to the places page (/places/<slug> → /?at=<slug>): the map opens there
+	$effect(() => {
+		const at = page.url.searchParams.get('at');
+		const map = homeMap;
+		if (!at || !map) return;
+		let active = true;
+		untrack(() => map.flyTo(at)).then((opened) => {
+			if (!opened || !active || page.url.searchParams.get('at') !== at) return;
+			const url = new URL(page.url.href);
+			url.searchParams.delete('at');
+			replaceState(url, page.state);
+		});
+		return () => {
+			active = false;
+		};
+	});
 
 	const errorKeys: Record<string, Key> = {
 		no_panorama: 'err_no_panorama',
@@ -121,31 +242,37 @@
 		too_many_rooms: 'err_too_many_rooms'
 	};
 
-	/** Play the shown place now: alone, or in a new room with the home's settings. */
+	/** Play what the key named when pressed: alone, or in a new room. */
 	async function go(mode: Mode) {
-		if (busy || banned || !current) return;
+		if (!canPlay) return;
+		const place = playPlace;
 		busy = mode;
-		// a district marked blue on the map is what the player is looking at: it plays
-		if (homeMap && !(await homeMap.takeMarked())) {
-			busy = null;
-			return;
-		}
-		const body = { map: current.slug, rules: rulesFor(choice, testProviders()) };
 		try {
+			if (mode === 'friends') unlockAudio(); // the lobby's join sounds
+			while (pending) {
+				const revision = seq;
+				const ok = await pending;
+				if (revision !== seq) continue;
+				if (!ok) return;
+				break;
+			}
+			const map = place?.map ?? current?.slug;
+			if (!map || banned) return;
+			const body = { map, rules: rulesFor(choice, testProviders()) };
 			if (mode === 'solo') {
 				const game = await call(api().POST('/v1/games', { body }));
-				goto(`/game/${game.id}`);
+				await goto(`/game/${game.id}`);
 			} else {
-				unlockAudio(); // the lobby's join sounds
 				const room = await call(api().POST('/v1/rooms', { body }));
 				justMade.code = room.code;
 				justMade.at = Date.now();
-				goto(`/room/${room.code}`);
+				await goto(`/room/${room.code}`);
 			}
 		} catch (e) {
-			busy = null;
 			const code = e instanceof ApiError ? e.code : 'other';
 			showToast(t(errorKeys[code] ?? 'err_other'), 3500);
+		} finally {
+			busy = null;
 		}
 	}
 
@@ -209,8 +336,7 @@
 		});
 	}
 
-	/** The small gold tag on one line: a long one ("Samarqand, Buxoro, Xiva, Shahrisabz") draws
-	 * its letters closer, then smaller, down to 10 px, before it is cut. */
+	/** Keep the small gold tag on one line. */
 	function fitTag(el: HTMLElement, _text?: string) {
 		return refit(el, () => {
 			el.style.fontSize = '';
@@ -251,31 +377,70 @@
 			{t(greeting())}{#if me}, <a href="/me">{me.user.name}</a>{:else}!{/if}
 		</p>
 
-		<!-- where you'll play: its picture beside a gold tag over its name -->
-		<header class="place">
-			{#key current?.slug}
-				{#if current}
-					<!-- the map's face, the one it wears on every screen (P1111 §5): Tashkent's streets
-					     are Tashkent in its region, as on the lobby's card and in the history -->
-					<!-- zoomed in, the map's square shows this same face: one copy, the words move left -->
-					{#if !zoomed}
-						<span class="pic pop-pic" aria-hidden="true">
-							{#if current.face}<PlaceInParent place={current.face} />{/if}
-						</span>
-					{/if}
-					<div class="words">
-						<span class="kick d pop" use:fitTag={tx(current.description)}
-							>{tx(current.description)}</span
+		<!-- what you'll play, the picked places: one is its picture beside a gold tag over its
+		     name; several are a row of pictures (a laptop: rows with their names), each with its ×.
+		     A tap on one flies the map there; "+" opens the ready maps -->
+		<header class="place" class:many={picks.length > 1}>
+			{#if picks.length > 1}
+				<ul class="picks">
+					{#each picks as p (p.map)}
+						<li class="pk" style:--pc={colorOf(p)}>
+							<button class="pk-go" aria-label={tx(p.name)} onclick={() => homeMap?.flyTo(p.place)}>
+								<span class="pk-pic" aria-hidden="true"
+									><PlaceInParent {...faceOf(p)} color={colorOf(p)} /></span
+								>
+								<span class="pk-name">{tx(p.name)}</span>
+							</button>
+							<button
+								class="pk-x"
+								aria-label={t('removePick', { name: tx(p.name) })}
+								disabled={!!busy}
+								onclick={() => remove(p.map)}
+							>
+								<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17" /></svg>
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{:else}
+				{@const one = picks[0]}
+			{@const tag = pickTag(one)}
+				{#key one?.map}
+					{#if one}
+						<!-- the map's face, the one it wears on every screen (P1111 §5), in its pick
+						     colour: Tashkent's streets are Tashkent in its region -->
+						<button
+							class="pic pop-pic"
+							aria-label={tx(one.name)}
+							onclick={() => homeMap?.flyTo(one.place)}
 						>
-						<div class="tw">
-							<h1 class="title d float pop" use:fitName={tx(current.name)}>{tx(current.name)}</h1>
+							<PlaceInParent {...faceOf(one)} color={colorOf(one)} />
+						</button>
+						<div class="words">
+							{#if tag}
+								<span class="kick d pop" use:fitTag={tag}>{tag}</span>
+							{/if}
+							<div class="tw">
+								<h1 class="title d float pop" use:fitName={tx(one.name)}>{tx(one.name)}</h1>
+							</div>
 						</div>
-					</div>
-				{:else}
-					<!-- the same height while it loads: nothing jumps -->
-					<span class="pic" aria-hidden="true"></span>
-				{/if}
-			{/key}
+					{:else}
+						<!-- the same height while it loads: nothing jumps -->
+						<span class="pic" aria-hidden="true"></span>
+					{/if}
+				{/key}
+			{/if}
+			{#if picks.length}
+				<button
+					class="more chip"
+					aria-label={t('addMaps')}
+					disabled={!!busy}
+					onclick={() => (readyOpen = true)}
+				>
+					<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+					<span class="more-l">{t('addMaps')}</span>
+				</button>
+			{/if}
 		</header>
 
 		{#if waiting || offline || banned}
@@ -300,8 +465,16 @@
 			</div>
 		{/if}
 
-		<!-- the heart: the map; a tap zooms in, in place; its gold button chooses -->
-		<HomeMap bind:this={homeMap} bind:zoomed map={current} onchoose={choose} />
+		<!-- the heart: the map; a tap zooms in, in place; "Tanlash" adds the place on screen -->
+		<HomeMap
+			bind:this={homeMap}
+			bind:shownPlace
+			{picks}
+			{ownList}
+			locked={!!busy}
+			onpick={add}
+			onunpick={remove}
+		/>
 
 		<!-- how much is known here: one gold line, only after the first game -->
 		{#if progress && progress.unit === 'street'}
@@ -343,19 +516,22 @@
 			<button
 				class="btn btn-primary play"
 				class:breathe={newPlayer && !busy}
-				disabled={!current || !!busy || banned}
+				disabled={!canPlay}
 				onclick={() => go('solo')}
 			>
 				{#if busy === 'solo'}
-					<span class="spinner"></span>
+					<span class="spinner" aria-hidden="true"></span>
 				{/if}
-				<span class="lbl">{t('play')}</span>
+				<span class="play-text">
+					<span class="lbl">{t('play')}</span>
+					{#if playName}<span class="play-name">{playName}</span>{/if}
+				</span>
 			</button>
 		</div>
 
 		<!-- quiet, side by side: friends, and a friend's code -->
 		<div class="chips">
-			<button class="chip" disabled={!current || !!busy || banned} onclick={() => go('friends')}>
+			<button class="chip" disabled={!canPlay} onclick={() => go('friends')}>
 				{#if busy === 'friends'}
 					<span class="spinner small"></span>
 				{:else}
@@ -420,6 +596,41 @@
 	</main>
 </div>
 
+<!-- the ready maps, each with its face: a tap adds it to the list -->
+<Sheet open={readyOpen} onclose={() => (readyOpen = false)} title={t('addMaps')}>
+	<div class="ready">
+		{#each ready as m (m.slug)}
+			{@const inList = ownList ? picks.find((p) => p.map === m.slug) : undefined}
+			<button
+				class="rrow"
+				class:on={!!inList}
+				disabled={!!busy || !!inList}
+				style:--pc={inList ? colorOf(inList) : undefined}
+				onclick={() => {
+					if (add(pickOfMap(m))) readyOpen = false;
+				}}
+			>
+				<span class="rpic" aria-hidden="true"
+					><PlaceInParent
+						{...faceOf(pickOfMap(m))}
+						on="panel"
+						color={inList ? colorOf(inList) : undefined}
+					/></span
+				>
+				<span class="rtext">
+					<b>{tx(m.name)}</b>
+					<span>{tx(m.description)}</span>
+				</span>
+				{#if inList}
+					<svg class="tick" viewBox="0 0 24 24" aria-hidden="true"
+						><path d="M5 12.5l4.5 4.5L19 7.5" /></svg
+					>
+				{/if}
+			</button>
+		{/each}
+	</div>
+</Sheet>
+
 <Sheet open={settingsOpen} onclose={() => (settingsOpen = false)} title={t('setup')}>
 	<RulesForm bind:choice {canMove} />
 	<button class="btn btn-primary done" onclick={() => (settingsOpen = false)}
@@ -459,8 +670,9 @@
 		text-decoration: underline;
 	}
 
-	/* where you'll play: the place's picture beside a gold tag over its name, which floats on
-	   the stacked shadow. The block keeps one height whatever the name: nothing round it moves */
+	/* what you'll play: one place's picture beside a gold tag over its name, which floats on the
+	   stacked shadow; several places, a row of pictures. The block keeps one height whatever the
+	   list: nothing round it moves */
 	.place {
 		grid-area: place;
 		display: flex;
@@ -474,12 +686,109 @@
 		width: 84px;
 		height: 72px;
 		flex: none;
-		/* milk tiles on the ground, the place in gold, like the map */
+		padding: 0;
+		border: none;
+		background: none;
+		/* milk tiles on the ground, the place in its pick colour, like the map */
 		--pip-tile: var(--tile-a);
-		--pip-on: var(--gold);
-		--pip-edge: var(--gold-lo);
-		--pip-ring: var(--gold-lo);
 		filter: drop-shadow(0 3px 0 var(--map-shadow)) drop-shadow(0 0 8px var(--map-glow));
+	}
+	button.pic:active {
+		transform: scale(0.95);
+	}
+	/* the picked places, a row of their pictures; each × a small milk coin on its corner (a
+	   finger's 34 px round it) */
+	.picks {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		list-style: none;
+	}
+	.pk {
+		position: relative;
+		flex: 0 1 62px;
+		min-width: 0;
+		--pip-tile: var(--tile-a);
+	}
+	.pk-go {
+		display: block;
+		width: 100%;
+		padding: 0;
+		border: none;
+		background: none;
+		color: inherit;
+		transition: transform 0.12s var(--out);
+	}
+	.pk-go:active {
+		transform: scale(0.94);
+	}
+	.pk-pic {
+		display: block;
+		height: 54px;
+		filter: drop-shadow(0 3px 0 var(--map-shadow)) drop-shadow(0 0 6px var(--map-glow));
+		animation: pop-pic 0.45s var(--spring);
+	}
+	.pk-name {
+		display: none;
+	}
+	.pk-x {
+		position: absolute;
+		top: -8px;
+		right: -6px;
+		width: 22px;
+		height: 22px;
+		padding: 0;
+		border: none;
+		border-radius: 50%;
+		background: var(--panel);
+		color: var(--ink);
+		display: grid;
+		place-items: center;
+		box-shadow:
+			0 0 0 1.5px color-mix(in srgb, var(--pc) 70%, transparent),
+			0 2px 0 var(--stack-2);
+	}
+	.pk-x::before {
+		content: '';
+		position: absolute;
+		inset: -6px;
+		border-radius: 50%;
+	}
+	.pk-x svg,
+	.more svg {
+		width: 13px;
+		height: 13px;
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 3.2;
+		stroke-linecap: round;
+	}
+	.pk-x:active {
+		transform: scale(0.9);
+	}
+	/* "+": the ready maps; a round glass key at the end of the row */
+	.more {
+		flex: none;
+		width: 40px;
+		height: 40px;
+		margin-left: auto;
+		border-radius: 50%;
+		display: grid;
+		place-items: center;
+		transition: transform 0.12s var(--out);
+	}
+	.more:active {
+		transform: scale(0.92);
+	}
+	.more svg {
+		width: 18px;
+		height: 18px;
+		stroke-width: 2.8;
+	}
+	.more-l {
+		display: none;
 	}
 	.words {
 		flex: 1;
@@ -688,6 +997,24 @@
 	}
 	.play {
 		width: 100%;
+	}
+	.play-text {
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 2px;
+		line-height: 1.1;
+	}
+	.play-name {
+		max-width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		font: 600 13px/1.25 var(--f-text);
+		letter-spacing: normal;
+		text-transform: none;
+		opacity: 0.9;
 	}
 	.breathe {
 		animation: big-breathe 1.8s ease-in-out infinite;
@@ -912,10 +1239,67 @@
 		margin-top: 22px;
 	}
 
+	/* the ready maps, in the sheet: milk-2 rows, each its face, name and what it is */
+	.ready {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.rrow {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+		min-height: 64px;
+		padding: 8px 14px 8px 10px;
+		border: none;
+		border-radius: var(--r-s);
+		background: var(--panel-2);
+		color: var(--ink);
+		text-align: left;
+		box-shadow: inset 0 0 0 1.5px var(--panel-line);
+		transition: transform 0.12s var(--out);
+	}
+	.rrow:active:not(:disabled) {
+		transform: scale(0.98);
+	}
+	.rrow.on {
+		box-shadow: inset 0 0 0 2.5px var(--pc);
+	}
+	.rpic {
+		width: 58px;
+		height: 50px;
+		flex: none;
+	}
+	.rtext {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+	}
+	.rtext b {
+		font-size: 17px;
+		line-height: 1.25;
+	}
+	.rtext span {
+		font-size: 13.5px;
+		color: var(--ink-2);
+	}
+	.tick {
+		width: 24px;
+		height: 24px;
+		flex: none;
+		fill: none;
+		stroke: var(--pc);
+		stroke-width: 3.2;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+
 	/* a short phone: tighter; if it still doesn't fit, the map keeps its size and the page
 	   scrolls under the key (the last game and the credits go below the fold, never the key) */
 	@media (max-height: 700px) and (max-width: 960px) {
-		/* the map stays big enough to tap (the gold button needs its corner): the page scrolls a
+		/* the map stays big enough to tap ("Tanlash" needs its corner): the page scrolls a
 		   little sooner for a returning player, the key still in sight */
 		.grid {
 			grid-template-rows: auto auto auto minmax(230px, 1fr) auto auto auto auto auto auto;
@@ -940,7 +1324,7 @@
 	}
 
 	/* a laptop: the left column carries the words and the key; the map takes all the rest, its
-	   square at its top left and its gold button at its bottom right */
+	   square at its top left and "Tanlash" at its bottom right */
 	@media (min-width: 961px) {
 		.home {
 			max-width: none;
@@ -973,10 +1357,105 @@
 			height: auto;
 			min-height: 128px;
 			margin-top: 14px;
+			display: grid;
+			grid-template-columns: auto minmax(0, 1fr);
+			column-gap: 14px;
+			row-gap: 6px;
 		}
 		.pic {
 			width: 96px;
 			height: 96px;
+		}
+		/* several places: a column of rows, picture, name, × */
+		.picks {
+			grid-column: 1 / -1;
+			flex-direction: column;
+			align-items: stretch;
+			gap: 2px;
+			max-height: min(400px, 46vh);
+			overflow-y: auto;
+			margin: 0 -8px;
+			padding: 2px 0;
+		}
+		.pk {
+			flex: none;
+			display: flex;
+			align-items: center;
+			gap: 6px;
+		}
+		.pk-go {
+			flex: 1;
+			min-width: 0;
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			padding: 5px 8px;
+			border-radius: var(--r-s);
+			text-align: left;
+			transition: background 0.15s;
+		}
+		.pk-go:hover {
+			background: var(--chip-bg);
+		}
+		.pk-go:active {
+			transform: none;
+		}
+		.pk-pic {
+			width: 46px;
+			height: 40px;
+			flex: none;
+		}
+		.pk-name {
+			display: block;
+			min-width: 0;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+			color: var(--on-ground);
+			font-family: var(--f-disp);
+			font-weight: 900;
+			font-size: 19px;
+		}
+		.pk-x {
+			position: relative;
+			top: auto;
+			right: auto;
+			width: 34px;
+			height: 34px;
+			flex: none;
+			background: var(--chip-bg);
+			color: var(--on-ground);
+			box-shadow: inset 0 0 0 1.5px var(--chip-line);
+		}
+		.pk-x::before {
+			display: none;
+		}
+		/* "+ Tayyor xaritalar": a quiet row under the list */
+		.more {
+			grid-column: 1 / -1;
+			justify-self: start;
+			width: auto;
+			height: 40px;
+			margin: 4px 0 0 -6px;
+			padding: 0 14px 0 10px;
+			border-radius: var(--r-s);
+			display: inline-flex;
+			gap: 8px;
+			background: none;
+			box-shadow: none;
+			color: var(--on-ground-2);
+			font-weight: 700;
+			font-size: 15px;
+		}
+		.more:hover {
+			background: var(--chip-bg);
+		}
+		.more-l {
+			display: inline;
+		}
+		.more svg {
+			width: 16px;
+			height: 16px;
 		}
 		.tw {
 			white-space: normal;

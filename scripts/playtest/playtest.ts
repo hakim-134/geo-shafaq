@@ -9,8 +9,9 @@
 // host and two friends, each in their own browser, play a room on "O‘rta" to its end: one
 // friend comes by the link, the other types the code after "Kodim bor"; the first takes a
 // hint; the rounds go on by the ring, "Hozir", and a hold; the host's "Yana o‘ynash" takes
-// everyone into the next game), places (the home's map zooms in place → Tashkent → Chilonzor chosen → a game
-// there), challenge (a finished game's link → two friends as guests play it → one leaderboard),
+// everyone into the next game), places (the owner's done-check of the map picker: the home's map → Tashkent →
+// Yunusobod → "Tanlash" → the square up to the country → Buxoro → "Tanlash" → up → Samarqand → "Tanlash" →
+// the three on the map and in the list → "O‘ynash" → one round → its result), challenge (a finished game's link → two friends as guests play it → one leaderboard),
 // missed (a game guessed far off → "Adashgan ko‘chalarim" → found on the spot, each street leaves the
 // list until none is left), shop (a street found earns Barg; the shop: too little, then bought and worn;
 // the skins in a game, the frame in a room, a challenge won on the framed player's board).
@@ -338,15 +339,16 @@ async function solo(browser: Browser, view: View, dir: string) {
 
 async function places(browser: Browser, view: View, dir: string) {
 	const p = new Player(view, 'places', dir);
-	await p.open(browser);
+	await p.open(browser); // fresh browser context with no saved choice
 	const J = 'places';
 
-	// the home's own map (2026-11-19): a tap zooms in place, the small square at its top left
-	// goes back, a tap marks a district, the gold "Shu joyni tanlash" chooses it, and the place
-	// above the map becomes it; nothing round the map moves, and "O‘ynash" plays it
+	// the map picker (P1111 1.3), as the owner checks it: three places of two levels picked in a
+	// few taps, each in its own colour on the map and in the list, and "O‘ynash" plays them. A
+	// tap zooms in place, the small square at the top left goes up one level, "Tanlash" adds the
+	// place on screen; nothing round the map moves.
 	p.begin();
 	await p.go('/');
-	await p.find('.msvg [data-s]');
+	await p.find('.msvg [role=button][aria-label]');
 	await sleep(1500);
 	// where the things round the map stand: the rules line, the key's box (not the key, which
 	// breathes for a new player), the quiet buttons
@@ -360,33 +362,75 @@ async function places(browser: Browser, view: View, dir: string) {
 	const moved = (a: number[][], b: number[][]) =>
 		a.length !== b.length || a.some((r, i) => r.some((v, k) => Math.abs(v - b[i][k]) > 4));
 	const still = await around();
-	await p.shot(J, 'map-country');
+	await p.shot(J, 'map-country', 'the home at rest: the map of Uzbekistan, no way up');
 
-	// Tashkent: a round badge on the country
-	await p.tap(await p.find('.bdg[data-s="toshkent"]'));
-	await p.find('.msvg [data-d="chilonzor-tumani"]');
+	// a place on the map, by the name it is read by
+	const place = (name: string) => p.find(`.msvg [role=button][aria-label="${name}"]`);
+	const listedFaces = () =>
+		p.page.$$eval('.place button.pic, .place .pk-go', (faces) =>
+			faces.map((face) => face.getAttribute('aria-label'))
+		);
+	const pick = async (name: string) => {
+		await p.tap(await p.findText(/^\W*tanlash$/i, 5000));
+		await sleep(1200);
+		const ok = await p.findText(/tanlangan/i, 5000).catch(() => null);
+		if (!ok)
+			problems.push(`${view.name} places: after "Tanlash" on ${name}, it doesn't say "Tanlangan"`);
+	};
+	const up = async () => {
+		await p.tap(await p.find('.mback:not(.off)'));
+		await sleep(900);
+	};
+
+	// Tashkent: a round badge on the country; in it, Yunusobod
+	await p.tap(await place('Toshkent'));
+	await place('Yunusobod tumani');
 	await sleep(1200);
-	await p.shot(J, 'map-tashkent', 'zoomed in place: the square at the top left goes back');
+	await p.shot(J, 'map-tashkent', "zoomed in place: Tashkent's districts, the square goes up");
 	if (moved(still, await around()))
 		problems.push(`${view.name} places: something round the map moved when it zoomed in`);
-
-	await p.tap(await p.find('.msvg [data-d="chilonzor-tumani"]'));
-	await sleep(600);
-	await p.shot(J, 'map-district', 'Chilonzor marked: the gold button chooses it');
-	await p.tap(await p.find('.mchoose:not(.off)'));
-	await sleep(1500);
-	const title = await p.page.evaluate(
-		() => document.querySelector('main h1.title, main h1')?.textContent ?? ''
-	);
-	if (!/Chilonzor/.test(title))
+	await p.tap(await place('Yunusobod tumani'));
+	await sleep(1200);
+	await p.shot(J, 'map-yunusobod', 'a district fills the box: "Tanlash"');
+	await pick('Yunusobod');
+	const first = await listedFaces();
+	if (first.length !== 1 || first[0] !== 'Yunusobod tumani')
 		problems.push(
-			`${view.name} places: after choosing, the place above the map says "${title.trim()}"`
+			`${view.name} places: after the first "Tanlash", the list says ${JSON.stringify(first)}`
 		);
-	await p.shot(J, 'chosen', 'Chilonzor chosen: its name and picture above the map');
 
-	await p.tap(await p.find('.go .play:not([disabled])'));
+	// up to the country: Yunusobod → Tashkent → Toshkent viloyati → Uzbekistan
+	await up();
+	await up();
+	await p.shot(J, 'map-region', 'up from Tashkent: its region, the city one tile in it');
+	await up();
+	if (await p.has('.mback:not(.off)'))
+		problems.push(`${view.name} places: three taps up from Yunusobod are not the country`);
+
+	await p.tap(await place('Buxoro viloyati'));
+	await sleep(1200);
+	await pick('Buxoro');
+	await up();
+	await p.tap(await place('Samarqand viloyati'));
+	await sleep(1200);
+	await pick('Samarqand');
+	await p.shot(J, 'map-samarqand', 'Samarqand picked, in its colour');
+	await up();
+	await sleep(1500); // the list's answer (the mix of the three)
+	const listed = await listedFaces();
+	const want = ['Yunusobod tumani', 'Buxoro viloyati', 'Samarqand viloyati'];
+	if (listed.length !== want.length || want.some((name, i) => listed[i] !== name))
+		problems.push(`${view.name} places: the list says ${JSON.stringify(listed)}`);
+	const play = await p.findText(/^(?:O‘YNASH|O‘ynash)\s+Yunusobod · Buxoro · Samarqand$/);
+	await p.shot(J, 'picked-three', `${p.taps} taps: the three on the map and in the list`);
+
+	await p.tap(play);
 	const wait = await p.roundReady();
-	await p.shot(J, 'round-in-district', `a street in a district, playable ${wait} s after the tap`);
+	await p.shot(J, 'round-1', `a street in one of the three, playable ${wait} s after the tap`);
+	await p.guess(0, 0);
+	await p.find('.next', 20000);
+	await sleep(4000); // the reveal
+	await p.shot(J, 'result-1', "the first round's result");
 	await p.page.close();
 }
 
@@ -628,8 +672,8 @@ async function challenge(browser: Browser, view: View, dir: string) {
 		await p.go('/');
 		await sleep(1500);
 		const counts = await p.page.evaluate(
-				() => (document.querySelector('.count') as HTMLElement | null)?.innerText ?? ''
-			);
+			() => (document.querySelector('.count') as HTMLElement | null)?.innerText ?? ''
+		);
 		const wantCount = p === friend2 ? /1 \/ \d+/ : /^(?!.*0 \/)/s;
 		if (!wantCount.test(counts)) problems.push(`${view.name} ${p.who}: the home says "${counts}"`);
 		await p.shot(J, 'home', p === friend2 ? 'one street learned' : 'none learned: no 0 / 177');
@@ -719,7 +763,8 @@ async function missed(browser: Browser, view: View, dir: string) {
 	await p.go('/me');
 	await p.find('figure.city path.shape');
 	await sleep(1200);
-	if (await p.has('nav.missed a')) problems.push(`${view.name} missed: the way there is under my map`);
+	if (await p.has('nav.missed a'))
+		problems.push(`${view.name} missed: the way there is under my map`);
 	await p.go('/me/streets');
 	await sleep(1000);
 	await p.shot(J, 'my-streets', 'my streets with the way to the missed streets');
@@ -1054,7 +1099,7 @@ async function main() {
 	await writeFile(join(out, 'problems.txt'), problems.join('\n') + '\n');
 	console.log(`\n${steps.length} screens in ${out}/<view>/, the numbers in ${out}/steps.json`);
 	for (const s of steps.filter((s) =>
-		/-(solo-round-1|host-lobby-alone|host-invite|friend-lobby|friend2-lobby-by-code|round-in-district)\.png$/.test(
+		/-(solo-round-1|host-lobby-alone|host-invite|friend-lobby|friend2-lobby-by-code|places-picked-three|places-round-1)\.png$/.test(
 			s.file
 		)
 	))
