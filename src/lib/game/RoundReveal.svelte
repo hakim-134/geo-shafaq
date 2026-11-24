@@ -30,6 +30,8 @@
 		heading?: number; // the round's first heading: the plaque's panorama link faces it
 		crowd?: number; // the average distance of the round's guesses: the ring on the map
 		go: boolean;
+		fiveK?: boolean;
+		ondone?: () => void;
 		earned?: Schemas['Earned'][]; // Barg this guess earned
 		children?: Snippet;
 	}
@@ -48,6 +50,8 @@
 		heading,
 		crowd,
 		go,
+		fiveK = score === 5000,
+		ondone,
 		earned = [],
 		children
 	}: Props = $props();
@@ -84,10 +88,10 @@
 	let party = $state(false);
 	$effect(() => {
 		if (!go) return;
-		if (perfect || earned.some((e) => e.reason === 'district')) {
+		if (!fiveK && (perfect || earned.some((e) => e.reason === 'district'))) {
 			party = true;
 			setTimeout(sfxFanfare, 350);
-		} else if (!stars) setTimeout(sfxFar, 200);
+		} else if (!fiveK && !stars) setTimeout(sfxFar, 200);
 		if (learned) setTimeout(sfxLearned, 900);
 	});
 </script>
@@ -100,10 +104,10 @@
 			</div>
 			<h2 class="verdict d" class:perfect>{title}</h2>
 		</div>
-		<Stars n={stars} {go} delay={200} />
+		<Stars n={stars} {go} delay={200} quiet={fiveK && score !== 5000} />
 	</div>
 
-	<ScoreCount {score} {base} {hints} {cost} max={5000} {go} delay={350} />
+	<ScoreCount {score} {base} {hints} {cost} max={5000} {go} {ondone} delay={350} />
 
 	<div class="facts">
 		<p class="far" class:nopin={!far}>
@@ -142,7 +146,8 @@
 		{#if e.reason === 'district'}
 			<p class="district">
 				<!-- the district's face: the biggest moment names its place by its picture too -->
-				{#if place.slug}<span class="face"><PlaceInParent place={place.slug} on="panel" /></span>{/if}
+				{#if place.slug}<span class="face"><PlaceInParent place={place.slug} on="panel" /></span
+					>{/if}
 				<span class="what">{t('districtWon', { name: e.note ?? '' })}</span>
 				<span class="plus d">+{e.amount} <Coin size={20} /></span>
 			</p>

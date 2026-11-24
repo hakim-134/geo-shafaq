@@ -6,12 +6,13 @@
 		addBorder,
 		bounds,
 		circleBox,
-		COLORS,
 		countryShape,
 		createMap,
 		hintArea,
 		hintCircle,
 		marker,
+		pickBorder,
+		pickBounds,
 		placeShape,
 		shapeBox,
 		yandexType,
@@ -19,19 +20,21 @@
 		type Layer,
 		type YMap
 	} from './map.js';
+	import { pickColorToken, type PickOutline } from '#lib/maps/picks.js';
 	import type { Hint, LatLon } from '#lib/api/client.js';
 	import { pinColor } from '#lib/barg/skins.js';
 	import { i18n } from '#lib/i18n/index.svelte.js';
 
 	interface Props {
 		bbox: BBox;
+		outlines: PickOutline[];
 		layer: Layer;
 		hints: Hint[];
 		guess: LatLon | null;
 		active: boolean;
 		onpick: (p: LatLon) => void;
 	}
-	let { bbox, layer, hints, guess, active, onpick }: Props = $props();
+	let { bbox, outlines, layer, hints, guess, active, onpick }: Props = $props();
 
 	let el: HTMLDivElement;
 	let map = $state<YMap | null>(null);
@@ -39,6 +42,7 @@
 	let pinMark: any = null;
 	let circles: any[] = [];
 	let moved = false; // the player panned or zoomed since the round began
+	let pickBox = $state.raw<BBox | null>(null);
 	let focus: BBox | null = null; // the last hint's area: the map keeps it in view as it grows
 
 	onMount(() => {
@@ -78,6 +82,39 @@
 
 	$effect(() => {
 		map?.setType(yandexType(layer));
+	});
+
+	$effect(() => {
+		const m = map;
+		if (!m || outlines.length < 2) return;
+		const colors = getComputedStyle(el);
+		const milk = colors.getPropertyValue('--tile-a').trim();
+		const borders: any[] = [];
+		let gone = false;
+		const drawn = outlines.map(async ({ slug, color }) => {
+			const stroke = colors.getPropertyValue(pickColorToken(color)).trim();
+			const shape = await placeShape(slug);
+			const parts = await pickBorder(shape, stroke, milk);
+			if (!gone)
+				for (const part of parts) {
+					m.geoObjects.add(part);
+					borders.push(part);
+				}
+			return shape;
+		});
+		Promise.all(drawn).then(
+			(shapes) => {
+				if (gone) return;
+				pickBox = pickBounds(shapes);
+				if (pickBox && !focus && !moved && !guess) refit();
+			},
+			() => {}
+		); // keep the map-wide view if one of the places could not be framed
+		return () => {
+			gone = true;
+			pickBox = null;
+			for (const border of borders) m.geoObjects.remove(border);
+		};
 	});
 
 	$effect(() => {
@@ -138,13 +175,20 @@
 		m.setBounds(bounds(box), { duration: 400 });
 	}
 
+	function frameArea(m: YMap) {
+		if (pickBox) m.setBounds(bounds(pickBox), { zoomMargin: 16, preciseZoom: true });
+		else m.setBounds(bounds(bbox));
+	}
+
 	/** Measures the box again and shows the hint's area or the whole one, unless the player
 	 *  has moved the map. Called when the box changes size, and on a phone once the sheet has
 	 *  finished sliding up: the map was laid out while the sheet was hidden below the screen. */
 	export function refit() {
 		if (!map) return;
 		map.container.fitToViewport(true);
-		if (!moved && (focus || !guess)) map.setBounds(bounds(focus ?? bbox));
+		if (moved) return;
+		if (focus) map.setBounds(bounds(focus));
+		else if (!guess) frameArea(map);
 	}
 
 	/** Back to the whole map, e.g. at the start of a round. */
@@ -152,11 +196,15 @@
 		moved = false;
 		focus = null;
 		map?.container.fitToViewport();
-		map?.setBounds(bounds(bbox));
+		if (map) frameArea(map);
 	}
 </script>
 
-<div class="guess-map ymap" bind:this={el}></div>
+<div
+	class="guess-map ymap"
+	data-pick-bounds-ready={pickBox ? true : undefined}
+	bind:this={el}
+></div>
 
 <style>
 	.guess-map {

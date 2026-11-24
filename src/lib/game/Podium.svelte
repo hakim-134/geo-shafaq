@@ -7,15 +7,17 @@
 	import { t } from '#lib/i18n/index.svelte.js';
 	import { fmtNum } from '#lib/format.js';
 	import { sfxFanfare, sfxStep } from '#lib/sfx.svelte.js';
+	import RenameButton from './RenameButton.svelte';
 	import Confetti from './Confetti.svelte';
 
 	interface Props {
 		standings: RoomPlayer[]; // best first
 		you: string;
 		colorOf: (id: string) => string;
+		onrename?: () => void;
 		costOf?: (id: string) => number; // the points a player's hints took, shown under the total
 	}
-	let { standings, you, colorOf, costOf = () => 0 }: Props = $props();
+	let { standings, you, colorOf, onrename, costOf = () => 0 }: Props = $props();
 
 	// when each step rises (ms): third, second, first
 	const AT = [300, 1000, 1700];
@@ -28,9 +30,10 @@
 	const myPlace = $derived(mine ? placeOf(mine) : 0);
 	const anyScore = $derived(standings.some((p) => p.total > 0));
 
+	const stepCount = $derived(top.length);
 	let party = $state(false);
 	$effect(() => {
-		const n = top.length;
+		const n = stepCount;
 		const timers = [2, 1, 0]
 			.filter((i) => i < n)
 			.map((i) => setTimeout(() => (i === 0 ? sfxFanfare() : sfxStep(2 - i)), AT[2 - i]));
@@ -62,7 +65,13 @@
 					<span class="avatar ring" style:--ring={colorOf(p.id)} data-frame={p.frame}
 						><em class="pc"></em>{p.avatar}</span
 					>
-					<span class="name">{p.name}</span>
+					<span class="name"
+						>{#if p.id === you && onrename}<RenameButton
+								name={p.name}
+								onclick={onrename}
+								row
+							/>{:else}{p.name}{/if}</span
+					>
 					<b class="d">{fmtNum(p.total)}</b>
 					{#if costOf(p.id)}<span class="pill">💡 −{fmtNum(costOf(p.id))}</span>{/if}
 				</span>
@@ -79,7 +88,13 @@
 					<span class="avatar ring" style:--ring={colorOf(p.id)} data-frame={p.frame}
 						><em class="pc"></em>{p.avatar}</span
 					>
-					<span class="name">{p.name}</span>
+					<span class="name"
+						>{#if p.id === you && onrename}<RenameButton
+								name={p.name}
+								onclick={onrename}
+								row
+							/>{:else}{p.name}{/if}</span
+					>
 					{#if costOf(p.id)}<span class="pill">💡 −{fmtNum(costOf(p.id))}</span>{/if}
 					<b class="d">{fmtNum(p.total)}</b>
 				</li>
@@ -147,6 +162,7 @@
 		margin: 0 auto;
 	}
 	.step {
+		position: relative;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -284,6 +300,7 @@
 		animation-delay: 2.2s;
 	}
 	.rest li {
+		position: relative;
 		min-height: 54px;
 		gap: 10px;
 		padding: 8px 14px 8px 12px;

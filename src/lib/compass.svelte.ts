@@ -23,14 +23,7 @@ export function setCompassStyle(s: CompassStyle) {
 	saveToAccount(s);
 }
 
-/** The next style, for a tap on the compass during a game. */
-export function nextCompassStyle(): CompassStyle {
-	const s = COMPASS_STYLES[(COMPASS_STYLES.indexOf(compass.style) + 1) % COMPASS_STYLES.length];
-	setCompassStyle(s);
-	return s;
-}
-
-// a few quick taps on the compass make one save
+// Debounce quick changes in the style selector.
 let timer: ReturnType<typeof setTimeout> | undefined;
 function saveToAccount(s: CompassStyle) {
 	clearTimeout(timer);

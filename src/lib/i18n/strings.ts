@@ -385,7 +385,13 @@ const uz = {
 	pages: 'Sahifalar',
 	prevPage: 'Oldingi sahifa',
 	nextPage: 'Keyingi sahifa',
-	tipsOn: 'Keyingi o‘yinda chiqadi'
+	tipsOn: 'Keyingi o‘yinda chiqadi',
+	// P1111 2.2–2.4
+	compassNorth: 'Shimolga qarash',
+	compassOn: 'Bor',
+	yourName: 'Ismingiz: {name}',
+	fiveKYou: 'Siz!',
+	fiveKAnd: '{a} va {b}'
 };
 
 export type Key = keyof typeof uz;
@@ -763,7 +769,12 @@ const en: Dict = {
 	pages: 'Pages',
 	prevPage: 'Previous page',
 	nextPage: 'Next page',
-	tipsOn: 'On for your next game'
+	tipsOn: 'On for your next game',
+	compassNorth: 'Face north',
+	compassOn: 'On',
+	yourName: 'Your name: {name}',
+	fiveKYou: 'You!',
+	fiveKAnd: '{a} and {b}'
 };
 
 const ru: Dict = {
@@ -1138,7 +1149,12 @@ const ru: Dict = {
 	pages: 'Страницы',
 	prevPage: 'Предыдущая страница',
 	nextPage: 'Следующая страница',
-	tipsOn: 'Включатся в следующей игре'
+	tipsOn: 'Включатся в следующей игре',
+	compassNorth: 'Смотреть на север',
+	compassOn: 'Есть',
+	yourName: 'Ваше имя: {name}',
+	fiveKYou: 'Вы!',
+	fiveKAnd: '{a} и {b}'
 };
 
 export const strings: Record<Lang, Dict> = { uz, ru, en };

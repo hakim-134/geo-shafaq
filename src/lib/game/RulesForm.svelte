@@ -4,7 +4,7 @@
 	// No sentences: a tile says what it is. The home's, and a room host's between games; it
 	// lives in a Sheet, so it is ink on milk: milk tiles with a lip, the chosen one a green rim
 	// and a tick, the numbers in the leaning display letters.
-	import { t, type Key } from '#lib/i18n/index.svelte.js';
+	import { t } from '#lib/i18n/index.svelte.js';
 	import { fmtClock } from '#lib/format.js';
 	import {
 		ROUND_TILES,
@@ -16,7 +16,6 @@
 		type Choice,
 		type Preset
 	} from '#lib/rules.js';
-	import { compass, setCompassStyle, COMPASS_STYLES } from '#lib/compass.svelte.js';
 
 	// canMove: the map's panoramas let the player walk
 	let { choice = $bindable(), canMove }: { choice: Choice; canMove: boolean } = $props();
@@ -24,11 +23,6 @@
 	const presets: Preset[] = ['easy', 'normal', 'hard'];
 	let more = $state(false);
 
-	const compassValue = $derived(choice.compass ? compass.style : 'none');
-	function pickCompass(v: string) {
-		choice.compass = v !== 'none';
-		if (v !== 'none') setCompassStyle(v as typeof compass.style);
-	}
 	const costLabel = (c: number) => (c ? `−${Math.round(c * 100)}%` : t('costFree'));
 	const bars = { easy: 1, normal: 2, hard: 3 } as const;
 </script>
@@ -158,9 +152,9 @@
 			<div>
 				<div class="field-label">{t('compass')}</div>
 				<div class="segmented">
-					{#each [...COMPASS_STYLES, 'none'] as c (c)}
-						<button aria-pressed={compassValue === c} onclick={() => pickCompass(c)}
-							>{c === 'none' ? t('compassNone') : t(`compass_${c}` as Key)}</button
+					{#each [true, false] as on (on)}
+						<button aria-pressed={choice.compass === on} onclick={() => (choice.compass = on)}
+							>{on ? t('compassOn') : t('compassNone')}</button
 						>
 					{/each}
 				</div>

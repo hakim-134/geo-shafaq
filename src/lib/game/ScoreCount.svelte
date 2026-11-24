@@ -14,6 +14,7 @@
 		max: number;
 		go?: boolean;
 		delay?: number;
+		ondone?: () => void;
 		big?: boolean;
 		base?: number; // the score before hints, when they took points
 		hints?: number;
@@ -24,6 +25,7 @@
 		max,
 		go = true,
 		delay = 0,
+		ondone,
 		big = false,
 		base,
 		hints = 0,
@@ -50,12 +52,14 @@
 			const start = performance.now();
 			raf = requestAnimationFrame(function step(now) {
 				const k = Math.min((now - start) / ms, 1);
-				shown = a + (b - a) * ease(k);
+				const value = a + (b - a) * ease(k);
+				shown = b >= a ? Math.floor(value) : Math.ceil(value);
 				if (tick && now - lastTick > 75 && k < 1 && b > 0) {
 					lastTick = now;
 					sfxTick(k);
 				}
 				if (k < 1) raf = requestAnimationFrame(step);
+				else if (b === target) ondone?.();
 			});
 		};
 		timers.push(

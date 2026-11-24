@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { loadChoice, rulesFor, type Choice } from './rules.js';
+import { choiceFrom, loadChoice, rulesFor, type Choice } from './rules.js';
 
 const choice = (c: Partial<Choice> = {}): Choice => ({
 	map: 'x',
@@ -31,6 +31,10 @@ describe('rulesFor', () => {
 		const r = rulesFor(c);
 		expect(r).toMatchObject({ movement: 'nomove', compass: false });
 		expect(r.hints).toEqual({ count: 3, per: 'game', kind: 'circle', cost: 0.5 });
+	});
+	it.each([true, false])('round-trips the compass rule (%s) through the room form', (compass) => {
+		const rules = rulesFor(choice({ compass }));
+		expect(choiceFrom(rules, 'x').compass).toBe(compass);
 	});
 	it('names test providers only when asked', () => {
 		expect(rulesFor(choice(), ['demo']).providers).toEqual(['demo']);

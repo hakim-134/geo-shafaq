@@ -6,7 +6,9 @@ declare global {
 		// interface Error {}
 		// interface Locals {}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			pickColors?: { gameId: string; picks: { map: string; color: number }[] };
+		}
 		// interface Platform {}
 	}
 }

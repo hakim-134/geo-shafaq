@@ -21,6 +21,8 @@
 	import { loadChoice, rulesFor, saveChoice, testProviders } from '#lib/rules.js';
 	import Loader from '#lib/game/Loader.svelte';
 	import ResultLayout from '#lib/game/ResultLayout.svelte';
+	import FiveK from '#lib/game/FiveK.svelte';
+	import { fiveKVisible } from '#lib/game/five-k.svelte.js';
 	import RoundReveal from '#lib/game/RoundReveal.svelte';
 	import ScoreCount from '#lib/game/ScoreCount.svelte';
 	import Stars from '#lib/game/Stars.svelte';
@@ -59,6 +61,16 @@
 	const endless = $derived(game?.rules.rounds === 0);
 	const total = $derived(game?.total ?? 0);
 	const done = $derived(game?.rounds.filter((r) => r.result) ?? []);
+	let countedRound = $state<string>();
+	const perfectRound = $derived(
+		phase === 'result' && landed && result?.score === 5000 && game && round
+			? `solo:${game.id}:${round.n}`
+			: undefined
+	);
+	const showFiveK = fiveKVisible(
+		() => (countedRound === perfectRound ? perfectRound : undefined),
+		() => 0
+	);
 	const bbox = $derived((game?.map.bbox ?? [55.9, 37.1, 73.3, 45.7]) as BBox);
 	const status = $derived<Status>(
 		phase === 'playing'
@@ -212,8 +224,6 @@
 			upsertRound({ ...round, result: res });
 			landed = false;
 			phase = 'result';
-			// the map's reveal says when; without a map, a moment later anyway
-			setTimeout(() => (landed = true), 2600);
 		} catch (e) {
 			phase = 'playing';
 			showToast(t(errorKey(e)));
@@ -236,6 +246,13 @@
 			return false;
 		}
 	}
+
+	// The pin normally starts the reveal. Keep the map fallback scoped to this result.
+	$effect(() => {
+		if (phase !== 'result' || landed) return;
+		const timer = setTimeout(() => (landed = true), 2600);
+		return () => clearTimeout(timer);
+	});
 
 	// ---------- results ----------
 	async function showFinal(justFinished: boolean) {
@@ -452,6 +469,7 @@
 		<RoundView
 			bind:this={rv}
 			rules={game.rules}
+			map={game.map}
 			{bbox}
 			n={round?.n ?? done.length}
 			rounds={endless ? 0 : game.rules.rounds}
@@ -495,7 +513,11 @@
 					reveal
 					crowd={result!.crowd?.km}
 					onlanded={() => (landed = true)}
-				/>
+				>
+					{#snippet overlay(frame)}
+						{#if showFiveK()}<FiveK place={result!.place} {frame} />{/if}
+					{/snippet}
+				</ResultMap>
 			{/snippet}
 			<RoundReveal
 				n={round?.n ?? done.length}
@@ -512,6 +534,7 @@
 				heading={result.heading}
 				crowd={result.crowd?.km}
 				go={landed}
+				ondone={() => (countedRound = perfectRound)}
 				earned={result.earned ?? []}
 			/>
 			{#snippet actions()}

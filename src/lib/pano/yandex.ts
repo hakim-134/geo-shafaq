@@ -2,6 +2,7 @@
 // we check it is close enough and report it, so the server scores against what was shown.
 import { loadYmaps } from '#lib/ymaps.js';
 import { distanceKm, PanoError, type PanoViewer, type ViewerOptions } from './types';
+import { northTurn } from './north.js';
 import type { PanoView } from '#lib/api/client.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -26,8 +27,10 @@ export async function createYandex(el: HTMLElement, opts: ViewerOptions): Promis
 		});
 	};
 
+	const turn = northTurn(el);
 	return {
 		async open(view: PanoView) {
+			turn.stop();
 			if (!view.near) throw new PanoError('unsupported');
 			let found: any[];
 			try {
@@ -64,7 +67,13 @@ export async function createYandex(el: HTMLElement, opts: ViewerOptions): Promis
 			opts.onHeading(dir[0]);
 			return { pos: { lat, lon } };
 		},
+		faceNorth() {
+			if (!player || opts.movement === 'nmpz') return;
+			const [bearing, pitch] = player.getDirection();
+			turn.from(bearing, (next) => player.setDirection([next, pitch]));
+		},
 		reset() {
+			turn.stop();
 			if (!player || !start) return;
 			const s = start;
 			resetting = true;
@@ -74,6 +83,7 @@ export async function createYandex(el: HTMLElement, opts: ViewerOptions): Promis
 			});
 		},
 		destroy() {
+			turn.stop();
 			player?.destroy();
 			player = null;
 		}

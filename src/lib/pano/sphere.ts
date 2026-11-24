@@ -3,6 +3,7 @@
 import { Viewer } from '@photo-sphere-viewer/core';
 import '@photo-sphere-viewer/core/index.css';
 import { PanoError, type PanoViewer, type ViewerOptions } from './types';
+import { northTurn } from './north.js';
 import type { PanoView } from '#lib/api/client.js';
 import { apiUrl } from '#lib/config.js';
 
@@ -15,8 +16,10 @@ export async function createSphere(el: HTMLElement, opts: ViewerOptions): Promis
 	let viewer: Viewer | null = null;
 	let startYaw = 0;
 
+	const turn = northTurn(el);
 	return {
 		async open(view: PanoView) {
+			turn.stop();
 			if (!view.imageUrl) throw new PanoError('unsupported');
 			startYaw = rad(view.heading ?? 0);
 			try {
@@ -54,11 +57,19 @@ export async function createSphere(el: HTMLElement, opts: ViewerOptions): Promis
 			opts.onHeading(view.heading ?? 0);
 			return { pos: null };
 		},
+		faceNorth() {
+			if (!viewer || opts.movement === 'nmpz') return;
+			const camera = viewer;
+			const { yaw, pitch } = camera.getPosition();
+			turn.from(deg(yaw), (bearing) => camera.rotate({ yaw: rad(bearing), pitch }));
+		},
 		reset() {
+			turn.stop();
 			viewer?.rotate({ yaw: startYaw, pitch: 0 });
 			viewer?.zoom(50);
 		},
 		destroy() {
+			turn.stop();
 			viewer?.destroy();
 			viewer = null;
 		}

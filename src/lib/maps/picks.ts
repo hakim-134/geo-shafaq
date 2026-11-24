@@ -138,7 +138,28 @@ export function listOf(m: MapSummary, old: Pick[] = []): Pick[] {
 	return out;
 }
 
-export const pickColor = (pick: Pick) => 'var(--pick-' + pick.color + ')';
+export const pickColorToken = (color: number) => '--pick-' + color;
+export const pickColor = (pick: Pick) => `var(${pickColorToken(pick.color)})`;
+
+export interface PickOutline {
+	slug: string;
+	color: number;
+}
+
+/** One outline per place in a mix. A place picked on its own keeps its colour. */
+export function pickOutlines(map?: MapSummary, picked?: Pick[]): PickOutline[] {
+	if (!map?.parts || map.parts.length < 2) return [];
+	const owners = new Map<string, Pick>();
+	for (const pick of listOf(map, picked)) {
+		for (const slug of pick.places ?? []) {
+			const previous = owners.get(slug);
+			if (!previous || pick.map === `place-${slug}` || (pick.place === slug && !previous.place)) {
+				owners.set(slug, pick);
+			}
+		}
+	}
+	return owners.size < 2 ? [] : Array.from(owners, ([slug, pick]) => ({ slug, color: pick.color }));
+}
 
 export function pickFace(pick: NewPick) {
 	return pick.place

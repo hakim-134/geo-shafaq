@@ -93,7 +93,6 @@
 	svg {
 		width: 46px;
 		height: 46px;
-		transition: transform 0.08s linear;
 	}
 	.ring-line {
 		fill: none;
@@ -118,7 +117,6 @@
 		inset: 0;
 		border-radius: 50%;
 		border: 1.5px solid rgba(255, 255, 255, 0.22);
-		transition: transform 0.08s linear;
 	}
 	.animal {
 		position: absolute;
@@ -131,7 +129,6 @@
 		place-items: center;
 		font-size: 17px;
 		line-height: 1;
-		transition: transform 0.08s linear;
 	}
 	.look {
 		position: absolute;
@@ -156,7 +153,6 @@
 	.track {
 		position: absolute;
 		inset: 0;
-		transition: transform 0.08s linear;
 	}
 	.tick {
 		position: absolute;

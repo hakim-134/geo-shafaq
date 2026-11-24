@@ -80,6 +80,14 @@ export const sfxFanfare = () =>
 		tone(f, i === 3 ? 0.5 : 0.16, { gain: 0.09, type: 'triangle', delay: i * 0.09 })
 	);
 
+/** Four bright notes resolve into a high bell on an exact 5 000. */
+export function sfx5k() {
+	[1047, 1319, 1568, 2093].forEach((f, i) =>
+		tone(f, 0.22, { type: 'triangle', gain: 0.09, delay: i * 0.07 })
+	);
+	tone(3136, 0.8, { gain: 0.045, delay: 0.21 });
+}
+
 /** A friend comes into the room: a soft two-note pop. */
 export const sfxJoin = () => {
 	tone(587, 0.1, { gain: 0.08, type: 'triangle' });

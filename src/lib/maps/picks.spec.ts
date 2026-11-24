@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { MapSummary } from '#lib/api/client.js';
+import { pickBounds } from '#lib/map/map.js';
 import { loadChoice, saveChoice } from '#lib/rules.js';
 import {
 	addPick,
 	listOf,
+	pickOutlines,
 	MAX_PICKS,
 	removePick,
 	within,
@@ -132,9 +134,62 @@ describe('removePick', () => {
 	});
 });
 
+describe('pickBounds', () => {
+	it('frames all the picks, including detached pieces of a place', () => {
+		const ring = (x: number, y: number) => [
+			[x, y],
+			[x + 1, y],
+			[x, y + 1],
+			[x, y]
+		];
+		expect(
+			pickBounds([
+				{ type: 'Polygon', coordinates: [ring(64, 42)] },
+				{ type: 'MultiPolygon', coordinates: [[ring(67, 40)], [ring(70, 41)]] }
+			])
+		).toEqual([64, 40, 71, 43]);
+	});
+	it('leaves the original view when there are no polygons', () => {
+		expect(pickBounds([])).toBeNull();
+	});
+});
+
 describe('listOf', () => {
 	const summary = (m: Partial<MapSummary>): MapSummary =>
 		({ slug: 'x', name: T('x'), description: T(''), ...m }) as MapSummary;
+
+	it('keeps the single-place view when two maps cover the same place', () => {
+		const part = {
+			slug: 'place-buxoro-shahri',
+			name: T('Buxoro'),
+			places: ['buxoro-shahri'],
+			panoramas: 3
+		};
+		expect(pickOutlines(summary({ parts: [part, { ...part, slug: 'historic' }] }))).toEqual([]);
+	});
+
+	it.each([true, false])(
+		'gives Buxoro one outline in its own colour (city first: %s)',
+		(cityFirst) => {
+			const city = {
+				slug: 'place-buxoro-shahri',
+				name: T('Buxoro'),
+				places: ['buxoro-shahri'],
+				panoramas: 3
+			};
+			const historic = {
+				slug: 'historic',
+				name: T('Tarixiy'),
+				places: ['buxoro-shahri', 'xiva-tumani'],
+				panoramas: 9
+			};
+			const mix = summary({ parts: cityFirst ? [city, historic] : [historic, city] });
+			expect(pickOutlines(mix)).toEqual([
+				{ slug: 'buxoro-shahri', color: cityFirst ? 1 : 2 },
+				{ slug: 'xiva-tumani', color: cityFirst ? 2 : 1 }
+			]);
+		}
+	);
 
 	it('a place map: its place, and the places round it', () => {
 		const [p] = listOf(
@@ -182,6 +237,14 @@ describe('listOf', () => {
 			['place-samarqand-viloyati', 3],
 			['historic', 1]
 		]);
+		expect(pickOutlines(mix)).toEqual([
+			{ slug: 'buxoro-viloyati', color: 1 },
+			{ slug: 'samarqand-viloyati', color: 2 },
+			{ slug: 'buxoro-shahri', color: 3 },
+			{ slug: 'xiva-tumani', color: 3 }
+		]);
+		expect(pickOutlines(mix, old).map((part) => part.color)).toEqual([2, 3, 1, 1]);
+		expect(pickOutlines(summary({ places: ['buxoro-shahri', 'xiva-tumani'] }))).toEqual([]);
 		expect(l[0].path).toEqual(['uzbekistan']); // known from before
 		expect(l[2]).toMatchObject({ place: undefined, path: ['uzbekistan'] });
 		expect(maps(listOf(mix, list(historic, samarqand, buxoro)))).toEqual([

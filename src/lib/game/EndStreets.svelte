@@ -18,6 +18,7 @@
 	// never under it, the street in the leaning letters over its district, the stars and the
 	// points. A tap shows that round alone on the map; a second tap, every round again.
 	import PlaceInParent from '#lib/maps/PlaceInParent.svelte';
+	import { flagSvg } from '#lib/map/map.js';
 	import Stars from './Stars.svelte';
 	import { fmtNum, starsFor } from '#lib/format.js';
 	import { t, tx } from '#lib/i18n/index.svelte.js';
@@ -72,7 +73,13 @@
 							>💡 <s>{fmtNum(r.base)}</s></span
 						>
 					{/if}
-					<b class="d">{fmtNum(r.score)}</b>
+					<b class="d" class:perfect={r.score === 5000}
+						>{#if r.score === 5000}<img
+								src={flagSvg()}
+								width="14"
+								alt={t('perfect')}
+							/>{/if}{fmtNum(r.score)}</b
+					>
 				</span>
 			</button>
 		{/each}
@@ -165,6 +172,12 @@
 	.stop-score b {
 		font-size: 18px;
 		color: var(--ink);
+	}
+	.stop-score b.perfect {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		color: var(--gold-on-panel);
 	}
 	/* a hint took points: the score before it, small and struck */
 	.stop-cut {

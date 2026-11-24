@@ -8,8 +8,11 @@
 	// what to do (look around, open the map, tap it) instead of being told.
 	// The page drives it: it opens each round's panorama through open(), starts the clock
 	// with the server's remaining time, and answers the buttons.
-	import { onDestroy, type Snippet } from 'svelte';
-	import type { Hint, LatLon, PanoView, Rules } from '#lib/api/client.js';
+	import { onDestroy, untrack, type Snippet } from 'svelte';
+	import { MediaQuery } from 'svelte/reactivity';
+	import { page } from '$app/state';
+	import type { Hint, LatLon, MapSummary, PanoView, Rules } from '#lib/api/client.js';
+	import { pickOutlines } from '#lib/maps/picks.js';
 	import { createViewer, type PanoViewer } from '#lib/pano/index.js';
 	import GuessMap from '#lib/map/GuessMap.svelte';
 	import { LAYERS, savedLayer, saveLayer, type BBox, type Layer } from '#lib/map/map.js';
@@ -30,6 +33,7 @@
 
 	interface Props {
 		rules: Rules;
+		map: MapSummary;
 		bbox: BBox;
 		n: number | null;
 		rounds: number; // 0 = endless
@@ -40,6 +44,7 @@
 		status: Status;
 		guess: LatLon | null;
 		guessLabel?: string; // the Guess button's words, when not the usual ones
+		waitingExtra?: Snippet;
 		hudDetail?: Snippet;
 		hud?: Snippet<[Snippet | null]>; // more chips next to the status pill (a room's players), given the clock to carry
 		onpick: (p: LatLon) => void;
@@ -50,6 +55,7 @@
 	}
 	let {
 		rules,
+		map,
 		bbox,
 		n,
 		rounds,
@@ -62,6 +68,7 @@
 		guessLabel,
 		hud,
 		hudDetail,
+		waitingExtra,
 		onpick,
 		onguess,
 		onhint,
@@ -69,7 +76,19 @@
 		onleave
 	}: Props = $props();
 
+	// Room snapshots replace the map object. Its slug identifies the same set of picks across rounds.
+	const mapSlug = $derived(map?.slug);
+	const homePicks = $derived(page.state.pickColors);
+	const outlines = $derived(
+		mapSlug
+			? pickOutlines(
+					untrack(() => map),
+					homePicks?.gameId === page.params.id ? homePicks?.picks : undefined
+				)
+			: []
+	);
 	let heading = $state(0);
+	const bearing = $derived(((Math.round(heading) % 360) + 360) % 360);
 
 	// the clock
 	let deadlineAt = 0;
@@ -80,6 +99,7 @@
 	const WARN_AT = [15, 10];
 
 	// layout
+	const phone = new MediaQuery('(max-width: 760px)');
 	let mapOpen = $state(false); // phones: the map is a sheet you open
 	let mapPinned = $state(false); // computers: keep the map big
 	let menuOpen = $state(false);
@@ -275,7 +295,7 @@
 	function onKey(e: KeyboardEvent) {
 		if ((e.target as HTMLElement).closest('input, textarea') || !playing || menuOpen) return;
 		const k = e.key.toLowerCase();
-		if (e.key === ' ' && guess) {
+		if (e.key === ' ' && guess && !(e.target as HTMLElement).closest('button.north')) {
 			e.preventDefault();
 			guessNow();
 		} else if (k === 'h') hint();
@@ -313,8 +333,9 @@
 	style:--danger={dangerLevel}
 ></div>
 
-<!-- top: status on the left, the clock (a room's rides in its players' chip), pause (a room's
-     menu) on the right; all of them small dark capsules, so the street keeps the screen -->
+<!-- top: status on the left, the clock (a room's rides in its players' chip), back to start and
+     pause (a room's menu) on the right; all of them small dark capsules, so the street keeps the
+     screen -->
 <div class="hud" class:room={!!hudDetail} class:hide={status === 'off'}>
 	<div class="hud-left">
 		<div class="status cap" class:many>
@@ -355,17 +376,32 @@
 		</div>
 	{/if}
 
-	<button
-		class="round-btn pause cap"
-		onclick={() => (menuOpen = true)}
-		aria-label={onleave ? t('menu') : t('pause')}
-	>
-		<svg viewBox="0 0 24 24" class="icon"
-			>{#if onleave}<path d="M4.5 7h15M4.5 12h15M4.5 17h15" />{:else}<path
-					d="M9 6v12M15 6v12"
-				/>{/if}</svg
+	<div class="hud-right">
+		{#if rules.movement !== 'nmpz'}
+			<button
+				class="round-btn back cap"
+				onclick={backToStart}
+				disabled={!playing}
+				aria-label={t('backToStart')}
+				title={`${t('backToStart')} (R)`}
+			>
+				<svg class="icon" viewBox="0 0 24 24"
+					><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3L3.5 8.3" /><path d="M3.5 3.5v4.8h4.8" /></svg
+				>
+			</button>
+		{/if}
+		<button
+			class="round-btn pause cap"
+			onclick={() => (menuOpen = true)}
+			aria-label={onleave ? t('menu') : t('pause')}
 		>
-	</button>
+			<svg viewBox="0 0 24 24" class="icon"
+				>{#if onleave}<path d="M4.5 7h15M4.5 12h15M4.5 17h15" />{:else}<path
+						d="M9 6v12M15 6v12"
+					/>{/if}</svg
+			>
+		</button>
+	</div>
 
 	{#if hudDetail}
 		<div class="hud-detail">
@@ -425,8 +461,19 @@
 
 {#snippet compassView()}
 	{#if showCompass && (playing || status === 'waiting')}
-		<div class="compass-spot {compass.style}" aria-label={t('compass')}>
-			<Compass {heading} style={compass.style} />
+		<div class="compass-spot {compass.style}">
+			{#if rules.movement === 'nmpz'}
+				<Compass {heading} style={compass.style} />
+			{:else}
+				<button
+					class="north"
+					aria-label={`${t('compassNorth')} · ${bearing}°`}
+					title={t('compassNorth')}
+					onclick={() => viewers.get(activeProvider)?.viewer.faceNorth()}
+				>
+					<Compass {heading} style={compass.style} />
+				</button>
+			{/if}
 		</div>
 	{/if}
 {/snippet}
@@ -444,7 +491,7 @@
 	</div>
 {/if}
 
-<!-- under the right thumb: the hint and back to start -->
+<!-- under the right thumb: the hint -->
 {#if playing || status === 'waiting'}
 	<div class="rail" class:lifted={mapOpen}>
 		{#if rules.hints.count > 0}
@@ -465,21 +512,19 @@
 					>{/if}
 			</button>
 		{/if}
-		{#if rules.movement !== 'nmpz'}
-			<button
-				class="round-btn cap"
-				onclick={backToStart}
-				disabled={!playing}
-				aria-label={t('backToStart')}
-				title={`${t('backToStart')} (R)`}
-			>
-				<svg class="icon" viewBox="0 0 24 24"
-					><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3L3.5 8.3" /><path d="M3.5 3.5v4.8h4.8" /></svg
-				>
-			</button>
-		{/if}
 	</div>
 {/if}
+
+{#snippet waitingBar(canOpen: boolean)}
+	<div class="waiting-bar cap">
+		{#if canOpen}
+			<button class="waiting-map" onclick={openMap}>{openLabel}</button>
+		{:else}
+			<span>{openLabel}</span>
+		{/if}
+		<div class="waiting-extra">{@render waitingExtra?.()}</div>
+	</div>
+{/snippet}
 
 <!-- phones: the one key at the bottom; the map comes up from it -->
 {#if (playing || guessed) && !mapOpen}
@@ -496,6 +541,8 @@
 				<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
 				<span class="label">{t('guess')}</span>
 			</button>
+		{:else if status === 'waiting' && phone.current}
+			{@render waitingBar(true)}
 		{:else}
 			<button
 				class="btn btn-primary go open-map"
@@ -570,28 +617,41 @@
 		</button>
 	</div>
 	<div class="map-box">
-		<GuessMap bind:this={guessMap} {bbox} {layer} {hints} {guess} active={playing} onpick={pick} />
+		<GuessMap
+			bind:this={guessMap}
+			{outlines}
+			{bbox}
+			{layer}
+			{hints}
+			{guess}
+			active={playing}
+			onpick={pick}
+		/>
 		{#if coach === 'pin' && !guess && playing}
 			<div class="coach-pin" aria-hidden="true"><i></i><span>{t('coachPin')}</span></div>
 		{/if}
 	</div>
-	<button class="btn btn-primary btn-guess" disabled={!guess || !playing} onclick={guessNow}>
-		{#if guessLabel && !playing}
-			<span class="label">{guessLabel}</span>
-		{:else if guess}
-			<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
-			<span class="label">{t('guess')}</span>
-		{:else}
-			<svg viewBox="0 0 24 24" class="tap"
-				><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z" /><circle
-					cx="12"
-					cy="10"
-					r="2.3"
-				/></svg
-			>
-			<span class="label">{t('tapTheMap')}</span>
-		{/if}
-	</button>
+	{#if status === 'waiting' && (!phone.current || mapOpen)}
+		{@render waitingBar(false)}
+	{:else}
+		<button class="btn btn-primary btn-guess" disabled={!guess || !playing} onclick={guessNow}>
+			{#if guessLabel && !playing}
+				<span class="label">{guessLabel}</span>
+			{:else if guess}
+				<svg viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>
+				<span class="label">{t('guess')}</span>
+			{:else}
+				<svg viewBox="0 0 24 24" class="tap"
+					><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z" /><circle
+						cx="12"
+						cy="10"
+						r="2.3"
+					/></svg
+				>
+				<span class="label">{t('tapTheMap')}</span>
+			{/if}
+		</button>
+	{/if}
 </div>
 
 <Sheet open={menuOpen} onclose={() => (menuOpen = false)} title={onleave ? t('menu') : t('pause')}>
@@ -1011,13 +1071,20 @@
 	.round-btn:disabled .icon {
 		opacity: 0.4;
 	}
-	.pause {
+	.hud-right {
 		margin-left: auto;
+		display: flex;
+		gap: 8px;
+	}
+	/* pause and back to start: the same quiet round capsules, top right */
+	.pause,
+	.back {
 		width: 52px;
 		height: 52px;
 		border-radius: 50%;
 	}
-	.pause .icon {
+	.pause .icon,
+	.back .icon {
 		width: 22px;
 		height: 22px;
 		stroke-width: 3;
@@ -1185,6 +1252,22 @@
 		top: calc(max(12px, env(safe-area-inset-top)) + 82px);
 		z-index: 999;
 		pointer-events: none;
+	}
+	.north {
+		display: block;
+		pointer-events: auto;
+		cursor: pointer;
+		padding: 0;
+		border: 0;
+		border-radius: 50%;
+		background: transparent;
+		transition: transform 0.1s var(--out);
+	}
+	.modern .north {
+		border-radius: var(--r-s);
+	}
+	.north:active {
+		transform: scale(0.94);
 	}
 	.compass-spot :global(.dial),
 	.compass-spot :global(.strip) {
@@ -1359,6 +1442,34 @@
 		z-index: 1000;
 		display: none;
 		gap: 10px;
+	}
+	.waiting-bar {
+		width: 100%;
+		min-height: 62px;
+		display: grid;
+		justify-items: center;
+		align-content: center;
+		padding: 4px 12px;
+		border-radius: var(--r-m);
+		font-size: 17px;
+		font-weight: 700;
+	}
+	.waiting-map {
+		align-self: stretch;
+		width: 100%;
+		min-height: 30px;
+		background: transparent;
+		color: inherit;
+		font: inherit;
+		border: 0;
+	}
+	.waiting-extra {
+		max-width: 100%;
+		color: var(--cap-ink-2);
+		font-size: 13px;
+	}
+	.waiting-extra:empty {
+		display: none;
 	}
 	.bottom .btn {
 		height: 64px;
@@ -1594,7 +1705,7 @@
 			transform: none;
 			margin-left: auto;
 		}
-		.clock-spot + .pause {
+		.clock-spot + .hud-right {
 			margin-left: 0;
 		}
 		.clock {
@@ -1638,7 +1749,7 @@
 			flex-wrap: nowrap;
 		}
 		.status,
-		.pause {
+		.hud-right {
 			flex-shrink: 0;
 		}
 		.room .status {
@@ -1688,11 +1799,12 @@
 		.chip-clock .icon {
 			display: none;
 		}
-		.pause {
+		.pause,
+		.back {
 			width: 48px;
 			height: 48px;
 		}
-		.round-btn:not(.pause) {
+		.round-btn:not(.pause):not(.back) {
 			width: 54px;
 			height: 54px;
 		}

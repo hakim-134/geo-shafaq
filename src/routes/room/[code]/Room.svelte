@@ -31,7 +31,10 @@
 	import RulesForm from '#lib/game/RulesForm.svelte';
 	import Loader from '#lib/game/Loader.svelte';
 	import ResultLayout from '#lib/game/ResultLayout.svelte';
+	import FiveK from '#lib/game/FiveK.svelte';
+	import { fiveKVisible, fiveKScorers, fiveKNames } from '#lib/game/five-k.svelte.js';
 	import RoundReveal from '#lib/game/RoundReveal.svelte';
+	import RenameButton from '#lib/game/RenameButton.svelte';
 	import Podium from '#lib/game/Podium.svelte';
 	import EndStreets, { type EndRound } from '#lib/game/EndStreets.svelte';
 	import NextRing from '#lib/game/NextRing.svelte';
@@ -39,6 +42,7 @@
 	import RulesFacts from '#lib/game/RulesFacts.svelte';
 	import ShareSheet from '#lib/components/ShareSheet.svelte';
 	import {
+		roundMark,
 		challengeCode,
 		challengeUrl,
 		copyText,
@@ -51,7 +55,7 @@
 	import { PanoError } from '#lib/pano/index.js';
 	import { t, tx, type Key } from '#lib/i18n/index.svelte.js';
 	import { ensureSession, refreshMe, setMe } from '#lib/session.svelte.js';
-	import { crowdKm, fmtDistance, fmtNum, starsFor } from '#lib/format.js';
+	import { crowdKm, fmtDistance, fmtNum } from '#lib/format.js';
 	import { showToast } from '#lib/toast.svelte.js';
 
 	let { roomCode }: { roomCode: string } = $props();
@@ -309,7 +313,17 @@
 		landed = false;
 		if (n >= 0) setTimeout(() => landedFor === n && (landed = true), 2600);
 	});
+	const scorers = $derived(fiveKScorers(last?.scores ?? [], players));
+	let countedRound = $state<string>();
+	const perfectRound = $derived(
+		st && last && landed && scorers.length ? `room:${code}:${st.games}:${last.n}` : undefined
+	);
 	const myLast = $derived(last?.scores.find((s) => s.player === st?.you));
+	const ownPerfect = $derived(myLast?.score === 5000);
+	const showFiveK = fiveKVisible(
+		() => (!ownPerfect || countedRound === perfectRound ? perfectRound : undefined),
+		() => (ownPerfect ? 0 : 500)
+	);
 	const lastRows = $derived(
 		last ? [...last.scores].sort((a, b) => b.score - a.score || (a.km ?? 1e9) - (b.km ?? 1e9)) : []
 	);
@@ -493,8 +507,6 @@
 		try {
 			setMe(await call(api().POST('/v1/me/profile', { body: { name: newName.trim() } })));
 			naming = false;
-			link?.stop(); // a fresh socket joins with the new name
-			link?.connect();
 		} catch (err) {
 			if (err instanceof ApiError && err.code === 'bad_name') nameError = true;
 			else showToast(t('err_other'));
@@ -583,7 +595,7 @@
 		const place = standings.findIndex((p) => p.id === st?.you) + 1;
 		const squares = st.results
 			.map((r) => r.scores.find((x) => x.player === st?.you)?.score ?? 0)
-			.map((sc) => ['🟥', '🟥', '🟨', '🟩'][starsFor(sc)])
+			.map(roundMark)
 			.join('');
 		const share = {
 			url,
@@ -624,7 +636,7 @@
 	};
 
 	function onKey(e: KeyboardEvent) {
-		if ((e.target as HTMLElement).closest('input, textarea')) return;
+		if (naming || (e.target as HTMLElement).closest('input, textarea, button, a')) return;
 		if (e.key === 'Enter' && isHost && st?.phase === 'result') {
 			e.preventDefault();
 			hostAct('/v1/rooms/{code}/next');
@@ -674,7 +686,16 @@
 										{p.avatar}
 										{#if p.id === st?.host}<span class="crown" aria-hidden="true">👑</span>{/if}
 									</span>
-									<span class="name" use:fitPlayerName={p.name}>{p.name}</span>
+									<span class="name" use:fitPlayerName={p.name}
+										>{#if p.guest && p.id === st?.you}{@const cut =
+												p.name.lastIndexOf(' ') + 1}{p.name.slice(0, cut)}<span class="nowrap"
+												>{p.name.slice(cut)}&nbsp;<svg
+													class="icon pencil"
+													viewBox="0 0 24 24"
+													aria-hidden="true"><path d="m4 16-1 5 5-1L20 8l-4-4zM14 6l4 4" /></svg
+												></span
+											>{:else}{p.name}{/if}</span
+									>
 								{/snippet}
 								{#if p.id === st.you || isHost}
 									<button
@@ -798,6 +819,7 @@
 		<RoundView
 			bind:this={rv}
 			rules={st.rules}
+			map={st.map}
 			bbox={st.map.bbox as BBox}
 			n={round?.n ?? st.results.length}
 			rounds={st.rules.rounds}
@@ -831,6 +853,11 @@
 					</div>
 				{/if}
 			{/snippet}
+			{#snippet waitingExtra()}
+				{#if me?.guest}<span class="waiting-name"
+						><RenameButton name={t('yourName', { name: me.name })} onclick={startNaming} /></span
+					>{/if}
+			{/snippet}
 			{#snippet hudDetail()}
 				<div class="cap round-map"><MapPicks map={st.map} compact /></div>
 			{/snippet}
@@ -853,7 +880,17 @@
 						reveal
 						crowd={lastCrowd}
 						onlanded={() => (landed = true)}
-					/>
+					>
+						{#snippet overlay(frame)}
+							{#if showFiveK()}<FiveK
+									{frame}
+									place={last!.place}
+									names={fiveKNames(scorers, st.you)}
+									friend={!ownPerfect}
+									{colorOf}
+								/>{/if}
+						{/snippet}
+					</ResultMap>
 				{/snippet}
 				<div class="result-picks"><MapPicks map={st.map} on="panel" /></div>
 				<RoundReveal
@@ -870,6 +907,8 @@
 					heading={last.heading}
 					crowd={lastCrowd}
 					go={landed}
+					ondone={() => (countedRound = perfectRound)}
+					fiveK={scorers.length > 0}
 					earned={myLast?.earned ?? []}
 				>
 					<ol class="table">
@@ -880,7 +919,13 @@
 								<span class="avatar ring" style:--ring={colorOf(s.player)} data-frame={p?.frame}
 									><em class="pc"></em>{p?.avatar}</span
 								>
-								<span class="name">{p?.name ?? '—'}</span>
+								<span class="name"
+									>{#if p?.guest && p.id === st.you}<RenameButton
+											name={p.name}
+											onclick={startNaming}
+											row
+										/>{:else}{p?.name ?? '—'}{/if}</span
+								>
 								<span class="km">{s.km != null ? fmtDistance(s.km) : '—'}</span>
 								{#if s.base}
 									<span class="cut pill" title={t('hintsTaken', { n: s.hintsUsed })}
@@ -947,7 +992,13 @@
 			<div class="end">
 				<div class="end-body">
 					<MapPicks map={st.map} />
-					<Podium {standings} you={st.you ?? ''} {colorOf} costOf={hintCostOf} />
+					<Podium
+						{standings}
+						you={st.you ?? ''}
+						{colorOf}
+						costOf={hintCostOf}
+						onrename={me?.guest ? startNaming : undefined}
+					/>
 					<!-- after the podium has risen -->
 					<EndStreets rounds={endRounds} bind:pick={finalPick} delay={2300} />
 				</div>
@@ -1282,6 +1333,15 @@
 		font-weight: 700;
 		text-shadow: 0 1px 0 var(--stack-2);
 	}
+	/* the pencil stays on the name's last word: it never drops to a line of its own */
+	.players .nowrap {
+		white-space: nowrap;
+	}
+	.players .pencil {
+		width: 13px;
+		height: 13px;
+		vertical-align: middle;
+	}
 	.players .me .name {
 		color: var(--gold-text);
 	}
@@ -1364,6 +1424,10 @@
 		background: #000;
 		color: #fff;
 	}
+	.waiting-name :global(button) {
+		min-height: 28px;
+		max-width: 100%;
+	}
 	.blind {
 		position: fixed;
 		top: 50%;
@@ -1441,6 +1505,7 @@
 		margin-top: 4px;
 	}
 	.table li {
+		position: relative;
 		display: flex;
 		align-items: center;
 		gap: 10px;

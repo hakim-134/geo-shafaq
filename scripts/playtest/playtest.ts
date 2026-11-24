@@ -236,7 +236,7 @@ class Player {
 	/** A round is on screen and can be played. Returns the seconds since the last tap. */
 	async roundReady(): Promise<number> {
 		await this.page.waitForSelector(
-			'.rail button:not([disabled]), .bottom .open-map:not([disabled])',
+			'.rail button:not([disabled]), .hud-right .back:not([disabled]), .bottom .open-map:not([disabled])',
 			{
 				visible: true,
 				timeout: 30000
@@ -1130,7 +1130,298 @@ async function shop(browser: Browser, view: View, dir: string) {
 	await host.page.close();
 }
 
-const JOURNEYS = { solo, room, places, challenge, missed, shop } as const;
+async function s6(browser: Browser, view: View, dir: string) {
+	const J = 's6';
+	const solo = new Player(view, 's6-solo', dir);
+	const host = new Player(view, 's6-host', dir);
+	const friend = new Player(view, 's6-friend', dir);
+	const mix = new Player(view, 's6-mix', dir);
+	const problem = (message: string) => problems.push(`${view.name} s6: ${message}`);
+	async function check(label: string, action: () => Promise<void>) {
+		try {
+			await action();
+		} catch (e) {
+			problem(`FAILED ${label}: ${(e as Error).message}`);
+		}
+	}
+	async function play(p: Player, label = /^O‘ynash(?:\s|$)/i) {
+		await p.tap(await p.findText(label));
+		await p.roundReady();
+	}
+	async function perfect(p: Player, path: string, pos: { lat: number; lon: number }) {
+		if (!Number.isFinite(pos?.lat) || !Number.isFinite(pos?.lon))
+			throw new Error(`no real spot for ${path}`);
+		await p.page.setRequestInterception(true);
+		p.page.on('request', (r) =>
+			r.method() === 'POST' && new URL(r.url()).pathname === path
+				? r.continue({ postData: JSON.stringify({ pos }) })
+				: r.continue()
+		);
+	}
+	async function settled(p: Player, selector = '[role=dialog]') {
+		const target = await p.find(selector);
+		await target.evaluate(async (el) => {
+			await Promise.all(el.getAnimations().map((a) => a.finished));
+		});
+		return target;
+	}
+	async function compass() {
+		const p = solo.page;
+		const dial = await solo.find('button.north [role=img]');
+		const degrees = () =>
+			dial.evaluate((el) => Number(el.getAttribute('aria-label')?.match(/^(\d+)°$/)?.[1]));
+		const initial = await degrees();
+		const distance = (deg: number) => Math.min(deg % 360, 360 - (deg % 360));
+		const x = view.width * (initial < 180 ? 0.85 : 0.15);
+		const y = view.height * 0.42;
+		let turned = initial;
+		for (let i = 0; i < 3; i++) {
+			const touch = view.phone ? await p.touchscreen.touchStart(x, y) : null;
+			if (!touch) {
+				await p.mouse.move(x, y);
+				await p.mouse.down();
+			}
+			for (let step = 1; step <= 12; step++) {
+				const to = x + ((view.width - 2 * x) * step) / 12;
+				if (touch) await touch.move(to, y);
+				else await p.mouse.move(to, y);
+			}
+			if (touch) await touch.end();
+			else await p.mouse.up();
+			// Let the viewer render the drag before reading the accessible heading.
+			await p.evaluate(
+				() =>
+					new Promise<void>((done) =>
+						requestAnimationFrame(() => requestAnimationFrame(() => done()))
+					)
+			);
+			turned = await degrees();
+			if (distance(turned) > 20 && turned !== initial) break;
+		}
+		if (!Number.isFinite(initial) || !(distance(turned) > 20) || turned === initial)
+			problem(`panorama drag: compass went from ${initial}° to ${turned}°`);
+		await solo.shot(J, 'compass-turned', `dragged from ${initial}° to ${turned}°`);
+		await solo.tap(await solo.find('button.north'));
+		await sleep(800);
+		const north = await degrees();
+		if (!(distance(north) <= 3)) problem(`compass reads ${north}° after facing north`);
+		await solo.shot(J, 'compass-north', `800 ms after the compass tap: ${north}°`);
+	}
+	async function soloGame() {
+		await solo.open(browser);
+		await solo.go('/');
+		await play(solo);
+		await check('solo compass', compass);
+		const id = new URL(solo.page.url()).pathname.split('/').pop()!;
+		await perfect(solo, `/v1/games/${id}/rounds/1/guess`, roundSpot(id, 1));
+		await solo.guess();
+		const layer = await momentShot(solo, 'solo-5k');
+		await check('solo result score', async () => {
+			await solo.page.waitForFunction(
+				() =>
+					document.querySelector('.reveal .score .value')?.textContent?.replace(/\s/g, '') ===
+					'5000',
+				{ timeout: 700 }
+			);
+		});
+		const next = await solo.findText(/^Keyingi raund$/i);
+		if (layer && !(await solo.has('.moment')))
+			problem('solo layer expired before the next-round tap');
+		await solo.tap(next);
+		await solo.page
+			.waitForFunction(
+				() =>
+					document
+						.querySelector('.hud:not(.hide) .st-round .st-n')
+						?.textContent?.trim()
+						.startsWith('2/'),
+				{ timeout: 5000 }
+			)
+			.catch(() => {
+				throw new Error('tapping Keyingi raund through the 5 000 layer did not start round 2');
+			});
+		await solo.roundReady();
+		await solo.tap(await solo.find('.round-btn.pause'));
+		await settled(solo);
+		await solo.tap(await solo.findText(/^Bosh sahifaga chiqish$/i));
+	}
+	async function rules() {
+		if (new URL(solo.page.url()).pathname !== '/') await solo.go('/');
+		await solo.tap(await solo.find('button.rules'));
+		await settled(solo);
+		await solo.tap(await solo.find('.form .more summary'));
+		const row = await solo.find('::-p-xpath(//div[normalize-space(text())="Kompas"]/..)');
+		await row.scrollIntoView();
+		const choices = await row.$$eval('button', (buttons) => buttons.length);
+		if (choices !== 2) problem(`rules show ${choices} compass choices`);
+		await solo.shot(J, 'rules-compass', `${choices} choices in the compass row`);
+	}
+	async function rename(from: string, name: string) {
+		await friend.tap(await friend.find(from, 3000));
+		await settled(friend);
+		await friend.page.locator('form.sheet-body input.field').fill(name);
+		if (name === 'Lola') await friend.shot(J, 'lobby-rename', 'the friend enters Lola');
+		await friend.tap(await friend.findText(/^Saqlash$/i));
+	}
+	async function hostSees(name: string, selector: string, timeout = 3000) {
+		await host.page
+			.waitForFunction(
+				(sel, text) =>
+					Array.from(document.querySelectorAll<HTMLElement>(sel)).some(
+						(el) => el.checkVisibility({ opacityProperty: true }) && el.innerText.includes(text)
+					),
+				{ timeout },
+				selector,
+				name
+			)
+			.catch(() => problem(`host did not show ${name} within ${timeout} ms`));
+	}
+	async function momentShot(p: Player, shot: string, name?: string) {
+		const layer = await p.find('.moment', 6000).catch(() => null);
+		if (!layer) {
+			problem(`${p.who} did not show the 5 000 layer within 6 s`);
+			return null;
+		}
+		await sleep(900);
+		if (name) {
+			const text = await layer.evaluate((el) => (el as HTMLElement).innerText);
+			if (!text.replace(/\s/g, '').includes('5000') || !text.includes(name))
+				problem(`${p.who} layer expected 5 000 and ${name}, saw ${text}`);
+		}
+		if (p === friend) {
+			const sizes = await layer.evaluate((el) => {
+				const score = document.querySelector('.reveal .score .value');
+				if (!score) return null;
+				const fontSize = (node: Element) => parseFloat(getComputedStyle(node).fontSize);
+				return {
+					score: fontSize(score),
+					largest: Math.max(fontSize(el), ...Array.from(el.querySelectorAll('*'), fontSize))
+				};
+			});
+			if (!sizes) problem('friend’s own result score is missing');
+			else if (sizes.largest > sizes.score)
+				problem(`friend’s 5 000 layer uses ${sizes.largest}px, above their ${sizes.score}px score`);
+		}
+		await p.shot(
+			J,
+			shot,
+			name
+				? `the perfect round seen by ${p.who}, expecting ${name}`
+				: 'the perfect guess before tapping next'
+		);
+		return layer;
+	}
+	async function guessMap(p: Player) {
+		await p.tap(await p.find(view.phone ? '.bottom .open-map' : '.minimap .size-btn'));
+		await settled(p, view.phone ? '.minimap.open' : '.minimap.pinned');
+		await p.page.waitForSelector('.minimap .map-box [class*="ground-pane"] *', { timeout: 15000 });
+		return p.find('.minimap .map-box');
+	}
+	async function roomGame() {
+		await Promise.all([host.open(browser), friend.open(browser)]);
+		await host.go('/');
+		await host.tap(await host.findText(/^Do‘stlar$/i));
+		await host.tap(await host.find('.lobby button.rules:not(:disabled)'));
+		const dialog = await settled(host);
+		const two = await dialog.$(
+			'::-p-xpath(.//*[normalize-space(.)="Raundlar"]/following-sibling::div/button[normalize-space(.)="2"])'
+		);
+		if (two) {
+			await host.tap(two);
+			await host.tap(await host.findText(/^Saqlash$/i));
+		} else await host.page.keyboard.press('Escape');
+		const path = new URL(host.page.url()).pathname;
+		const hostName = await (
+			await host.find('.players .me .name')
+		).evaluate((el) => el.textContent!.trim());
+		await friend.go(path);
+		await check('lobby rename', () => rename('.players .me button.player', 'Lola'));
+		await hostSees('Lola', '.players li:not(.me) .name', 2000);
+		await host.shot(J, 'lobby-host-sees', 'the friend’s name on the host’s lobby');
+		await host.tap(await host.findText(/^Boshlash$/i));
+		await Promise.all([host.roundReady(), friend.roundReady()]);
+		// A room writes its SQL rounds after scoring. Its live, scored position is in the local snapshot.
+		const code = path.split('/').pop()!.toUpperCase();
+		const snapshot = JSON.parse(
+			execFileSync(
+				'docker',
+				['exec', 'redis', 'redis-cli', '-n', '1', '--raw', 'GET', 'room:' + code],
+				{ encoding: 'utf8' }
+			)
+		);
+		await perfect(host, `/v1/rooms/${code}/rounds/1/guess`, snapshot.round.actual);
+		const rounds = await host.page.$eval('.st-round small', (el) =>
+			Number(el.textContent?.slice(1))
+		);
+		if (!Number.isInteger(rounds) || rounds < 1) throw new Error('room has no round count');
+		if (two && rounds !== 2) problem(`host chose two rounds, room started with ${rounds}`);
+		// Place the host's pin ahead of time so loading the map cannot consume the rename deadline.
+		await host.tap(await guessMap(host));
+		const submit = await host.find('.btn-guess:not(:disabled)');
+		await friend.guess();
+		await check('waiting name', async () => {
+			await friend.findText(/^Ismingiz:\s*Lola$/i, 3000);
+		});
+		await friend.shot(J, 'waiting-name', 'the friend has guessed and can change their name');
+		await check('waiting rename', () => rename('.waiting-name button', 'Lola Two'));
+		// The result table can be the first place on the host’s screen that lists names.
+		const seesTwo = hostSees('Lola Two', '.players-chip, .players .name, .table .name');
+		await host.tap(submit);
+		await Promise.all([
+			seesTwo,
+			momentShot(friend, 'room-5k-friend', hostName),
+			momentShot(host, 'room-5k-host', 'Siz!')
+		]);
+		await host.tap(await host.find('.hold-btn'));
+		await check('result rename pencil', () =>
+			rename('.table li.me .name button:has(svg)', 'Lola Uch')
+		);
+		await hostSees('Lola Uch', '.table li:not(.me) .name');
+		await host.shot(J, 'result-rename', 'Lola Uch in the host’s round table');
+		await host.tap(await host.find('.next:not(:disabled)'));
+		for (let n = 2; n <= rounds; n++) {
+			await Promise.all([host.roundReady(), friend.roundReady()]);
+			await friend.guess();
+			await host.guess();
+			await host.tap(await host.find('.now-btn:not(:disabled)'));
+		}
+		await settled(friend, '.podium .me');
+		await check('final rename', () => rename('.podium .me .name button', 'Lola Tort'));
+		await hostSees('Lola Tort', '.podium li:not(.me) .name');
+		await settled(host, `.end .stops .stop:nth-child(${rounds})`);
+		const flag = await host.find('.end .stop-score .perfect img');
+		await flag.evaluate((el) => {
+			const { x, y, width, height } = el.getBoundingClientRect();
+			if (document.elementFromPoint(x + width / 2, y + height / 2) !== el)
+				el.scrollIntoView({ block: 'center', behavior: 'instant' });
+		});
+		await host.shot(J, 'final-rename', 'the host’s podium after the friend’s final rename');
+	}
+	async function mixedPlaces() {
+		await mix.open(browser);
+		await mix.go('/');
+		for (const name of ['Buxoro viloyati', 'Samarqand viloyati']) {
+			await mix.tap(await mix.find(`.mapbox:not(.zin) .msvg [role=button][aria-label="${name}"]`));
+			await mix.tap(await mix.find('.mtake:not(.off):not(.soon):not(.taken):not(:disabled)'));
+			await mix.find('.mtake.taken');
+			await mix.tap(await mix.find('.mback:not(.off)'));
+		}
+		await play(mix, /^O‘ynash\s+Buxoro · Samarqand$/i);
+		await guessMap(mix);
+		await mix.find('.guess-map[data-pick-bounds-ready]');
+		await mix.shot(J, 'mix-outlines', 'Buxoro and Samarqand outlined on the guess map');
+	}
+	try {
+		await check('solo', soloGame);
+		await check('home rules', rules);
+		await check('room', roomGame);
+		await check('mixed places', mixedPlaces);
+	} finally {
+		for (const p of [solo, host, friend, mix]) await p.page?.browserContext().close();
+	}
+}
+
+const JOURNEYS = { solo, room, places, challenge, missed, shop, s6 } as const;
 
 // Every journey makes new guests, and the API allows 30 an hour per address: a full run makes
 // more. On this laptop the limit is cleared first (Redis database 1, local.md §3).

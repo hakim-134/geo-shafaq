@@ -100,6 +100,22 @@ export function shapeBox(g: GeoJSON.Geometry): BBox {
 	return boxOf(pts.map(([lon, lat]) => ({ lat, lon })));
 }
 
+/** The whole outline of every pick, including detached pieces. */
+export function pickBounds(shapes: GeoJSON.Geometry[]): BBox | null {
+	const box: BBox = [Infinity, Infinity, -Infinity, -Infinity];
+	for (const shape of shapes) {
+		for (const [outer] of polygons(shape)) {
+			for (const [lon, lat] of outer ?? []) {
+				box[0] = Math.min(box[0], lon);
+				box[1] = Math.min(box[1], lat);
+				box[2] = Math.max(box[2], lon);
+				box[3] = Math.max(box[3], lat);
+			}
+		}
+	}
+	return box.every(Number.isFinite) ? box : null;
+}
+
 const ring = (r: GeoJSON.Position[]): Pt[] => r.map(([lon, lat]) => [lat, lon]);
 
 /** Adds the border, and with mask the dimmed world around it. */
@@ -141,6 +157,29 @@ export async function addBorder(map: YMap, geometry: GeoJSON.Geometry, mask: boo
 				}
 			)
 		);
+}
+
+/** The pick colour over a thin milk edge on every map layer. */
+export async function pickBorder(
+	geometry: GeoJSON.Geometry,
+	color: string,
+	milk: string
+): Promise<any[]> {
+	const ymaps = await loadYmaps('uz');
+	return polygons(geometry).map(
+		(p) =>
+			new ymaps.Polygon(
+				p.map(ring),
+				{},
+				{
+					fill: false,
+					strokeColor: [milk, color],
+					strokeWidth: [5, 3],
+					zIndex: 1,
+					interactivityModel: 'default#transparent'
+				}
+			)
+	);
 }
 
 /** A map pin as an image: a drop in the given colour, with an optional number. */
@@ -295,6 +334,7 @@ export async function hintCircle(center: LatLon, radiusKm: number): Promise<any>
 		[pt(center), radiusKm * 1000],
 		{},
 		{
+			zIndex: 2,
 			fillColor: COLORS.line + '14',
 			strokeColor: COLORS.line,
 			strokeWidth: 2,
@@ -315,6 +355,7 @@ export async function hintArea(geometry: GeoJSON.Geometry): Promise<any[]> {
 				[ring(p[0])],
 				{},
 				{
+					zIndex: 2,
 					fillColor: COLORS.hint + '2e',
 					strokeColor: ['#ffffffcc', COLORS.hint],
 					strokeWidth: [5, 2.5],

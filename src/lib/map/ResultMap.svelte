@@ -4,7 +4,8 @@
 	// With reveal (one round's result): the map frames both points, the line runs from the
 	// guess to the real place, and the real pin drops there; onlanded says when it has.
 	// With crowd (km): the crowd's gold ring around the real place, pulsing out as the pin lands.
-	import { onMount } from 'svelte';
+	import type { BadgeFrame } from '#lib/game/five-k.svelte.js';
+	import { onMount, type Snippet } from 'svelte';
 	import {
 		addBorder,
 		bounds,
@@ -50,8 +51,9 @@
 		reveal?: boolean;
 		crowd?: number; // the average distance of the round's guesses, km
 		onlanded?: () => void;
+		overlay?: Snippet<[BadgeFrame]>;
 	}
-	let { pairs, bbox, layer, reveal = false, crowd, onlanded }: Props = $props();
+	let { pairs, bbox, layer, reveal = false, crowd, onlanded, overlay }: Props = $props();
 
 	let el: HTMLDivElement;
 	let map = $state<YMap | null>(null);
@@ -86,6 +88,48 @@
 
 	$effect(() => {
 		map?.setType(yandexType(layer));
+	});
+
+	let badgeFrame = $state.raw<BadgeFrame>();
+	const lat = $derived(pairs[0]?.actual.lat);
+	const lon = $derived(pairs[0]?.actual.lon);
+	$effect(() => {
+		if (!overlay) return;
+		const m = map;
+		const actual = lat != null && lon != null ? [lat, lon] : undefined;
+		function measure() {
+			const rect = el.getBoundingClientRect();
+			let badge: BadgeFrame['badge'];
+			try {
+				const projection = m?.options.get('projection');
+				if (projection && actual) {
+					const global = projection.toGlobalPixels(actual, m.getZoom());
+					const page = global && m.converter?.globalToPage(global);
+					if (page && page.every(Number.isFinite)) {
+						// The flag's disc is at (20, 19) in the image anchored at its (20, 45) tip.
+						badge = { x: page[0], y: page[1] - 26 };
+					}
+				}
+			} catch {
+				// A map changing projections can briefly have no pixel position.
+			}
+			badgeFrame = {
+				left: rect.left + window.scrollX,
+				top: rect.top + window.scrollY,
+				width: rect.width,
+				height: rect.height,
+				badge
+			};
+		}
+		measure();
+		const ro = new ResizeObserver(measure);
+		ro.observe(el);
+		const moves = ['actiontick', 'boundschange', 'sizechange'];
+		m?.events.add(moves, measure);
+		return () => {
+			ro.disconnect();
+			m?.events.remove(moves, measure);
+		};
 	});
 
 	// What the map frames: the round's points, clear of what lies over the map's edges.
@@ -274,9 +318,11 @@
 </script>
 
 <div class="result-map ymap" bind:this={el}></div>
+{#if badgeFrame}{@render overlay?.(badgeFrame)}{/if}
 
 <style>
 	.result-map {
+		isolation: isolate;
 		width: 100%;
 		height: 100%;
 	}

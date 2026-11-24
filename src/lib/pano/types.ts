@@ -17,6 +17,8 @@ export interface PanoViewer {
 	/** Opens a round's panorama. For providers that search near a point, it resolves with
 	 *  the position of the panorama it actually opened (the server scores against it). */
 	open(view: PanoView): Promise<{ pos: LatLon | null }>;
+	/** Turn horizontally to north, preserving pitch and zoom. */
+	faceNorth(): void;
 	/** Back to where the round started. */
 	reset(): void;
 	destroy(): void;

@@ -6,7 +6,8 @@ import { api, call, ApiError, type Game } from '#lib/api/client.js';
 import { fmtNum } from '#lib/format.js';
 import { t, tx } from '#lib/i18n/index.svelte.js';
 
-const square = (score: number) => (score >= 4000 ? '🟩' : score >= 2500 ? '🟨' : '🟥');
+export const roundMark = (score: number) =>
+	score === 5000 ? '🏁' : score >= 4000 ? '🟩' : score >= 2500 ? '🟨' : '🟥';
 
 export interface Share {
 	url: string;
@@ -33,7 +34,7 @@ export async function challengeCode(gameId: string): Promise<string> {
 export function challengeShare(game: Game, code: string): Share {
 	const squares = game.rounds
 		.filter((r) => r.result)
-		.map((r) => square(r.result!.score))
+		.map((r) => roundMark(r.result!.score))
 		.join('');
 	return {
 		url: challengeUrl(code),

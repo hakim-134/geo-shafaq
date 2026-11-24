@@ -146,7 +146,18 @@
 			if (!map || banned) return;
 			const body = { map, rules: rulesFor(choice, testProviders()) };
 			const game = await call(api().POST('/v1/games', { body }));
-			await goto('/game/' + game.id);
+			// The mix summary carries its parts. Keep the colours the player saw while picking.
+			await goto('/game/' + game.id, {
+				persistState: true,
+				state: game.map.parts?.length
+					? {
+							pickColors: {
+								gameId: game.id,
+								picks: picks.map(({ map, color }) => ({ map, color }))
+							}
+						}
+					: {}
+			});
 		} catch (e) {
 			const code = e instanceof ApiError ? e.code : 'other';
 			showToast(t(errorKeys[code] ?? 'err_other'), 3500);
