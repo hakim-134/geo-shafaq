@@ -29,7 +29,7 @@
 	// the city is one tile among the region's districts) and on to the country. Inside a place one
 	// quiet key, "Tanlash", adds it to the home's list of picked places (picks.ts); when it is in
 	// the list the key says "✓ Tanlangan" and a tap takes it out. The picked places wear their own
-	// colours at every level: a picked region's playable districts, a picked district in its region,
+	// colours at every level: a picked region whole, a picked district in its region,
 	// Tashkent's badge for a pick in Tashkent, the historic cities' stars. A place
 	// with no panoramas is hatched, "Tez orada", and can't be picked; one with few has its name in
 	// italics (decision 0016). Nothing outside the box moves.
@@ -48,6 +48,7 @@
 		picks,
 		ownList,
 		locked,
+		readonly = false,
 		shownPlace = $bindable(),
 		onpick,
 		onunpick
@@ -55,6 +56,7 @@
 		picks: Pick[];
 		ownList: boolean;
 		locked: boolean;
+		readonly?: boolean;
 		shownPlace: NewPick | undefined; // the playable place on screen
 		onpick: (p: NewPick) => void; // "Tanlash": the place on screen joins the list
 		onunpick: (map: string) => void; // "✓ Tanlangan" tapped: it leaves the list
@@ -374,15 +376,12 @@
 
 	// ---------- the picked places, in their colours ----------
 
-	/** The pick that holds a place: the place itself, its part, or the whole country. A place with
-	 * nothing to play wears none. */
+	/** The pick that holds a place: the place itself, its part, or the whole country. Quiet
+	 * districts of a picked part keep its colour beneath the hatching. */
 	function pickFor(slug: string, part?: string | null): Pick | undefined {
-		if (quiet(slug)) return undefined;
-		return (
-			picks.find((p) => p.place === slug) ??
-			(part && playable(slug) ? picks.find((p) => p.place === part) : undefined) ??
-			picks.find((p) => p.place === COUNTRY)
-		);
+		const parent = part ? picks.find((p) => p.place === part) : undefined;
+		if (quiet(slug)) return parent;
+		return picks.find((p) => p.place === slug) ?? parent ?? picks.find((p) => p.place === COUNTRY);
 	}
 	const pc = (p?: Pick) => (p ? `var(--pick-${p.color})` : undefined);
 	// Tashkent's badge: Tashkent picked, or a place in it, or the whole country
@@ -391,27 +390,40 @@
 			picks.find((p) => p.place === COUNTRY)
 	);
 
-	// On the country and from neighbouring parts, lay the coloured districts over their region.
-	const regions = $derived(
-		new Set(picks.flatMap((p) => (p.place && cards[p.place]?.kind === 'region' ? [p.place] : [])))
-	);
+	// Load the districts of picked regions even when the player opens on the country.
 	$effect(() => {
-		for (const region of regions) untrack(() => loadPart(region)).catch(() => {});
 		for (const p of picks) {
+			const place = p.place;
+			if (place && cards[place]?.kind === 'region') untrack(() => loadPart(place)).catch(() => {});
 			const part = p.path?.[1];
 			if (part && !untrack(() => parts[part])) loadDrawing(part).catch(() => {});
 		}
 	});
 	const deep = $derived(
 		picks.flatMap((p) => {
-			const region = p.place && regions.has(p.place);
-			const part = region ? p.place : p.path?.[1];
+			const part = p.path?.[1];
 			const d = part ? parts[part] : undefined;
 			if (!part || !d || !partBoxes[part]) return [];
 			const at = laidOn(part, d);
 			return d.shapes
-				.filter((s) => (region ? playable(s.slug) : s.slug === p.place && p.path?.length === 2))
+				.filter((s) => s.slug === p.place && p.path?.length === 2)
 				.map((s) => ({ slug: s.slug, part, d: s.d, at, color: pc(p) }));
+		})
+	);
+	const pickedParts = $derived(
+		(country?.shapes ?? []).flatMap((shape) => {
+			const { slug } = shape;
+			const drawing = parts[slug];
+			if (!drawing || !picks.some((p) => p.place === slug)) return [];
+			const [x0, y0, x1, y1] = partBoxes[slug];
+			return [
+				{
+					shape,
+					at: laidOn(slug, drawing),
+					quiet: drawing.shapes.filter((s) => quiet(s.slug)),
+					hatchScale: `scale(${drawing.width / (x1 - x0)} ${drawing.height / (y1 - y0)})`
+				}
+			];
 		})
 	);
 
@@ -777,6 +789,27 @@
 							style:stroke-width={2.5 * hk}
 						/>
 					</pattern>
+					{#each pickedParts as part (part.shape.slug)}
+						<pattern
+							id="{uid}-picked-hatch-{part.shape.slug}"
+							width={8 * hk}
+							height={8 * hk}
+							patternUnits="userSpaceOnUse"
+							patternTransform="{part.hatchScale} rotate(45)"
+						>
+							<line
+								x1="0"
+								y1="0"
+								x2="0"
+								y2={8 * hk}
+								class="pick-hatch-line"
+								style:stroke-width={4 * hk}
+							/>
+						</pattern>
+						<clipPath id="{uid}-outline-{part.shape.slug}">
+							<path d={part.shape.d} clip-rule="evenodd" />
+						</clipPath>
+					{/each}
 					<linearGradient id="{uid}-tg" x1="0" y1="0" x2="0" y2="1">
 						<stop offset="0" style:stop-color="var(--tile-a)" />
 						<stop offset="1" style:stop-color="var(--tile-b)" />
@@ -810,10 +843,10 @@
 				<g mask={fadeBox ? `url(#${uid}-fade)` : undefined}>
 					<g class="uzl" class:dim={level !== COUNTRY}>
 						{#each country.shapes as s (s.slug)}
-							{@const p = playable(s.slug) && !regions.has(s.slug) ? pickFor(s.slug) : undefined}
+							{@const p = pickFor(s.slug)}
 							<path
 								class="p"
-								class:hid={(!!ringAt && s.slug === ringOf) || (up && s.slug === shown)}
+								class:hid={(!!ringAt && s.slug === ringOf) || (up && !!innerAt && s.slug === shown)}
 								class:q={quiet(s.slug)}
 								class:pc={!!p}
 								class:cur={isCur(s.slug)}
@@ -834,10 +867,23 @@
 								{#each ring.shapes as s (s.slug)}
 									{@const p = pickFor(s.slug, ringOf)}
 									<path class="p" class:pc={!!p} style:--pc={pc(p)} d={s.d} />
+									{#if p && quiet(s.slug)}{@render hatching(s.d, ringOf)}{/if}
 								{/each}
 							</g>
 						{/if}
 					</g>
+					{#each pickedParts as part (part.shape.slug)}
+						{@const slug = part.shape.slug}
+						{#if !(ringAt && slug === ringOf) && !(up && slug === shown)}
+							<g clip-path="url(#{uid}-outline-{slug})">
+								<g transform={part.at}>
+									{#each part.quiet as s (s.slug)}
+										{@render hatching(s.d, slug, level !== COUNTRY && !isCur(slug))}
+									{/each}
+								</g>
+							</g>
+						{/if}
+					{/each}
 					<!-- coloured districts where their region's districts aren't up -->
 					{#each deep as dp (dp.slug)}
 						{#if dp.part !== ringOf && !(up && dp.part === shown)}
@@ -869,6 +915,9 @@
 										onclick={() => open(s.slug)}
 										onkeydown={(e) => press(e, () => open(s.slug))}
 									/>
+									{#if p && quiet(s.slug)}
+										{@render hatching(s.d, shown, third && s.slug !== level)}
+									{/if}
 								{/each}
 							</g>
 						{/if}
@@ -961,31 +1010,37 @@
 	<!-- the one key on the map, quiet (the green "O‘ynash" is the home's only filled key): the
 	     place on screen joins the list; in the list, it says so in its colour and a tap takes it
 	     out (never the last one) -->
-	<button
-		class="btn btn-ghost on-panel mtake"
-		class:off={!offer}
-		class:soon
-		class:taken={!!taken}
-		style:--pc={pc(taken)}
-		bind:offsetWidth={takeW}
-		tabindex={offer ? 0 : -1}
-		disabled={locked}
-		aria-disabled={soon || (!!taken && picks.length < 2)}
-		onclick={take}
-	>
-		{#if soon}
-			<svg viewBox="0 0 24 24" aria-hidden="true"
-				><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2M9.5 2.5h5" /></svg
-			>
-			<span class="lbl">{t('soon')}</span>
-		{:else if taken}
-			<span class="lbl">{t('pickedOne')}</span>
-		{:else}
-			<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-			<span class="lbl">{t('pickThis')}</span>
-		{/if}
-	</button>
+	{#if !readonly}
+		<button
+			class="btn btn-ghost on-panel mtake"
+			class:off={!offer}
+			class:soon
+			class:taken={!!taken}
+			style:--pc={pc(taken)}
+			bind:offsetWidth={takeW}
+			tabindex={offer ? 0 : -1}
+			disabled={locked}
+			aria-disabled={soon || (!!taken && picks.length < 2)}
+			onclick={take}
+		>
+			{#if soon}
+				<svg viewBox="0 0 24 24" aria-hidden="true"
+					><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2M9.5 2.5h5" /></svg
+				>
+				<span class="lbl">{t('soon')}</span>
+			{:else if taken}
+				<span class="lbl">{t('pickedOne')}</span>
+			{:else}
+				<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+				<span class="lbl">{t('pickThis')}</span>
+			{/if}
+		</button>
+	{/if}
 </div>
+
+{#snippet hatching(d: string, part?: string | null, dim = false)}
+	<path class="pick-hatch" class:dim {d} fill="url(#{uid}-picked-hatch-{part})" />
+{/snippet}
 
 <style>
 	.mapbox {
@@ -1049,6 +1104,16 @@
 	}
 	.hatch-line {
 		stroke: color-mix(in srgb, var(--seam) 22%, transparent);
+	}
+	.pick-hatch-line {
+		stroke: color-mix(in srgb, var(--tile-a) 54%, transparent);
+	}
+	.pick-hatch {
+		fill-rule: evenodd;
+		pointer-events: none;
+	}
+	.pick-hatch.dim {
+		opacity: 0.65;
 	}
 	/* a picked place, and everything in it: its pick's colour */
 	.p.pc {

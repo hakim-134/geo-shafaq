@@ -46,16 +46,6 @@
 		return why === label(e) ? fmtDay(e.at) : `${why} · ${fmtDay(e.at)}`;
 	};
 
-	// the shop's key darkens the ground under it only while rows scroll beneath it: resting under
-	// a short page, a dark band round it would stand out as a box
-	let end = $state<HTMLElement>();
-	let stuck = $state(false);
-	$effect(() => {
-		if (!end) return;
-		const io = new IntersectionObserver(([e]) => (stuck = !e.isIntersecting));
-		io.observe(end);
-		return () => io.disconnect();
-	});
 	// a thing of the shop the game still draws (a refund can be for one that left it)
 	const itemOf = (e: Entry) => {
 		const kind = e.ref.split('-')[0];
@@ -83,7 +73,15 @@
 	</span>
 {/snippet}
 
-<SubPage title={t('walletTitle')} back={{ href: '/me', label: t('profile') }}>
+{#snippet shopLink()}
+	<a class="btn btn-primary go" href="/shop"><span class="lbl">{t('shopTitle')}</span></a>
+{/snippet}
+
+<SubPage
+	title={t('walletTitle')}
+	back={{ href: '/me', label: t('profile') }}
+	footer={data ? shopLink : undefined}
+>
 	{#if data}
 		<!-- no "0", no coin, no "keep it" with nothing to keep: what isn't earned stays out of sight -->
 		{#if data.balance}
@@ -135,10 +133,6 @@
 				{/each}
 			</ul>
 		{/if}
-		<div class="foot" class:stuck>
-			<a class="btn btn-primary go" href="/shop"><span class="lbl">{t('shopTitle')}</span></a>
-		</div>
-		<i class="end" bind:this={end} aria-hidden="true"></i>
 	{:else if failed}
 		<div class="empty-state">
 			<p>{t('err_network')}</p>
@@ -266,41 +260,6 @@
 	.face :global(.pip) {
 		width: 36px;
 		height: 36px;
-	}
-	/* the shop's key stays under the thumb while the history scrolls */
-	.foot {
-		position: sticky;
-		bottom: 0;
-		z-index: 5;
-		margin-top: 24px;
-		padding: 14px 0 max(14px, env(safe-area-inset-bottom));
-	}
-	/* while rows go beneath it, the ground darkens under it, fading out upwards and at the
-	   sides, so they slide away without a box round the key */
-	.foot::before {
-		content: '';
-		position: absolute;
-		inset: -24px -16px 0;
-		z-index: -1;
-		background: linear-gradient(to top, var(--ground-bot) 50%, transparent);
-		pointer-events: none;
-		opacity: 0;
-		transition: opacity 0.2s;
-	}
-	.foot.stuck::before {
-		opacity: 1;
-	}
-	/* the page's end: out of sight, the key is held over the rows */
-	.end {
-		display: block;
-		height: 1px;
-	}
-	@media (min-width: 961px) {
-		.foot::before {
-			inset: -24px -40px 0;
-			-webkit-mask: linear-gradient(to right, transparent, #000 40px calc(100% - 40px), transparent);
-			mask: linear-gradient(to right, transparent, #000 40px calc(100% - 40px), transparent);
-		}
 	}
 	.go {
 		width: 100%;

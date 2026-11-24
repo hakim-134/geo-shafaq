@@ -95,7 +95,7 @@
 	.page {
 		max-width: 640px;
 		margin: 0 auto;
-		padding: 8px 16px calc(48px + env(safe-area-inset-bottom));
+		padding: 8px 16px 48px;
 		display: flex;
 		flex-direction: column;
 		gap: 24px;

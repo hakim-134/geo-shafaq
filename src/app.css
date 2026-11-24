@@ -225,6 +225,31 @@ body {
 	min-height: 100%;
 }
 
+/* Keep page actions beside the scrollport so its last row is available above the actions. */
+.page-with-actions {
+	display: grid;
+	height: 100%;
+	grid-template-rows: minmax(0, 1fr) auto;
+}
+.page-scroll {
+	overflow: auto;
+}
+/* O‘yin and Do‘stlar share the same phone map position and size. */
+@media (max-width: 960px) {
+	.picker-layout {
+		--picker-band-height: 96px;
+		--picker-map-height: clamp(230px, 31dvh, 380px);
+		align-content: start;
+		scrollbar-width: none;
+	}
+	.picker-layout > .picker-map {
+		margin: 6px -10px 0;
+	}
+}
+body:has([aria-modal='true']) .page-scroll {
+	overflow: hidden;
+}
+
 body {
 	background:
 		radial-gradient(120% 70% at 60% 45%, var(--ground-glow), transparent 60%),

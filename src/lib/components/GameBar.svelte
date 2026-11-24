@@ -1,21 +1,8 @@
 <script lang="ts">
-	// The top bar of every page: the name with its gold star ("Geo" white on the ground,
-	// "Shafaq" in gold, the letters leaning, the star upright), the language, light or dark,
-	// and the player's face as a gold coin.
-	// standalone: the bar is a page's first thing (not inside the home's own column), so it
-	// brings its own side margins, the same as the home's, and the bar stays put between pages.
-	// face: false hides the coin (a page that is already about the player's face).
-	// lead: something before the name, e.g. a back key.
-	import type { Snippet } from 'svelte';
 	import { i18n, langs, setLang, t, type Lang } from '#lib/i18n/index.svelte.js';
 	import { theme, toggleTheme } from '#lib/theme.svelte.js';
-	import { session } from '#lib/session.svelte.js';
 
-	let {
-		standalone = false,
-		face = true,
-		lead
-	}: { standalone?: boolean; face?: boolean; lead?: Snippet } = $props();
+	let { standalone = false }: { standalone?: boolean } = $props();
 
 	const names: Record<Lang, string> = { uz: 'O‘zbekcha', en: 'English', ru: 'Русский' };
 	const short: Record<Lang, string> = { uz: 'O‘z', en: 'En', ru: 'Ru' };
@@ -30,8 +17,7 @@
 <svelte:window onclick={() => (langOpen = false)} />
 
 <header class="bar" class:standalone>
-	{@render lead?.()}
-	<a class="brand" href="/">
+	<div class="brand">
 		<!-- the eight-point star: the mark of the new look -->
 		<svg viewBox="0 0 32 32" aria-hidden="true">
 			<path
@@ -45,7 +31,7 @@
 			<circle cx="16" cy="16" r="3.2" class="eye" />
 		</svg>
 		<span class="d float">Geo<b>Shafaq</b></span>
-	</a>
+	</div>
 	<div class="right">
 		<div class="lang">
 			<button
@@ -84,14 +70,6 @@
 				>
 			{/if}
 		</button>
-		{#if face && session.me}
-			<!-- the face alone: the greeting under the bar already says the name, as in the lab -->
-			<a class="me" href="/me" title={t('profile')} aria-label={session.me.user.name}>
-				<span class="avatar coin" data-frame={session.me.user.prefs?.frame}
-					>{session.me.user.avatar}</span
-				>
-			</a>
-		{/if}
 	</div>
 </header>
 
@@ -113,7 +91,7 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		margin-right: auto; /* a lead before it stays at its left */
+		margin-right: auto;
 		font-size: 23px;
 		letter-spacing: -0.015em;
 		color: var(--on-ground);
@@ -222,33 +200,6 @@
 		font-weight: 800;
 		color: var(--gold-on-panel);
 	}
-	.me {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		min-width: 0;
-		color: var(--on-ground);
-		text-decoration: none;
-	}
-	/* the face: a gold coin with a lip, like a game's token */
-	.coin {
-		width: 42px;
-		height: 42px;
-		font-size: 22px;
-		background: linear-gradient(180deg, var(--gold-hi), var(--gold));
-		box-shadow:
-			inset 0 2px 0 rgba(255, 255, 255, 0.6),
-			0 3px 0 var(--gold-lo),
-			0 6px 12px rgba(0, 0, 0, 0.25);
-		transition: transform 0.15s var(--spring);
-	}
-	.me:hover .coin {
-		transform: translateY(-1px) rotate(-6deg);
-	}
-	.me:active .coin {
-		transform: translateY(2px);
-	}
-
 	@media (min-width: 961px) {
 		.bar {
 			height: 78px;

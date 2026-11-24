@@ -30,7 +30,7 @@
 
 {#if style === 'modern'}
 	<div class="strip" role="img" aria-label={`${Math.round(h)}°`} style:width={`${STRIP_W}px`}>
-		<div class="track" style:transform={`translateX(${STRIP_W / 2 - (h + 180) * PPD}px)`}>
+		<div class="track" style:transform={`translateX(calc(50% - ${(h + 180) * PPD}px))`}>
 			{#each ticks as d (d)}
 				{@const n = norm(d)}
 				<span

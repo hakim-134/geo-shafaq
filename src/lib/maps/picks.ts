@@ -137,3 +137,11 @@ export function listOf(m: MapSummary, old: Pick[] = []): Pick[] {
 	for (const x of out) if (!x.color) x.color = freeColor(out.filter((y) => y.color));
 	return out;
 }
+
+export const pickColor = (pick: Pick) => 'var(--pick-' + pick.color + ')';
+
+export function pickFace(pick: NewPick) {
+	return pick.place
+		? { place: pick.face ?? pick.place }
+		: { parent: COUNTRY, marks: pick.places ?? [], trim: false };
+}

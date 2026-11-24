@@ -40,7 +40,17 @@
 </script>
 
 <SubPage title={t('editNameAvatar')} back={{ href: '/me', label: t('profile') }}>
-	<form onsubmit={save}>
+	{#snippet footer()}
+		<button
+			class="btn btn-primary save"
+			type="submit"
+			form="profile-edit"
+			disabled={saving || name.trim().length < 2}
+		>
+			<span class="lbl">{t('save')}</span>
+		</button>
+	{/snippet}
+	<form id="profile-edit" onsubmit={save}>
 		<div class="preview">
 			{#key avatar}
 				<span class="avatar face" data-frame={session.me?.user.prefs?.frame}>{avatar}</span>
@@ -67,11 +77,6 @@
 					>{a}</button
 				>
 			{/each}
-		</div>
-		<div class="foot">
-			<button class="btn btn-primary save" disabled={saving || name.trim().length < 2}
-				><span class="lbl">{t('save')}</span></button
-			>
 		</div>
 	</form>
 </SubPage>
@@ -143,31 +148,6 @@
 			0 3px 0 var(--gold-lo),
 			0 0 0 3px color-mix(in srgb, var(--gold) 45%, transparent);
 		animation: boing 0.4s var(--out);
-	}
-	/* the one key stays under the thumb */
-	.foot {
-		position: sticky;
-		bottom: 0;
-		z-index: 5;
-		margin-top: 18px;
-		padding: 14px 0 max(14px, env(safe-area-inset-bottom));
-	}
-	/* the ground darkens under it, fading out upwards and at the sides, so rows slide away
-	   beneath it without a box round the key */
-	.foot::before {
-		content: '';
-		position: absolute;
-		inset: -24px -16px 0;
-		z-index: -1;
-		background: linear-gradient(to top, var(--ground-bot) 50%, transparent);
-		pointer-events: none;
-	}
-	@media (min-width: 961px) {
-		.foot::before {
-			inset: -24px -40px 0;
-			-webkit-mask: linear-gradient(to right, transparent, #000 40px calc(100% - 40px), transparent);
-			mask: linear-gradient(to right, transparent, #000 40px calc(100% - 40px), transparent);
-		}
 	}
 	.save {
 		width: 100%;

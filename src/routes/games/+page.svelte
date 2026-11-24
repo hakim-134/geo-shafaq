@@ -36,7 +36,6 @@
 			);
 			games = res.games;
 			total = res.total ?? res.games.length;
-			window.scrollTo({ top: 0 });
 		} catch {
 			failed = true;
 		}

@@ -40,6 +40,7 @@
 		status: Status;
 		guess: LatLon | null;
 		guessLabel?: string; // the Guess button's words, when not the usual ones
+		hudDetail?: Snippet;
 		hud?: Snippet<[Snippet | null]>; // more chips next to the status pill (a room's players), given the clock to carry
 		onpick: (p: LatLon) => void;
 		onguess: () => void;
@@ -60,6 +61,7 @@
 		guess,
 		guessLabel,
 		hud,
+		hudDetail,
 		onpick,
 		onguess,
 		onhint,
@@ -313,7 +315,7 @@
 
 <!-- top: status on the left, the clock (a room's rides in its players' chip), pause (a room's
      menu) on the right; all of them small dark capsules, so the street keeps the screen -->
-<div class="hud" class:hide={status === 'off'}>
+<div class="hud" class:room={!!hudDetail} class:hide={status === 'off'}>
 	<div class="hud-left">
 		<div class="status cap" class:many>
 			<div class="st-round">
@@ -364,6 +366,14 @@
 				/>{/if}</svg
 		>
 	</button>
+
+	{#if hudDetail}
+		<div class="hud-detail">
+			{@render compassView()}
+			{@render hudDetail()}
+		</div>
+		{@render hintView()}
+	{/if}
 </div>
 
 <!-- a room's clock, carried in its players' chip: "👥 1/2 · 0:45" -->
@@ -392,29 +402,38 @@
 	</div>
 {/if}
 
-{#if hints.length && playing}
-	{@const h = hints.at(-1)!}
-	<div class="hint-cap cap" class:low={showCompass && compass.style === 'modern'}>
-		<!-- a named place shows its face (the gold rim already says it's the hint); a circle,
+{#snippet hintView()}
+	{#if hints.length && playing}
+		{@const h = hints.at(-1)!}
+		<div class="hint-cap cap" class:low={showCompass && compass.style === 'modern'}>
+			<!-- a named place shows its face (the gold rim already says it's the hint); a circle,
 		     which names nothing, keeps the bulb -->
-		{#if h.place}
-			<span class="hint-face"><PlaceInParent place={h.place} /></span>
-		{:else}
-			<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
-				><path
-					d="M9 18h6M10 21.5h4M12 2.5a6.5 6.5 0 0 0-3.8 11.8V16.5h7.6v-2.2A6.5 6.5 0 0 0 12 2.5z"
-				/></svg
-			>
-		{/if}
-		<!-- the place's own name says what it is: "Yashnobod tumani", not "Tuman: Yashnobod tumani" -->
-		<span>{h.kind === 'circle' ? t('hintCircle') : tx(h.text)}</span>
-	</div>
-{/if}
+			{#if h.place}
+				<span class="hint-face"><PlaceInParent place={h.place} /></span>
+			{:else}
+				<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"
+					><path
+						d="M9 18h6M10 21.5h4M12 2.5a6.5 6.5 0 0 0-3.8 11.8V16.5h7.6v-2.2A6.5 6.5 0 0 0 12 2.5z"
+					/></svg
+				>
+			{/if}
+			<!-- the place's own name says what it is: "Yashnobod tumani", not "Tuman: Yashnobod tumani" -->
+			<span>{h.kind === 'circle' ? t('hintCircle') : tx(h.text)}</span>
+		</div>
+	{/if}
+{/snippet}
 
-{#if showCompass && (playing || status === 'waiting')}
-	<div class="compass-spot {compass.style}" aria-label={t('compass')}>
-		<Compass {heading} style={compass.style} />
-	</div>
+{#snippet compassView()}
+	{#if showCompass && (playing || status === 'waiting')}
+		<div class="compass-spot {compass.style}" aria-label={t('compass')}>
+			<Compass {heading} style={compass.style} />
+		</div>
+	{/if}
+{/snippet}
+
+{#if !hudDetail}
+	{@render hintView()}
+	{@render compassView()}
 {/if}
 
 <!-- the first game: a finger shows how to look around -->
@@ -717,6 +736,37 @@
 		pointer-events: auto;
 	}
 
+	.hud.room {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+	}
+	.room .hud-left {
+		flex-wrap: nowrap;
+	}
+	.hud > .hud-detail {
+		grid-column: 1 / -1;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		pointer-events: none;
+	}
+	.hud-detail .compass-spot,
+	.hud-detail .compass-spot.modern {
+		position: static;
+		flex: none;
+		transform: none;
+	}
+	.hud-detail .modern :global(.strip) {
+		max-width: clamp(80px, 28vw, 240px);
+	}
+	.hud.room .hint-cap {
+		position: static;
+		grid-column: 1 / -1;
+		justify-self: start;
+		margin: 0;
+		transform: none;
+	}
+
 	/* the status: the round with its dots | the score */
 	.status {
 		display: flex;
@@ -795,6 +845,8 @@
 	/* a room's players' chip, given through the hud snippet: a capsule like the status (the
 	   room page gives it .chip, which the new look draws as glass on the ground: this wins) */
 	.hud .hud-left :global(.chip) {
+		flex: none;
+		white-space: nowrap;
 		border-radius: var(--r-m);
 		padding: 0 14px;
 		display: flex;
@@ -1581,8 +1633,6 @@
 		.many .round-word {
 			display: block;
 		}
-		/* never a second row (it would cover the compass): a crowded room's chip lets its
-		   icon go first */
 		.hud-left {
 			gap: 6px;
 			flex-wrap: nowrap;
@@ -1591,24 +1641,48 @@
 		.pause {
 			flex-shrink: 0;
 		}
+		.room .status {
+			align-items: center;
+			min-height: 48px;
+			padding: 0 9px;
+			gap: 6px;
+		}
+		.room .status > div {
+			flex-direction: row;
+			align-items: baseline;
+			gap: 4px;
+			padding: 0;
+		}
+		.room .st-round {
+			border: 0;
+			box-shadow: none;
+		}
+		.room .st-round::after {
+			content: '·';
+			color: var(--cap-ink-2);
+		}
+		.room .st-n {
+			font-size: 20px;
+		}
+		.room .dots,
+		.room .many .round-word {
+			display: none;
+		}
 		.hud .hud-left :global(.chip) {
-			min-width: 0;
 			padding: 0 10px;
 			gap: 6px;
 		}
 		.hud .hud-left :global(.chip-value) {
 			font-size: 20px;
 		}
-		.hud .hud-left :global(.chip > *) {
-			flex-shrink: 0;
-		}
-		.hud .hud-left :global(.chip > svg) {
-			flex-shrink: 1;
-			min-width: 0;
+		.chip-clock::before {
+			content: '·';
 		}
 		.chip-clock {
 			margin-right: -10px;
-			padding: 0 10px 0 9px;
+			margin-left: 0;
+			padding: 0 10px 0 0;
+			border: 0;
 			font-size: 20px;
 		}
 		.chip-clock .icon {

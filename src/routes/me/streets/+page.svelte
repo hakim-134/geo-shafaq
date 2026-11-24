@@ -7,7 +7,6 @@
 	// the player met it in. A row opens the street's panorama on Yandex Maps.
 	import SubPage from '#lib/components/SubPage.svelte';
 	import StreetRow from '#lib/maps/StreetRow.svelte';
-	import MissedLink from '#lib/maps/MissedLink.svelte';
 	import Progress from '#lib/maps/Progress.svelte';
 	import PlaceInParent from '#lib/maps/PlaceInParent.svelte';
 	import { api, call, type Schemas } from '#lib/api/client.js';
@@ -39,7 +38,7 @@
 	const shown = $derived((data?.streets ?? []).filter((s) => filter === 'all' || s.learned));
 </script>
 
-<SubPage title={t('myStreets')} back={{ href: '/me', label: t('profile') }}>
+<SubPage title={t('myStreets')} back={{ href: '/learn', label: t('tabLearn') }}>
 	{#if data}
 		{#if data.streets.length}
 			<section class="score">
@@ -66,8 +65,6 @@
 					<p class="note">{t('streetsHint')}</p>
 				{/if}
 			</section>
-
-			<MissedLink count={data.streets.length - learned} />
 
 			<!-- the switch only once there is something learned to show: never "O‘rganilgan · 0" -->
 			{#if learned > 0}

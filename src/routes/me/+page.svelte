@@ -41,13 +41,11 @@
 	const waysFact = $derived(
 		ids.length ? ids.map((i) => providerName[i.provider]).join(', ') : t('notLinked')
 	);
-	const streets = $derived(profile?.streets);
 </script>
 
 <svelte:head><title>{me?.user.name ?? t('profile')} — GeoShafaq</title></svelte:head>
 
-<!-- the page is the player's face already: no coin in the bar -->
-<GameBar standalone face={false} />
+<GameBar standalone />
 
 <main class="me">
 	{#if profile && me}
@@ -105,16 +103,6 @@
 					>{/snippet}
 			</MenuRow>
 			<MenuRow
-				href="/me/streets"
-				label={t('myStreets')}
-				fact={streets?.learned ? `${fmtNum(streets.learned)} / ${fmtNum(streets.total)}` : ''}
-				color="var(--gold)"
-			>
-				{#snippet icon()}<svg viewBox="0 0 24 24"
-						><path d="M4 20 9.5 4M20 20 14.5 4M12 6v2.5M12 11v2.5M12 16v2.5" /></svg
-					>{/snippet}
-			</MenuRow>
-			<MenuRow
 				href="/me/records"
 				label={t('myRecords')}
 				fact={profile.maps.length ? t('nMaps', { n: profile.maps.length }) : ''}
@@ -126,6 +114,11 @@
 						/></svg
 					>{/snippet}
 			</MenuRow>
+			{#if !me.barg}
+				<MenuRow href="/me/wallet" label={t('walletTitle')} color="var(--gold-lo)">
+					{#snippet icon()}<Coin size={24} />{/snippet}
+				</MenuRow>
+			{/if}
 			<MenuRow href="/shop" label={t('shopTitle')} color="var(--key)">
 				{#snippet icon()}<svg viewBox="0 0 24 24"
 						><path d="M4 9.5 5.5 4h13L20 9.5M4 9.5V20h16V9.5M4 9.5h16M9.5 20v-6h5v6" /></svg
@@ -183,7 +176,7 @@
 	.me {
 		max-width: 640px;
 		margin: 0 auto;
-		padding: 8px 16px calc(48px + env(safe-area-inset-bottom));
+		padding: 8px 16px 48px;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
 		gap: 24px;

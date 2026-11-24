@@ -50,7 +50,17 @@
 	}
 </script>
 
-<SubPage title={t('missedTitle')} back={{ href: '/me/streets', label: t('myStreets') }}>
+{#snippet playMissed()}
+	<button class="btn btn-primary go" disabled={busy} onclick={play}>
+		{#if busy}<span class="spinner"></span>{:else}<span class="lbl">{t('play')}</span>{/if}
+	</button>
+{/snippet}
+
+<SubPage
+	title={t('missedTitle')}
+	back={{ href: '/learn', label: t('tabLearn') }}
+	footer={data?.streets.length ? playMissed : undefined}
+>
 	{#if data?.streets.length}
 		<section class="top">
 			<p class="d float waiting">{t('missedWaiting', { n: data.streets.length })}</p>
@@ -60,11 +70,6 @@
 			{#each data.streets as s, i (i)}
 				<StreetRow street={s} />
 			{/each}
-		</div>
-		<div class="foot">
-			<button class="btn btn-primary go" disabled={busy} onclick={play}>
-				{#if busy}<span class="spinner"></span>{:else}<span class="lbl">{t('play')}</span>{/if}
-			</button>
 		</div>
 	{:else if data}
 		<div class="empty-state">
@@ -96,25 +101,8 @@
 		font-size: 14.5px;
 		color: var(--on-ground-3);
 	}
-	/* the list ends above the key */
-	.panel-list {
-		margin-bottom: 96px;
-	}
-	/* the one key stays under the thumb, over the ground fading in behind it */
-	.foot {
-		position: fixed;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		z-index: 50;
-		display: flex;
-		justify-content: center;
-		padding: 16px 16px max(14px, env(safe-area-inset-bottom));
-		background: linear-gradient(to top, var(--ground-bot) 62%, transparent);
-	}
 	.go {
 		width: 100%;
-		max-width: 608px;
 	}
 	.wait {
 		display: grid;

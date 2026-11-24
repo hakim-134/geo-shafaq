@@ -1,33 +1,12 @@
 <script lang="ts">
-	// The home: one job, start playing. Above the map, what you'll play: the picked places (P1111
-	// 1.3). One place is its picture (place-in-parent, in its pick colour) beside its gold tag
-	// over its name; two or more are a row of their pictures, each with its ×, and on a laptop a
-	// column of rows (picture, name, ×). A tap on a picture flies the map there; the small "+"
-	// opens the ready maps (Butun O‘zbekiston, Tarixiy shaharlar). The map of Uzbekistan is where
-	// the list changes, in place: a tap goes in, the square goes up, "Tanlash" adds the place on
-	// screen (HomeMap). "O‘ynash" and a room with friends play the playable place on screen when
-	// it is outside the list. Otherwise they play the list: one map or a mix (POST /v1/maps/mix).
-	// Under the key, quietly: a room with friends, opened at once, and a friend's code
-	// on a number plate. What a player hasn't earned stays out of sight: the key breathes only
-	// before the first game; the count, the last game and "keep your results" show only after
-	// one. On a laptop the words and the key stand in a left column and the map takes the rest.
-	import { goto, replaceState } from '$app/navigation';
+	import { goto, onNavigate, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
 	import GameBar from '#lib/components/GameBar.svelte';
 	import Sheet from '#lib/components/Sheet.svelte';
-	import HomeMap, { placeDetail } from '#lib/maps/HomeMap.svelte';
-	import PlaceInParent from '#lib/maps/PlaceInParent.svelte';
-	import {
-		addPick,
-		COUNTRY,
-		listOf,
-		pickOfMap,
-		removePick,
-		within,
-		type NewPick,
-		type Pick
-	} from '#lib/maps/picks.js';
+	import Picker from '#lib/maps/Picker.svelte';
+	import { within, type NewPick, type Pick } from '#lib/maps/picks.js';
+	import { setFriendsMap } from '#lib/friends-room.js';
 	import { shortName } from '#lib/maps/progress.js';
 	import { api, call, ApiError, type GameListItem, type MapSummary } from '#lib/api/client.js';
 	import { t, tx, type Key } from '#lib/i18n/index.svelte.js';
@@ -38,16 +17,12 @@
 	import RulesForm from '#lib/game/RulesForm.svelte';
 	import RulesFacts from '#lib/game/RulesFacts.svelte';
 	import { showToast } from '#lib/toast.svelte.js';
-	import { justMade } from '#lib/room.svelte.js';
-	import { unlockAudio } from '#lib/sfx.svelte.js';
-
-	type Mode = 'solo' | 'friends';
 
 	let maps = $state<MapSummary[]>([]); // the ready maps
 	let own = $state<MapSummary | null>(null); // a place's own map, or a mix of the list
 	let last = $state<GameListItem | null>(null);
 	let choice = $state(loadChoice());
-	let busy = $state<Mode | null>(null);
+	let busy = $state(false);
 	let offline = $state(false);
 	// the server asked to wait (too many new players from one address, e.g. friends behind one
 	// carrier): say so, and try again by itself
@@ -55,15 +30,8 @@
 	let retryTimer: ReturnType<typeof setTimeout> | undefined;
 	let loaded = $state(false);
 	let settingsOpen = $state(false);
-	let codeOpen = $state(false);
-	let readyOpen = $state(false);
-
-	// the picked places: on screen at once; the home's map follows when the server has answered
 	let picks = $state<Pick[]>([]);
-	let confirmed: Pick[] = []; // the list the home's map is (a failed change goes back to it)
-	let pending = $state<Promise<boolean> | null>(null);
-	let seq = 0;
-	const ownList = $derived(!!choice.ownList || !!pending);
+	let picker = $state<ReturnType<typeof Picker>>();
 	let shownPlace = $state<NewPick>();
 	const playPlace = $derived.by(() => {
 		const place = shownPlace;
@@ -82,9 +50,6 @@
 	const canPlay = $derived(!!current && !busy && !banned);
 	const canMove = $derived(current?.canMove ?? true);
 	const progress = $derived(loaded && !newPlayer ? current?.progress : undefined);
-	// Butun O‘zbekiston first: "all", then the narrower ones
-	const ready = $derived([...maps].sort((a, b) => +(b.slug === COUNTRY) - +(a.slug === COUNTRY)));
-
 	$effect(() => saveChoice($state.snapshot(choice)));
 
 	// again whenever the player on this device changes (signed in, merged, signed out)
@@ -101,7 +66,6 @@
 		try {
 			await ensureSession();
 			const want = choice.map;
-			const revision = seq;
 			// a place's own map, or a mix, comes with the list, so the list is right at once
 			const [m, h, mine] = await Promise.all([
 				call(api().GET('/v1/maps')),
@@ -117,13 +81,12 @@
 			last = h.games[0] ?? null;
 			offline = false;
 			waiting = false;
-			if (choice.map === want && seq === revision && !pending) {
+			if (choice.map === want) {
 				own = mine;
 				// A map that left the home: back to the first ready map.
 				const cur = mine ?? m.find((x) => x.slug === want) ?? m[0];
 				if (cur) {
 					choice.map = cur.slug;
-					picks = confirmed = listOf(cur, picks);
 				}
 			}
 		} catch (e) {
@@ -135,92 +98,24 @@
 		loaded = true;
 	}
 
-	// a mix's parts come without the places round them: asked once each, for the map's colours
-	$effect(() => {
-		for (const p of picks)
-			if (p.place && !p.path) {
-				const slug = p.place;
-				placeDetail(slug).then(
-					(d) => {
-						const path = d.path.map((x) => x.slug);
-						picks = picks.map((x) => (x.place === slug && !x.path ? { ...x, path } : x));
-					},
-					() => {}
-				);
-			}
+	function chooseMap(map: MapSummary) {
+		own = map;
+		choice.map = map.slug;
+		choice.ownList = true;
+		saveChoice($state.snapshot(choice));
+	}
+
+	onNavigate(async ({ to }) => {
+		if (to?.url.pathname !== '/friends') return;
+		const place = playPlace;
+		await picker?.waitForPicks();
+		setFriendsMap(place?.map);
 	});
-
-	/** The list changes: on screen now; the home's map becomes the one place's map, or the mix of
-	 * them all (the server may fold it: its answer is the list). A change that fails goes back. */
-	function setList(next: Pick[]) {
-		picks = next;
-		const my = ++seq;
-		const job = (async () => {
-			try {
-				const m =
-					next.length === 1
-						? (maps.find((x) => x.slug === next[0].map) ?? (await mapSummary(next[0].map)))
-						: await call(api().POST('/v1/maps/mix', { body: { parts: next.map((p) => p.map) } }));
-				if (my !== seq) return true;
-				if (!maps.some((x) => x.slug === m.slug)) own = m;
-				choice.map = m.slug;
-				choice.ownList = true;
-				picks = confirmed = listOf(m, picks);
-				return true;
-			} catch (e) {
-				if (my !== seq) return false;
-				picks = confirmed;
-				const code = e instanceof ApiError ? e.code : 'other';
-				showToast(t(errorKeys[code] ?? 'err_other'), 3000);
-				return false;
-			}
-		})();
-		pending = job;
-		job.finally(() => {
-			if (pending === job) pending = null;
-		});
-	}
-
-	/** "Tanlash" on the map, or a ready map from the sheet: into the list. */
-	function add(p: NewPick): boolean {
-		if (busy) return false;
-		const readyMap = maps.find((m) => m.slug === p.map);
-		const { list, outcome } = addPick(
-			picks,
-			readyMap ? { ...p, ...pickOfMap(readyMap) } : p,
-			!ownList
-		);
-		if (outcome === 'full') showToast(t('pickLimit'), 2500);
-		if (outcome === 'added') setList(list);
-		return outcome !== 'full';
-	}
-	function remove(map: string) {
-		if (busy) return;
-		const next = removePick(picks, map);
-		if (next !== picks) setList(next);
-	}
-
-	/** A pick's picture: its place in its parent; a map of several places, their points on the
-	 * country (the historic cities never wear the whole country's picture). */
-	const faceOf = (p: { place?: string; face?: string; places?: string[] }) =>
-		p.place
-			? { place: p.face ?? p.place }
-			: { parent: COUNTRY, marks: p.places ?? [], trim: false };
-	const colorOf = (p: Pick) => `var(--pick-${p.color})`;
-	function pickTag(p?: Pick): string {
-		if (p?.map !== 'historic') return tx(p?.top);
-		// The official map description lists the cities served by this map.
-		const description = p.top ?? maps.find((m) => m.slug === p.map)?.description;
-		const cities = description?.uz.split(',').filter((name) => name.trim()).length;
-		return cities ? t('nCities', { n: cities }) : '';
-	}
-
-	let homeMap = $state<ReturnType<typeof HomeMap>>();
 
 	// an old link to the places page (/places/<slug> → /?at=<slug>): the map opens there
 	$effect(() => {
 		const at = page.url.searchParams.get('at');
-		const map = homeMap;
+		const map = picker;
 		if (!at || !map) return;
 		let active = true;
 		untrack(() => map.flyTo(at)).then((opened) => {
@@ -238,41 +133,25 @@
 		no_panorama: 'err_no_panorama',
 		daily_cap: 'err_daily_cap',
 		network: 'err_network',
-		banned: 'bannedText',
-		too_many_rooms: 'err_too_many_rooms'
+		banned: 'bannedText'
 	};
 
-	/** Play what the key named when pressed: alone, or in a new room. */
-	async function go(mode: Mode) {
+	async function go() {
 		if (!canPlay) return;
 		const place = playPlace;
-		busy = mode;
+		busy = true;
 		try {
-			if (mode === 'friends') unlockAudio(); // the lobby's join sounds
-			while (pending) {
-				const revision = seq;
-				const ok = await pending;
-				if (revision !== seq) continue;
-				if (!ok) return;
-				break;
-			}
+			if (picker && !(await picker.waitForPicks())) return;
 			const map = place?.map ?? current?.slug;
 			if (!map || banned) return;
 			const body = { map, rules: rulesFor(choice, testProviders()) };
-			if (mode === 'solo') {
-				const game = await call(api().POST('/v1/games', { body }));
-				await goto(`/game/${game.id}`);
-			} else {
-				const room = await call(api().POST('/v1/rooms', { body }));
-				justMade.code = room.code;
-				justMade.at = Date.now();
-				await goto(`/room/${room.code}`);
-			}
+			const game = await call(api().POST('/v1/games', { body }));
+			await goto('/game/' + game.id);
 		} catch (e) {
 			const code = e instanceof ApiError ? e.code : 'other';
 			showToast(t(errorKeys[code] ?? 'err_other'), 3500);
 		} finally {
-			busy = null;
+			busy = false;
 		}
 	}
 
@@ -289,82 +168,6 @@
 			.split('\u0000')
 			.map((s, i) => (i % 2 ? { num: fmtNum(nums[names[+s]]) } : { text: s }));
 	}
-
-	/** Runs `fit` now, when the lettering's font arrives (it swaps in after the first paint and
-	 * is wider than the stand-in), and when the box gets wider or narrower. */
-	function refit(el: HTMLElement, fit: () => void) {
-		// a size is measured right after it is set: no transition may hold the old one (with
-		// reduced motion, app.css gives every property of every element a 0.01 ms transition)
-		el.style.transitionProperty = 'none';
-		const box = el.parentElement!;
-		let width = box.clientWidth;
-		fit();
-		document.fonts?.ready.then(fit);
-		document.fonts?.addEventListener('loadingdone', fit);
-		const seen = new ResizeObserver(() => {
-			if (box.clientWidth !== width) fit();
-			width = box.clientWidth;
-		});
-		seen.observe(box);
-		return {
-			update: fit,
-			destroy() {
-				seen.disconnect();
-				document.fonts?.removeEventListener('loadingdone', fit);
-			}
-		};
-	}
-
-	/** The place's name as large as fits: one line on a phone, two at most on a laptop (where
-	 * the column allows wrapping), so nothing round it moves when the name changes. */
-	function fitName(el: HTMLElement, _text?: string) {
-		const box = el.parentElement!;
-		return refit(el, () => {
-			el.style.fontSize = '';
-			const cs = getComputedStyle(el);
-			let size = parseFloat(cs.fontSize);
-			const lines = cs.whiteSpace === 'nowrap' ? 1 : 2;
-			const lh = parseFloat(cs.lineHeight) / size || 1.05;
-			const fits = () =>
-				lines === 1
-					? el.offsetWidth <= box.clientWidth - 8
-					: el.offsetHeight <= size * lh * lines + 2 && el.offsetWidth <= box.clientWidth;
-			while (!fits() && size > 16) {
-				size -= 1;
-				el.style.fontSize = `${size}px`;
-			}
-		});
-	}
-
-	/** Keep the small gold tag on one line. */
-	function fitTag(el: HTMLElement, _text?: string) {
-		return refit(el, () => {
-			el.style.fontSize = '';
-			el.style.letterSpacing = '';
-			if (el.scrollWidth > el.clientWidth) el.style.letterSpacing = '0.04em';
-			let size = parseFloat(getComputedStyle(el).fontSize);
-			while (el.scrollWidth > el.clientWidth && size > 10) {
-				size -= 0.5;
-				el.style.fontSize = `${size}px`;
-			}
-		});
-	}
-
-	// ---------- a friend's room, by its code ----------
-	let code = $state('');
-	let codeInput = $state<HTMLInputElement>();
-	const codeOk = $derived(/^[A-Za-z2-9]{5}$/.test(code.trim()));
-	function joinRoom(e?: SubmitEvent) {
-		e?.preventDefault();
-		if (codeOk) goto(`/room/${code.trim().toUpperCase()}`);
-	}
-	// five letters typed: in you go, no button needed
-	$effect(() => {
-		if (codeOk) joinRoom();
-	});
-	$effect(() => {
-		if (codeOpen) codeInput?.focus();
-	});
 </script>
 
 <svelte:head><title>GeoShafaq — {t('heroTitle')}</title></svelte:head>
@@ -372,76 +175,21 @@
 <div class="home">
 	<GameBar />
 
-	<main class="grid">
+	<main class="grid picker-layout">
 		<p class="greet">
-			{t(greeting())}{#if me}, <a href="/me">{me.user.name}</a>{:else}!{/if}
+			{t(greeting())}{#if me}, <b>{me.user.name}</b>{:else}!{/if}
 		</p>
 
-		<!-- what you'll play, the picked places: one is its picture beside a gold tag over its
-		     name; several are a row of pictures (a laptop: rows with their names), each with its ×.
-		     A tap on one flies the map there; "+" opens the ready maps -->
-		<header class="place" class:many={picks.length > 1}>
-			{#if picks.length > 1}
-				<ul class="picks">
-					{#each picks as p (p.map)}
-						<li class="pk" style:--pc={colorOf(p)}>
-							<button class="pk-go" aria-label={tx(p.name)} onclick={() => homeMap?.flyTo(p.place)}>
-								<span class="pk-pic" aria-hidden="true"
-									><PlaceInParent {...faceOf(p)} color={colorOf(p)} /></span
-								>
-								<span class="pk-name">{tx(p.name)}</span>
-							</button>
-							<button
-								class="pk-x"
-								aria-label={t('removePick', { name: tx(p.name) })}
-								disabled={!!busy}
-								onclick={() => remove(p.map)}
-							>
-								<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17" /></svg>
-							</button>
-						</li>
-					{/each}
-				</ul>
-			{:else}
-				{@const one = picks[0]}
-			{@const tag = pickTag(one)}
-				{#key one?.map}
-					{#if one}
-						<!-- the map's face, the one it wears on every screen (P1111 §5), in its pick
-						     colour: Tashkent's streets are Tashkent in its region -->
-						<button
-							class="pic pop-pic"
-							aria-label={tx(one.name)}
-							onclick={() => homeMap?.flyTo(one.place)}
-						>
-							<PlaceInParent {...faceOf(one)} color={colorOf(one)} />
-						</button>
-						<div class="words">
-							{#if tag}
-								<span class="kick d pop" use:fitTag={tag}>{tag}</span>
-							{/if}
-							<div class="tw">
-								<h1 class="title d float pop" use:fitName={tx(one.name)}>{tx(one.name)}</h1>
-							</div>
-						</div>
-					{:else}
-						<!-- the same height while it loads: nothing jumps -->
-						<span class="pic" aria-hidden="true"></span>
-					{/if}
-				{/key}
-			{/if}
-			{#if picks.length}
-				<button
-					class="more chip"
-					aria-label={t('addMaps')}
-					disabled={!!busy}
-					onclick={() => (readyOpen = true)}
-				>
-					<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
-					<span class="more-l">{t('addMaps')}</span>
-				</button>
-			{/if}
-		</header>
+		<Picker
+			bind:this={picker}
+			bind:shownPlace
+			bind:selected={picks}
+			{current}
+			{maps}
+			{busy}
+			defaultPick={!choice.ownList}
+			onchange={chooseMap}
+		/>
 
 		{#if waiting || offline || banned}
 			<div class="state">
@@ -465,20 +213,9 @@
 			</div>
 		{/if}
 
-		<!-- the heart: the map; a tap zooms in, in place; "Tanlash" adds the place on screen -->
-		<HomeMap
-			bind:this={homeMap}
-			bind:shownPlace
-			{picks}
-			{ownList}
-			locked={!!busy}
-			onpick={add}
-			onunpick={remove}
-		/>
-
 		<!-- how much is known here: one gold line, only after the first game -->
 		{#if progress && progress.unit === 'street'}
-			<a class="count" href="/me" aria-label={t('myStreets')}>
+			<p class="count">
 				{#if progress.learned}
 					<svg viewBox="0 0 24 24" aria-hidden="true"
 						><path
@@ -490,7 +227,7 @@
 				{:else}
 					<span>{t('firstLearnHint')}</span>
 				{/if}
-			</a>
+			</p>
 		{:else if progress && progress.unit !== 'spot'}
 			<p class="count">
 				<svg viewBox="0 0 24 24" aria-hidden="true"
@@ -517,9 +254,9 @@
 				class="btn btn-primary play"
 				class:breathe={newPlayer && !busy}
 				disabled={!canPlay}
-				onclick={() => go('solo')}
+				onclick={go}
 			>
-				{#if busy === 'solo'}
+				{#if busy}
 					<span class="spinner" aria-hidden="true"></span>
 				{/if}
 				<span class="play-text">
@@ -527,49 +264,6 @@
 					{#if playName}<span class="play-name">{playName}</span>{/if}
 				</span>
 			</button>
-		</div>
-
-		<!-- quiet, side by side: friends, and a friend's code -->
-		<div class="chips">
-			<button class="chip" disabled={!canPlay} onclick={() => go('friends')}>
-				{#if busy === 'friends'}
-					<span class="spinner small"></span>
-				{:else}
-					<svg viewBox="0 0 24 24" aria-hidden="true"
-						><circle cx="9" cy="8" r="3.5" /><path
-							d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5"
-						/><circle cx="17" cy="9" r="2.6" /><path d="M17 14.5c2.4 0 4.1 1.5 4.6 4" /></svg
-					>
-				{/if}
-				{t('playFriends')}
-			</button>
-			{#if codeOpen}
-				<form class="join" onsubmit={joinRoom}>
-					<div class="plate">
-						<input
-							aria-label={t('haveCode')}
-							bind:this={codeInput}
-							bind:value={code}
-							placeholder="·····"
-							maxlength="5"
-							autocomplete="off"
-							autocapitalize="characters"
-							spellcheck="false"
-							enterkeyhint="go"
-						/>
-						<span class="uz" aria-hidden="true"><i></i><b>UZ</b></span>
-					</div>
-				</form>
-			{:else}
-				<button class="chip" onclick={() => (codeOpen = true)}>
-					<svg viewBox="0 0 24 24" aria-hidden="true"
-						><rect x="3" y="6" width="18" height="12" rx="3" /><path
-							d="M7 12h.01M11 12h.01M15 12h.01"
-						/></svg
-					>
-					{t('haveCode')}
-				</button>
-			{/if}
 		</div>
 
 		{#if loaded && !newPlayer && last}
@@ -596,41 +290,6 @@
 	</main>
 </div>
 
-<!-- the ready maps, each with its face: a tap adds it to the list -->
-<Sheet open={readyOpen} onclose={() => (readyOpen = false)} title={t('addMaps')}>
-	<div class="ready">
-		{#each ready as m (m.slug)}
-			{@const inList = ownList ? picks.find((p) => p.map === m.slug) : undefined}
-			<button
-				class="rrow"
-				class:on={!!inList}
-				disabled={!!busy || !!inList}
-				style:--pc={inList ? colorOf(inList) : undefined}
-				onclick={() => {
-					if (add(pickOfMap(m))) readyOpen = false;
-				}}
-			>
-				<span class="rpic" aria-hidden="true"
-					><PlaceInParent
-						{...faceOf(pickOfMap(m))}
-						on="panel"
-						color={inList ? colorOf(inList) : undefined}
-					/></span
-				>
-				<span class="rtext">
-					<b>{tx(m.name)}</b>
-					<span>{tx(m.description)}</span>
-				</span>
-				{#if inList}
-					<svg class="tick" viewBox="0 0 24 24" aria-hidden="true"
-						><path d="M5 12.5l4.5 4.5L19 7.5" /></svg
-					>
-				{/if}
-			</button>
-		{/each}
-	</div>
-</Sheet>
-
 <Sheet open={settingsOpen} onclose={() => (settingsOpen = false)} title={t('setup')}>
 	<RulesForm bind:choice {canMove} />
 	<button class="btn btn-primary done" onclick={() => (settingsOpen = false)}
@@ -639,12 +298,12 @@
 </Sheet>
 
 <style>
-	/* a phone: one column the height of the screen; the map takes what the rest leaves */
+	/* a phone: one column, with the same map tracks as the room lobby */
 	.home {
-		min-height: 100dvh;
+		min-height: 100%;
 		max-width: 560px;
 		margin: 0 auto;
-		padding: 0 16px calc(8px + env(safe-area-inset-bottom));
+		padding: 0 16px 8px;
 		display: flex;
 		flex-direction: column;
 	}
@@ -652,207 +311,21 @@
 		flex: 1;
 		display: grid;
 		grid-template-columns: minmax(0, 1fr);
-		grid-template-rows: auto auto auto minmax(190px, 1fr) auto auto auto auto auto auto;
-		grid-template-areas: 'greet' 'place' 'state' 'hero' 'count' 'rules' 'go' 'chips' 'last' 'credits';
+		grid-template-rows: var(--picker-band-height) var(--picker-map-height) repeat(7, auto);
+		grid-template-areas: 'greet' 'hero' 'place' 'rules' 'go' 'state' 'count' 'last' 'credits';
 	}
 	.greet {
 		grid-area: greet;
+		align-self: center;
 		font-size: 15px;
 		font-weight: 600;
 		color: var(--on-ground-2);
 	}
-	.greet a {
+	.greet b {
 		color: var(--on-ground);
-		font-weight: 700;
-		text-decoration: none;
 	}
-	.greet a:hover {
-		text-decoration: underline;
-	}
-
-	/* what you'll play: one place's picture beside a gold tag over its name, which floats on the
-	   stacked shadow; several places, a row of pictures. The block keeps one height whatever the
-	   list: nothing round it moves */
-	.place {
+	.grid > :global(.picker-place) {
 		grid-area: place;
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		height: 86px;
-		margin-top: 6px;
-		min-width: 0;
-	}
-	.pic {
-		width: 84px;
-		height: 72px;
-		flex: none;
-		padding: 0;
-		border: none;
-		background: none;
-		/* milk tiles on the ground, the place in its pick colour, like the map */
-		--pip-tile: var(--tile-a);
-		filter: drop-shadow(0 3px 0 var(--map-shadow)) drop-shadow(0 0 8px var(--map-glow));
-	}
-	button.pic:active {
-		transform: scale(0.95);
-	}
-	/* the picked places, a row of their pictures; each × a small milk coin on its corner (a
-	   finger's 34 px round it) */
-	.picks {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		list-style: none;
-	}
-	.pk {
-		position: relative;
-		flex: 0 1 62px;
-		min-width: 0;
-		--pip-tile: var(--tile-a);
-	}
-	.pk-go {
-		display: block;
-		width: 100%;
-		padding: 0;
-		border: none;
-		background: none;
-		color: inherit;
-		transition: transform 0.12s var(--out);
-	}
-	.pk-go:active {
-		transform: scale(0.94);
-	}
-	.pk-pic {
-		display: block;
-		height: 54px;
-		filter: drop-shadow(0 3px 0 var(--map-shadow)) drop-shadow(0 0 6px var(--map-glow));
-		animation: pop-pic 0.45s var(--spring);
-	}
-	.pk-name {
-		display: none;
-	}
-	.pk-x {
-		position: absolute;
-		top: -8px;
-		right: -6px;
-		width: 22px;
-		height: 22px;
-		padding: 0;
-		border: none;
-		border-radius: 50%;
-		background: var(--panel);
-		color: var(--ink);
-		display: grid;
-		place-items: center;
-		box-shadow:
-			0 0 0 1.5px color-mix(in srgb, var(--pc) 70%, transparent),
-			0 2px 0 var(--stack-2);
-	}
-	.pk-x::before {
-		content: '';
-		position: absolute;
-		inset: -6px;
-		border-radius: 50%;
-	}
-	.pk-x svg,
-	.more svg {
-		width: 13px;
-		height: 13px;
-		fill: none;
-		stroke: currentColor;
-		stroke-width: 3.2;
-		stroke-linecap: round;
-	}
-	.pk-x:active {
-		transform: scale(0.9);
-	}
-	/* "+": the ready maps; a round glass key at the end of the row */
-	.more {
-		flex: none;
-		width: 40px;
-		height: 40px;
-		margin-left: auto;
-		border-radius: 50%;
-		display: grid;
-		place-items: center;
-		transition: transform 0.12s var(--out);
-	}
-	.more:active {
-		transform: scale(0.92);
-	}
-	.more svg {
-		width: 18px;
-		height: 18px;
-		stroke-width: 2.8;
-	}
-	.more-l {
-		display: none;
-	}
-	.words {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 6px;
-	}
-	/* .words: past the lettering's own spacing (.d) */
-	.words .kick {
-		max-width: 100%;
-		height: 24px;
-		padding: 0 10px;
-		border-radius: 7px;
-		background: linear-gradient(180deg, var(--kick-a), var(--kick-b));
-		box-shadow: 0 2px 0 var(--gold-lo);
-		color: var(--kick-ink);
-		font-size: 12.5px;
-		line-height: 24px;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-	}
-	.tw {
-		width: 100%;
-		min-width: 0;
-		white-space: nowrap;
-	}
-	.title {
-		margin: 0;
-		font-size: 34px;
-		line-height: 1.05;
-		color: var(--on-ground);
-	}
-	/* a new place pops in (the lean stays in the keyframes: it is the lettering's transform) */
-	.pop {
-		animation: pop 0.5s var(--spring);
-	}
-	@keyframes pop {
-		0% {
-			transform: var(--lean) scale(0.86);
-			opacity: 0.4;
-		}
-		100% {
-			transform: var(--lean) scale(1);
-			opacity: 1;
-		}
-	}
-	.pop-pic {
-		animation: pop-pic 0.5s var(--spring);
-	}
-	@keyframes pop-pic {
-		0% {
-			transform: scale(0.7);
-		}
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.pop,
-		.pop-pic {
-			animation: none;
-		}
 	}
 
 	.state {
@@ -895,10 +368,8 @@
 		border-radius: var(--r-s);
 	}
 
-	/* the map: a little past the page's edges on a phone, as in the look lab */
-	.grid > :global(.mapbox) {
+	.grid > :global(.picker-map) {
 		grid-area: hero;
-		margin: 6px -10px 0;
 	}
 
 	/* how much is known: gold on a quiet glass pill, so it reads on the day's turquoise too */
@@ -937,9 +408,6 @@
 		background: none;
 		box-shadow: none;
 		font-weight: 600;
-	}
-	a.count:hover {
-		background: color-mix(in srgb, var(--chip-bg), #000 12%);
 	}
 
 	/* how: one quiet line; a tap opens the settings */
@@ -1030,136 +498,6 @@
 		}
 	}
 
-	/* friends and a code: two glass chips */
-	.chips {
-		grid-area: chips;
-		display: flex;
-		flex-wrap: wrap;
-		justify-content: center;
-		gap: 10px;
-		margin-top: 16px;
-	}
-	.chip {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 8px;
-		height: 46px;
-		padding: 0 14px;
-		border-radius: var(--r-s);
-		font-size: 15px;
-		white-space: nowrap;
-		transition:
-			background 0.15s,
-			transform 0.12s var(--out);
-	}
-	.chips .chip {
-		flex: 1 1 auto;
-	}
-	.chip:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--chip-bg), #fff 10%);
-	}
-	.chip:active:not(:disabled) {
-		transform: translateY(2px);
-	}
-	.chip:disabled {
-		opacity: 0.55;
-	}
-	/* a narrow phone: the two chips keep one row without their icons */
-	@media (max-width: 379px) {
-		.chips {
-			gap: 8px;
-		}
-		.chips .chip {
-			padding: 0 10px;
-			font-size: 14px;
-		}
-		.chips .chip svg {
-			display: none;
-		}
-	}
-	.chip svg {
-		width: 18px;
-		height: 18px;
-		flex: none;
-		fill: none;
-		stroke: currentColor;
-		stroke-width: 2.2;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-		opacity: 0.9;
-	}
-
-	/* a friend's code, typed onto a car's number plate: white, by day and by night */
-	.join {
-		flex: 1 1 200px;
-		max-width: 300px;
-		animation: pop 0.35s var(--spring);
-	}
-	.plate {
-		display: flex;
-		align-items: stretch;
-		height: 52px;
-		border-radius: 10px;
-		background: #fff;
-		color: #111;
-		border: 3px solid #111;
-		box-shadow:
-			0 4px 0 var(--stack),
-			0 10px 20px rgba(4, 11, 46, 0.3);
-		overflow: hidden;
-	}
-	.plate input {
-		flex: 1;
-		min-width: 0;
-		border: none;
-		background: transparent;
-		color: #111;
-		padding: 0 10px;
-		font-family: var(--f-disp);
-		font-weight: 900;
-		font-size: 28px;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		text-align: center;
-		outline: none;
-	}
-	.plate input::placeholder {
-		color: #c4c8d4;
-	}
-	.plate:focus-within {
-		box-shadow:
-			0 4px 0 var(--stack),
-			0 0 0 4px var(--gold);
-	}
-	.uz {
-		width: 46px;
-		border-left: 3px solid #111;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 3px;
-	}
-	.uz i {
-		width: 28px;
-		height: 16px;
-		background: linear-gradient(
-			to bottom,
-			#0099b5 0 33%,
-			#ce1126 33% 37%,
-			#fff 37% 63%,
-			#ce1126 63% 67%,
-			#1eb53a 67%
-		);
-		box-shadow: 0 0 0 1px #111;
-	}
-	.uz b {
-		font-family: var(--f-disp);
-		font-weight: 900;
-		font-size: 11px;
-	}
-
 	/* after the first game: the last one, and a guest's way to keep it */
 	.last {
 		grid-area: last;
@@ -1223,11 +561,6 @@
 		border-top-color: #fff;
 		animation: spin 0.9s linear infinite;
 	}
-	.spinner.small {
-		width: 16px;
-		height: 16px;
-		border-width: 2.5px;
-	}
 	@keyframes spin {
 		to {
 			transform: rotate(1turn);
@@ -1239,85 +572,7 @@
 		margin-top: 22px;
 	}
 
-	/* the ready maps, in the sheet: milk-2 rows, each its face, name and what it is */
-	.ready {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-	.rrow {
-		display: flex;
-		align-items: center;
-		gap: 14px;
-		min-height: 64px;
-		padding: 8px 14px 8px 10px;
-		border: none;
-		border-radius: var(--r-s);
-		background: var(--panel-2);
-		color: var(--ink);
-		text-align: left;
-		box-shadow: inset 0 0 0 1.5px var(--panel-line);
-		transition: transform 0.12s var(--out);
-	}
-	.rrow:active:not(:disabled) {
-		transform: scale(0.98);
-	}
-	.rrow.on {
-		box-shadow: inset 0 0 0 2.5px var(--pc);
-	}
-	.rpic {
-		width: 58px;
-		height: 50px;
-		flex: none;
-	}
-	.rtext {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 1px;
-	}
-	.rtext b {
-		font-size: 17px;
-		line-height: 1.25;
-	}
-	.rtext span {
-		font-size: 13.5px;
-		color: var(--ink-2);
-	}
-	.tick {
-		width: 24px;
-		height: 24px;
-		flex: none;
-		fill: none;
-		stroke: var(--pc);
-		stroke-width: 3.2;
-		stroke-linecap: round;
-		stroke-linejoin: round;
-	}
-
-	/* a short phone: tighter; if it still doesn't fit, the map keeps its size and the page
-	   scrolls under the key (the last game and the credits go below the fold, never the key) */
 	@media (max-height: 700px) and (max-width: 960px) {
-		/* the map stays big enough to tap ("Tanlash" needs its corner): the page scrolls a
-		   little sooner for a returning player, the key still in sight */
-		.grid {
-			grid-template-rows: auto auto auto minmax(230px, 1fr) auto auto auto auto auto auto;
-		}
-		.place {
-			height: 76px;
-			margin-top: 2px;
-		}
-		.pic {
-			width: 74px;
-			height: 64px;
-		}
-		.title {
-			font-size: 30px;
-		}
-		.chips {
-			margin-top: 10px;
-		}
 		.credits {
 			margin-top: 8px;
 		}
@@ -1328,15 +583,15 @@
 	@media (min-width: 961px) {
 		.home {
 			max-width: none;
-			height: 100dvh;
+			height: 100%;
 			min-height: 600px;
 			padding: 0 40px 18px;
 		}
 		.grid {
 			min-height: 0;
-			grid-template-columns: 400px minmax(0, 1fr);
+			grid-template-columns: min(36vw, 400px) minmax(0, 1fr);
 			column-gap: 28px;
-			grid-template-rows: 1fr auto auto auto auto auto auto auto auto 1fr auto;
+			grid-template-rows: 1fr auto auto auto auto auto auto auto 1fr auto;
 			grid-template-areas:
 				'. hero'
 				'greet hero'
@@ -1345,7 +600,6 @@
 				'count hero'
 				'rules hero'
 				'go hero'
-				'chips hero'
 				'last hero'
 				'. hero'
 				'credits hero';
@@ -1353,118 +607,7 @@
 		.greet {
 			font-size: 17px;
 		}
-		.place {
-			height: auto;
-			min-height: 128px;
-			margin-top: 14px;
-			display: grid;
-			grid-template-columns: auto minmax(0, 1fr);
-			column-gap: 14px;
-			row-gap: 6px;
-		}
-		.pic {
-			width: 96px;
-			height: 96px;
-		}
-		/* several places: a column of rows, picture, name, × */
-		.picks {
-			grid-column: 1 / -1;
-			flex-direction: column;
-			align-items: stretch;
-			gap: 2px;
-			max-height: min(400px, 46vh);
-			overflow-y: auto;
-			margin: 0 -8px;
-			padding: 2px 0;
-		}
-		.pk {
-			flex: none;
-			display: flex;
-			align-items: center;
-			gap: 6px;
-		}
-		.pk-go {
-			flex: 1;
-			min-width: 0;
-			display: flex;
-			align-items: center;
-			gap: 12px;
-			padding: 5px 8px;
-			border-radius: var(--r-s);
-			text-align: left;
-			transition: background 0.15s;
-		}
-		.pk-go:hover {
-			background: var(--chip-bg);
-		}
-		.pk-go:active {
-			transform: none;
-		}
-		.pk-pic {
-			width: 46px;
-			height: 40px;
-			flex: none;
-		}
-		.pk-name {
-			display: block;
-			min-width: 0;
-			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
-			color: var(--on-ground);
-			font-family: var(--f-disp);
-			font-weight: 900;
-			font-size: 19px;
-		}
-		.pk-x {
-			position: relative;
-			top: auto;
-			right: auto;
-			width: 34px;
-			height: 34px;
-			flex: none;
-			background: var(--chip-bg);
-			color: var(--on-ground);
-			box-shadow: inset 0 0 0 1.5px var(--chip-line);
-		}
-		.pk-x::before {
-			display: none;
-		}
-		/* "+ Tayyor xaritalar": a quiet row under the list */
-		.more {
-			grid-column: 1 / -1;
-			justify-self: start;
-			width: auto;
-			height: 40px;
-			margin: 4px 0 0 -6px;
-			padding: 0 14px 0 10px;
-			border-radius: var(--r-s);
-			display: inline-flex;
-			gap: 8px;
-			background: none;
-			box-shadow: none;
-			color: var(--on-ground-2);
-			font-weight: 700;
-			font-size: 15px;
-		}
-		.more:hover {
-			background: var(--chip-bg);
-		}
-		.more-l {
-			display: inline;
-		}
-		.more svg {
-			width: 16px;
-			height: 16px;
-		}
-		.tw {
-			white-space: normal;
-		}
-		.title {
-			font-size: 50px;
-			line-height: 1.02;
-		}
-		.grid > :global(.mapbox) {
+		.grid > :global(.picker-map) {
 			margin: 0 0 12px;
 		}
 		.count {
@@ -1475,14 +618,6 @@
 		.rules {
 			justify-self: start;
 			margin: 16px 0 18px -10px;
-		}
-		.chips {
-			justify-content: flex-start;
-			margin-top: 24px;
-		}
-		.chips .chip {
-			flex: none;
-			padding: 0 16px;
 		}
 		.last {
 			align-items: flex-start;
